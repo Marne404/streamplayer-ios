@@ -251,6 +251,32 @@ die uBlock standardmäßig nutzt: **EasyList, EasyPrivacy, Peter Lowe** (rund 12
 Lizenzen: EasyList und EasyPrivacy stehen unter GPLv3 / CC BY-SA 3.0. Die Liste von Peter Lowe
 ist für die private Nutzung frei.
 
+## Selbst-Update
+
+Der Player hält sich selbst aktuell, wie HashRush. Beim Start fragt er den Cloudflare-Worker
+`streamplayer-update` nach `version.json`. Gibt es dort eine höhere `versionCode`, lädt er die
+APK still im Hintergrund, prüft die SHA-256-Summe und bietet sie dann an: „Installieren“ öffnet
+Androids Installationsdialog. Beim ersten Mal fragt Android, ob Streamplayer Apps installieren
+darf. Ganz ohne Tippen geht es nicht, still installieren darf nur ein App-Store. Von Hand:
+Einstellungen → Über → „Nach Updates suchen“.
+
+Veröffentlichen: `versionCode` und `versionName` in `app/build.gradle.kts` erhöhen, committen, dann
+
+```
+tools/publish.sh
+```
+
+Das Skript baut das Release aus einem sauberen Abzug von `HEAD` (halbfertige Änderungen im
+Arbeitsordner kommen nicht mit) und teilt die APK in 20-MB-Stücke (Grenze des Workers:
+25 MB pro Datei). Danach schreibt es `version.json`, lädt alles mit `wrangler deploy` hoch und
+legt die APK nach `dist/`. Eine Nummer, die nicht höher ist als die veröffentlichte, lehnt es ab.
+Es muss von diesem Rechner laufen, weil Android ein Update nur mit demselben Release-Schlüssel annimmt.
+
+- Debug-Builds (`….debug`) fragen nie; sie sind anders signiert.
+- Testen ohne Worker: `./gradlew :app:assembleRelease -Pupdate.url=http://10.0.2.2:8766` und
+  `version.json` samt Stücken lokal ausliefern.
+- Der Creator aktualisiert sich noch nicht selbst.
+
 ## Konto, Profile, Abgleich (Firebase)
 
 Profile wie bei Netflix: eine gemeinsame Bibliothek, jedes Profil mit eigenem Fortschritt.

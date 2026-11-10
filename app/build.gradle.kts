@@ -13,6 +13,10 @@ if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google
 // Firebase-Emulator (Demo-Projekt, keine echten Daten).
 val firebaseEmulator = (findProperty("firebase.emulator") as String?).orEmpty()
 
+// Woher das Selbst-Update kommt. Nur zum Testen umbiegen (-Pupdate.url=http://10.0.2.2:8766);
+// tools/publish.sh baut immer mit dem echten Worker.
+val updateUrl = (findProperty("update.url") as String?) ?: "https://streamplayer-update.marne-gamingx.workers.dev"
+
 // Release-Schlüssel liegt außerhalb des Repos; keystore.properties (gitignored) zeigt darauf.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -40,8 +44,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.5.0"
+        versionCode = 14
+        versionName = "1.6.0"
     }
 
     buildTypes {
@@ -52,10 +56,12 @@ android {
             // Ohne keystore.properties (z. B. auf einem anderen Rechner) signiert der Debug-Schlüssel.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             buildConfigField("String", "FIREBASE_EMULATOR", "\"\"")
+            buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
         }
         debug {
             applicationIdSuffix = ".debug"
             buildConfigField("String", "FIREBASE_EMULATOR", "\"$firebaseEmulator\"")
+            buildConfigField("String", "UPDATE_URL", "\"\"")
         }
     }
 

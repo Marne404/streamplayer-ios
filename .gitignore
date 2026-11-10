@@ -21,3 +21,7 @@ firebase/node_modules/
 firebase/*.log
 # Dienstkonto-Schlüssel: nie ins Repo
 *-firebase-adminsdk-*.json
+
+# Update-Worker: wird von tools/publish.sh befüllt
+update/public/
+update/.wrangler/

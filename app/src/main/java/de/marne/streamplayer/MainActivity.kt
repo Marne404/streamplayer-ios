@@ -140,6 +140,7 @@ class MainActivity : ComponentActivity() {
         browser = BrowserController(this, hub, app.settings, app.adblock)
         watch = WatchController(browser, hub, lifecycleScope)
         if (savedInstanceState == null) handleIntent(intent)
+        de.marne.streamplayer.update.Updater.check(this)
 
         setContent {
             val theme by app.settings.theme.collectAsStateWithLifecycle()
@@ -609,8 +610,36 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             onDone = { nav.profilePicker = false; app.profiles.chosen() },
         )
 
+        UpdateOffer()
+
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }
     }
+}
+
+/** Fertig geladenes Update anbieten. Erst wenn alles geprüft auf dem Gerät liegt – nie mitten im Laden. */
+@Composable
+private fun UpdateOffer() {
+    val offer by de.marne.streamplayer.update.Updater.offer.collectAsStateWithLifecycle()
+    val state by de.marne.streamplayer.update.Updater.state.collectAsStateWithLifecycle()
+    val ready = state as? de.marne.streamplayer.update.UpdateState.Ready ?: return
+    if (!offer) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = de.marne.streamplayer.update.Updater::later,
+        title = { Text("Streamplayer ${ready.version} ist da.") },
+        text = {
+            Text(
+                "Schon geladen. Tippe auf Installieren und bestätige. Beim ersten Mal fragt Android, ob " +
+                    "Streamplayer Apps installieren darf – erlauben, zurückkommen, noch einmal tippen. " +
+                    "Bibliothek und Fortschritt bleiben.",
+                color = Palette.muted,
+            )
+        },
+        confirmButton = { de.marne.streamplayer.ui.design.QuietButton("Installieren") { de.marne.streamplayer.update.Updater.install(context) } },
+        dismissButton = { de.marne.streamplayer.ui.design.QuietButton("Später", color = Palette.muted, onClick = de.marne.streamplayer.update.Updater::later) },
+        containerColor = Palette.bg,
+        shape = RoundedCornerShape(28.dp),
+    )
 }
 
 @Composable
