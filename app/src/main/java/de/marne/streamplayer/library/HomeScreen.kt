@@ -233,10 +233,15 @@ private fun HomeHero(t: LibTitle?, state: LibState, actions: LibActions, topInse
         )
         Box(Modifier.matchParentSize().background(Brush.verticalGradient(0f to Palette.bg.copy(alpha = 0.25f), 0.6f to Palette.bg.copy(alpha = 0.55f), 1f to Palette.bg)))
         val press = remember { MutableInteractionSource() }
+        // Quer ist der Schirm flach: die Karte darf höchstens gut die halbe Höhe einnehmen, sonst
+        // sähe man vom Rest der Seite nichts.
+        val screenH = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+        val ratio = if (poster != null) 0.74f else 1.3f
+        val maxW = minOf(420.dp, screenH * 0.62f * ratio).coerceAtLeast(200.dp)
         Box(
             Modifier.padding(top = topInset + 6.dp, start = 28.dp, end = 28.dp, bottom = 4.dp)
-                .widthIn(max = 420.dp).align(Alignment.TopCenter)
-                .fillMaxWidth().aspectRatio(if (poster != null) 0.74f else 1.3f)
+                .widthIn(max = maxW).align(Alignment.TopCenter)
+                .fillMaxWidth().aspectRatio(ratio)
                 .pressScale(press, 0.97f)
                 .clip(RoundedCornerShape(28.dp)).background(Palette.ink)
                 .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(28.dp))

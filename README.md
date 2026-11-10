@@ -258,8 +258,19 @@ Bibliothek bis 0.5 (`library.json`) wird beim ersten Start in Filme übernommen.
 - **Laden**
   - Einzeldateien über OkHttp. Mit `Range` lassen sie sich nach einer Pause fortsetzen.
   - HLS und DASH über `HlsDownloader`/`DashDownloader` von Media3: vier Segmente parallel, in
-    einen Cache. Danach baut **Transformer** daraus eine MP4. Es wird nur umverpackt
-    (Transmux), nicht neu kodiert.
+    einen Cache. Danach wird daraus eine MP4, und zwar nur umverpackt, nicht neu kodiert.
+  - HLS geht seit 1.7.1 den schnellen Weg (`FastHls`): Die Segmente aus dem Cache werden
+    aneinandergehängt, das ergibt einen TS-Strom bzw. mit Init-Segment eine fragmentierte MP4.
+    `MediaExtractorCompat` (Media3) und `MediaMuxer` legen die Spuren dann 1:1 in eine normale MP4.
+    3-Byte-Startcodes werden vorher zu 4-Byte-Startcodes, sonst schneidet MediaMuxer Bytes ab.
+  - Messung im Emulator, 10 Minuten 720p (198 MB): 4,7 s statt 18,2 s mit dem Transformer. Das
+    Ergebnis ist paketgleich, mit vollem Ton und ohne Dekodierfehler.
+  - Wo der schnelle Weg nicht sicher passt, baut weiter **Transformer** die MP4: eigene
+    Tonspur-Playlist, Verschlüsselung, Brüche (Werbung), mehrere Init-Segmente, DASH sowie jede
+    Abweichung bei der Länge.
+  - Aus der Bibliothek geladen wird ohne Ladebildschirm: Die Seite sucht verdeckt, unten zeigt
+    eine Leiste „Download wird vorbereitet“, weitere Downloads werden vorgemerkt. Abspielen hat
+    Vorrang.
   - Foreground-Service mit Warteschlange, 1–3 gleichzeitig, auf Wunsch nur über WLAN.
 - **Ablegen:** Videos in der Mediathek (`MediaStore`). Dafür braucht die App keine
   Speicher-Berechtigung.

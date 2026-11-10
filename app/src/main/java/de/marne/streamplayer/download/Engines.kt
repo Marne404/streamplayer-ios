@@ -192,7 +192,23 @@ class StreamEngine(private val context: Context, private val http: OkHttpClient)
      * Setzt die geladenen Segmente zu einer MP4 zusammen. Ohne Effekte kopiert Transformer
      * die Spuren nur um (Transmux), dekodiert also nichts neu.
      */
-    suspend fun export(item: DownloadItem, out: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.Main) {
+    suspend fun export(item: DownloadItem, out: File, onProgress: (Float) -> Unit) {
+        // Erst der schnelle Weg (FastHls); passt der Strom nicht dazu, der Transformer.
+        if (item.kind == MediaKind.HLS) {
+            try {
+                FastHls.export(context, cacheFactory(item, readOnly = true), item.url, item.keys.map { it.toStreamKey() }, out, out, onProgress)
+                return
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.i("Download", "Schneller Weg nicht möglich (${e.message}) – Transformer")
+                onProgress(0f)
+            }
+        }
+        transform(item, out, onProgress)
+    }
+
+    private suspend fun transform(item: DownloadItem, out: File, onProgress: (Float) -> Unit) = withContext(Dispatchers.Main) {
         out.delete()
         val sources = DefaultMediaSourceFactory(cacheFactory(item, readOnly = true))
         val loader = DefaultAssetLoaderFactory(

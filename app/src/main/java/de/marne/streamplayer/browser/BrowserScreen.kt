@@ -84,6 +84,8 @@ fun BrowserScreen(
     onPreview: (Candidate, String) -> Unit,
     onClose: () -> Unit,
     onWatchShowPage: () -> Unit = {},
+    /** false: liegt nur verdeckt unter der Bibliothek, um im Hintergrund ein Video zu finden. */
+    interactive: Boolean = true,
 ) {
     val url by browser.url.collectAsStateWithLifecycle()
     val title by browser.title.collectAsStateWithLifecycle()
@@ -120,8 +122,9 @@ fun BrowserScreen(
     }
 
 
-    BackHandler(enabled = !showStart) { browser.back() }
-    BackHandler(enabled = watching) { watch.cancel() }
+    // Verdeckt (Download aus der Bibliothek sucht im Hintergrund): Zurück gehört der Bibliothek.
+    BackHandler(enabled = interactive && !showStart) { browser.back() }
+    BackHandler(enabled = interactive && watching) { watch.cancel() }
 
     Column(Modifier.fillMaxSize().background(Palette.bg)) {
         AddressBar(

@@ -44,8 +44,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.7.0"
+        versionCode = 17
+        versionName = "1.7.1"
     }
 
     buildTypes {
@@ -105,6 +105,8 @@ dependencies {
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.transformer)
     implementation(libs.media3.ui)
+    // MediaExtractorCompat: TS/fMP4 lesen wie der Player (einzelne AAC-Frames) – für FastHls.
+    implementation(libs.media3.inspector)
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

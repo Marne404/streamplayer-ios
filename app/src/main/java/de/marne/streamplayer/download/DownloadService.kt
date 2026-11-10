@@ -139,6 +139,7 @@ class DownloadService : Service() {
                     }
                     MediaKind.HLS, MediaKind.DASH -> {
                         val meter = SpeedMeter()
+                        val tLoad = android.os.SystemClock.elapsedRealtime()
                         streams.download(item) { bytes, percent ->
                             meter.onTotal(bytes)
                             store.update(item.id) {
@@ -150,18 +151,23 @@ class DownloadService : Service() {
                                 )
                             }
                         }
+                        android.util.Log.i("Download", "Segmente laden ${android.os.SystemClock.elapsedRealtime() - tLoad} ms")
                         store.update(item.id) { it.copy(state = DlState.MERGING, speedBps = 0, progress = 0.9f) }
                         val out = Workdir.outFile(this@DownloadService, item.id)
+                        val t0 = android.os.SystemClock.elapsedRealtime()
                         streams.export(item, out) { p ->
                             store.update(item.id) { it.copy(progress = 0.9f + 0.1f * p) }
                         }
+                        android.util.Log.i("Download", "Zusammenfügen ${android.os.SystemClock.elapsedRealtime() - t0} ms, ${out.length() / 1_000_000} MB")
                         withContext(Dispatchers.IO) { streams.purge(item) }
                         out to MediaStoreSaver.mimeFor(item)
                     }
                 }
+                val tSave = android.os.SystemClock.elapsedRealtime()
                 val saved = withContext(Dispatchers.IO) {
                     MediaStoreSaver.save(this@DownloadService, file, item.title, mime)
                 }
+                android.util.Log.i("Download", "In die Mediathek ${android.os.SystemClock.elapsedRealtime() - tSave} ms")
                 // Einzeldateien kennen ihre Dauer erst jetzt; Streams brachten sie aus dem Manifest mit.
                 val duration = item.durationMs ?: withContext(Dispatchers.IO) { readDuration(saved.uri) }
                 store.update(item.id) {

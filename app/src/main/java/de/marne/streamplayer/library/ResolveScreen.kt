@@ -28,6 +28,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -154,8 +162,12 @@ fun ResolveScreen(
                 // Alles abfangen: darunter liegt die Bibliothek bzw. die WebView.
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { },
         ) {
-            Backdrop(i.image ?: i.poster, blurred = i.image == null)
-            Content(i, held, visible, onCancel, onShowPage)
+            // Querformat (z. B. nach dem Player, der quer läuft): Bild über die ganze Breite, Text links.
+            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+                val landscape = maxWidth > maxHeight
+                Backdrop(i.image ?: i.poster, blurred = i.image == null, landscape = landscape)
+                Content(i, held, visible, onCancel, onShowPage, landscape)
+            }
         }
     }
 }
@@ -178,7 +190,7 @@ private fun SystemBarsDark(active: Boolean, appDark: Boolean) {
 }
 
 @Composable
-private fun Backdrop(model: String?, blurred: Boolean) {
+private fun Backdrop(model: String?, blurred: Boolean, landscape: Boolean) {
     if (model == null) return
     var loaded by remember(model) { mutableStateOf(false) }
     // Das Bild blendet ein, sobald es da ist – nie ein harter Wechsel von leer auf Bild.
@@ -192,7 +204,8 @@ private fun Backdrop(model: String?, blurred: Boolean) {
     val bg = Palette.bg
     // clipToBounds: der Zoom vergrößert über den Rahmen hinaus, der Verlauf deckt aber nur den Rahmen –
     // ohne Beschnitt stand unten eine harte Kante aus Bild unter dem Verlauf.
-    Box(Modifier.fillMaxWidth().fillMaxHeight(0.66f).clipToBounds()) {
+    // Hochformat: oberes Zweidrittel. Querformat: ganze Fläche, der Text liegt links auf dem Verlauf.
+    Box(Modifier.fillMaxWidth().fillMaxHeight(if (landscape) 1f else 0.66f).clipToBounds()) {
         AsyncImage(
             model = model,
             contentDescription = null,
@@ -208,17 +221,31 @@ private fun Backdrop(model: String?, blurred: Boolean) {
                 // Unter Android 12 gibt es keinen Blur – dann eben ohne, die Bewegung bleibt.
                 .then(if (blurred && Build.VERSION.SDK_INT >= 31) Modifier.blur(36.dp) else Modifier),
         )
-        // Oben: Statusleiste lesbar. Unten: Bild läuft in den Grund aus, der Text steht auf Ruhe.
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    0f to bg.copy(alpha = 0.55f),
-                    0.25f to Color.Transparent,
-                    0.55f to bg.copy(alpha = 0.35f),
-                    1f to bg,
+        if (landscape) {
+            // Von links: Grund, auf dem der Text ruht, nach rechts frei für das Bild; unten leicht abgedunkelt.
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.horizontalGradient(
+                        0f to bg,
+                        0.38f to bg.copy(alpha = 0.82f),
+                        0.72f to Color.Transparent,
+                    )
                 )
             )
-        )
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.6f to Color.Transparent, 1f to bg.copy(alpha = 0.7f))))
+        } else {
+            // Oben: Statusleiste lesbar. Unten: Bild läuft in den Grund aus, der Text steht auf Ruhe.
+            Box(
+                Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        0f to bg.copy(alpha = 0.55f),
+                        0.25f to Color.Transparent,
+                        0.55f to bg.copy(alpha = 0.35f),
+                        1f to bg,
+                    )
+                )
+            )
+        }
     }
 }
 
@@ -229,6 +256,7 @@ private fun Content(
     visible: Boolean,
     onCancel: () -> Unit,
     onShowPage: () -> Unit,
+    landscape: Boolean,
 ) {
     // Hülle zuerst, Inhalt danach: 150 ms Vorlauf, dann Zeile für Zeile im 30-ms-Takt von oben.
     val intro = remember { Animatable(0f) }
@@ -243,13 +271,18 @@ private fun Content(
 
     Box(Modifier.fillMaxSize()) {
         Column(
-            Modifier
+            if (landscape) Modifier
+                .align(Alignment.CenterStart)
+                .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.navigationBars))
+                .padding(start = 48.dp, end = 24.dp, top = 20.dp, bottom = 20.dp)
+                .widthIn(max = 470.dp)
+            else Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(start = 28.dp, end = 28.dp, bottom = 28.dp),
         ) {
-            if (i.poster != null && i.image != null) {
+            val poster: @Composable () -> Unit = {
                 Box(
                     Modifier
                         .enter(0)
@@ -260,30 +293,47 @@ private fun Content(
                 ) {
                     AsyncImage(model = i.poster, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 }
-                VSpace(22.dp)
             }
-            i.eyebrow?.let {
-                Text(
-                    it.uppercase(), modifier = Modifier.enter(1),
-                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
-                    color = Palette.brass, maxLines = 1,
-                )
-                VSpace(10.dp)
+            val texts: @Composable () -> Unit = {
+                Column {
+                    i.eyebrow?.let {
+                        Text(
+                            it.uppercase(), modifier = Modifier.enter(1),
+                            style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.6.sp),
+                            color = Palette.brass, maxLines = 1,
+                        )
+                        VSpace(10.dp)
+                    }
+                    Text(
+                        i.title, modifier = Modifier.enter(2),
+                        // Quer ist die Höhe knapp: eine Stufe kleiner, höchstens zwei Zeilen.
+                        style = if (landscape) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineLarge,
+                        color = Palette.text,
+                        maxLines = if (landscape) 2 else 3, overflow = TextOverflow.Ellipsis,
+                    )
+                    i.subtitle?.let {
+                        VSpace(if (landscape) 4.dp else 8.dp)
+                        Text(
+                            it, modifier = Modifier.enter(3),
+                            style = MaterialTheme.typography.bodyLarge, color = Palette.muted,
+                            maxLines = if (landscape) 1 else 2, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
             }
-            Text(
-                i.title, modifier = Modifier.enter(2),
-                style = MaterialTheme.typography.headlineLarge, color = Palette.text,
-                maxLines = 3, overflow = TextOverflow.Ellipsis,
-            )
-            i.subtitle?.let {
-                VSpace(8.dp)
-                Text(
-                    it, modifier = Modifier.enter(3),
-                    style = MaterialTheme.typography.bodyLarge, color = Palette.muted,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis,
-                )
+            val hasPoster = i.poster != null && i.image != null
+            if (landscape) {
+                // Poster neben dem Text statt darüber – sonst passte der Balken nicht mehr auf den Schirm.
+                Row(verticalAlignment = Alignment.Bottom) {
+                    if (hasPoster) { poster(); Spacer(Modifier.width(20.dp)) }
+                    texts()
+                }
+                VSpace(28.dp)
+            } else {
+                if (hasPoster) { poster(); VSpace(22.dp) }
+                texts()
+                VSpace(36.dp)
             }
-            VSpace(36.dp)
 
             // Suchen und Scheitern sind zwei Gesten: der Balken weicht nach unten, die Meldung steigt auf.
             val kind = when (state) {

@@ -23,6 +23,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.collectAsState
+import de.marne.streamplayer.ui.design.GIcon
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -161,10 +167,19 @@ class AppNav {
      */
     var handoff by mutableStateOf(false)
     var closeInstant by mutableStateOf(false)
+    /**
+     * Download aus der Bibliothek: Die Seite wird verdeckt geladen wie beim Abspielen, aber ohne
+     * Ladebildschirm – nur eine kleine Leiste unten. Was währenddessen dazukommt, wartet in [queue].
+     */
+    var quiet by mutableStateOf<QuietJob?>(null)
+    val queue = androidx.compose.runtime.mutableStateListOf<QuietJob>()
     /** „Wer schaut?“: offen, und ob gleich im Verwalten-Modus (aus den Einstellungen). */
     var profilePicker by mutableStateOf(false)
     var profileManage by mutableStateOf(false)
 }
+
+/** Ein Download, dessen Video noch gesucht wird: Titel, Folge (oder Film), Anzeige, Seite. */
+data class QuietJob(val titleId: String, val season: Int?, val episode: Int?, val label: String, val url: String)
 
 class MainActivity : ComponentActivity() {
 
@@ -380,6 +395,15 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         }
     }
 
+    fun startQuiet(job: QuietJob) {
+        nav.quiet = job
+        nav.closeInstant = false
+        nav.resolving = true
+        nav.browserOpen = true
+        val key = if (job.season != null && job.episode != null) "e:${job.titleId}:${job.season}:${job.episode}" else "m:${job.titleId}"
+        watch.start(job.url, WatchController.Request(key = key, label = job.label, titleId = job.titleId, download = true, fromLibrary = true))
+    }
+
     /**
      * Film oder Folge abspielen bzw. laden. Offline-Datei: direkt. Sonst Seite verdeckt laden,
      * Stream finden (WatchController), danach zurück in die Bibliothek.
@@ -393,6 +417,18 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             return
         }
         val url = ep?.url ?: t.pageUrl ?: return
+        if (download) {
+            val job = QuietJob(t.id, ep?.season, ep?.number, label, url)
+            if (nav.quiet == job || job in nav.queue) return
+            // Läuft schon eine Suche (Download oder Abspielen): hinten anstellen, nicht abbrechen.
+            if (nav.quiet != null || nav.resolving) {
+                nav.queue.add(job)
+                toast("Vorgemerkt: $label")
+            } else startQuiet(job)
+            return
+        }
+        // Abspielen hat Vorrang: eine laufende Download-Suche wartet so lange vorne in der Schlange.
+        nav.quiet?.let { nav.queue.add(0, it); nav.quiet = null }
         nav.resolveInfo = ResolveInfo(
             title = t.title,
             eyebrow = listOfNotNull(
@@ -423,7 +459,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 val r = watch.request
                 if (r.download) {
                     startDownload(s.candidate, s.candidate.variants.firstOrNull(), r.label ?: s.title, s.thumbnail, r.key)
-                    watch.showPage()
+                    // Seite anhalten und schließen: sie würde sonst unsichtbar weiterspielen.
+                    if (nav.quiet != null) watch.cancel() else watch.showPage()
                 } else {
                     // Der Ladebildschirm ist dunkel, der Player schwarz: überblenden statt hereinschieben.
                     val fade = ActivityOptions.makeCustomAnimation(context, R.anim.player_enter, R.anim.hold).toBundle()
@@ -444,11 +481,33 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                     } else watch.playerOpened()
                 }
             }
-            WatchController.State.Idle -> if (nav.resolving && !nav.handoff) {
-                nav.resolving = false
-                nav.browserOpen = false
+            WatchController.State.Idle -> {
+                nav.quiet = null
+                if (nav.resolving && !nav.handoff) {
+                    nav.resolving = false
+                    nav.browserOpen = false
+                }
+            }
+            // Im Hintergrund nichts gefunden: Bescheid geben, Seite zum Selbst-Starten anbieten.
+            is WatchController.State.NotFound, is WatchController.State.Protected -> nav.quiet?.let { job ->
+                watch.cancel()
+                val why = if (watchState is WatchController.State.Protected) "geschützt (DRM)" else "kein Video gefunden"
+                toast("${job.label}: $why.", "Seite öffnen") {
+                    nav.browserOpen = true
+                    browser.load(job.url)
+                }
             }
             else -> Unit
+        }
+    }
+
+    // Wartende Downloads nacheinander suchen – nur solange die App vorn ist: Im Hintergrund hält
+    // Android die WebView an, und die Suche fände nichts.
+    val resumed by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    LaunchedEffect(nav.quiet, nav.resolving, nav.queue.size, resumed) {
+        if (nav.quiet == null && !nav.resolving && nav.queue.isNotEmpty() && resumed.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) {
+            kotlinx.coroutines.delay(300)
+            if (nav.quiet == null && !nav.resolving && nav.queue.isNotEmpty()) startQuiet(nav.queue.removeAt(0))
         }
     }
 
@@ -573,9 +632,11 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
 
     // Zurück: Browser schließen › Detailseite schließen › zur Bibliothek. BrowserScreen hat eigene,
     // spätere Handler (Seitenverlauf, Suche abbrechen) – die gewinnen, solange sie aktiv sind.
-    BackHandler(enabled = !nav.browserOpen && nav.stack.isEmpty() && nav.tab != MainActivity.TAB_HOME) { nav.selectTab(MainActivity.TAB_HOME) }
-    BackHandler(enabled = !nav.browserOpen && nav.stack.isNotEmpty()) { nav.pop() }
-    BackHandler(enabled = nav.browserOpen) { if (watch.active) watch.cancel() else nav.browserOpen = false }
+    // Sucht der Browser nur verdeckt nach einem Download, gehört Zurück weiter der Bibliothek.
+    val browserShown = nav.browserOpen && nav.quiet == null
+    BackHandler(enabled = !browserShown && nav.stack.isEmpty() && nav.tab != MainActivity.TAB_HOME) { nav.selectTab(MainActivity.TAB_HOME) }
+    BackHandler(enabled = !browserShown && nav.stack.isNotEmpty()) { nav.pop() }
+    BackHandler(enabled = browserShown) { if (watch.active) watch.cancel() else nav.browserOpen = false }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         // Beim Auflösen liegt die WebView ganz unten (sie muss angehängt und sichtbar sein, damit
@@ -592,6 +653,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 onPreview = preview,
                 onClose = { nav.browserOpen = false },
                 onWatchShowPage = { nav.resolving = false },
+                interactive = nav.quiet == null,
             )
         }
         if (!nav.browserOpen || nav.resolving) {
@@ -648,12 +710,22 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
 
         // Edge-to-edge: Inhalt scrollt nicht sichtbar unter die Statusleiste. Start und Detail
         // ziehen ihr Bild bis unter die Leiste und decken sie selbst ab, sobald gescrollt wird.
-        val fullBleed = !nav.browserOpen && ((nav.stack.isEmpty() && nav.tab == MainActivity.TAB_HOME) || nav.stack.lastOrNull() is Route.Detail)
+        val fullBleed = !browserShown && ((nav.stack.isEmpty() && nav.tab == MainActivity.TAB_HOME) || nav.stack.lastOrNull() is Route.Detail)
         if (!fullBleed) Box(
             Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
                 .background(Palette.bg)
+        )
+
+        QuietSearchBar(
+            job = nav.quiet,
+            queued = nav.queue.size,
+            onCancel = {
+                nav.queue.clear()
+                watch.cancel()
+            },
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 84.dp),
         )
 
         nav.previewId?.let { id ->
@@ -662,7 +734,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         if (nav.categories) CategorySheet(libState, nav.categoriesKind, libActions, onDismiss = { nav.categories = false })
 
         ResolveScreen(
-            visible = nav.resolving,
+            visible = nav.resolving && nav.quiet == null,
             instant = nav.closeInstant,
             info = nav.resolveInfo,
             state = watchState,
@@ -683,6 +755,42 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         de.marne.streamplayer.update.UpdateOffer("Streamplayer")
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }
+    }
+}
+
+/**
+ * Kleine Leiste über der Navigation, solange ein Download sein Video noch sucht: welcher, wie
+ * viele warten, Abbrechen. Kommt von unten, geht nach unten – die Bibliothek bleibt bedienbar.
+ */
+@Composable
+private fun QuietSearchBar(job: QuietJob?, queued: Int, onCancel: () -> Unit, modifier: Modifier) {
+    var shown by remember { mutableStateOf(job) }
+    if (job != null) shown = job
+    val spring = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+    val bouncy = androidx.compose.animation.core.CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+    androidx.compose.animation.AnimatedVisibility(
+        visible = job != null,
+        modifier = modifier,
+        enter = androidx.compose.animation.slideInVertically(tween(420, easing = bouncy)) { it } + androidx.compose.animation.fadeIn(tween(220)),
+        exit = androidx.compose.animation.slideOutVertically(tween(320, easing = spring)) { it } + androidx.compose.animation.fadeOut(tween(220)),
+    ) {
+        val j = shown ?: return@AnimatedVisibility
+        Row(
+            Modifier.padding(horizontal = 20.dp).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Palette.ink)
+                .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), color = Palette.onInk, strokeWidth = 2.dp)
+            Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                Text("Download wird vorbereitet", style = MaterialTheme.typography.labelMedium, color = Palette.onInk.copy(alpha = 0.7f))
+                Text(
+                    j.label + if (queued > 0) "  ·  $queued weitere" else "",
+                    style = MaterialTheme.typography.bodyMedium, color = Palette.onInk, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            androidx.compose.material3.IconButton(onClick = onCancel) { GIcon(Ic.close, tint = Palette.onInk, size = 18.dp) }
+        }
     }
 }
 
