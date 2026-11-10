@@ -6,7 +6,6 @@ import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
-import de.marne.streamplayer.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -30,17 +29,20 @@ sealed interface UpdateState {
 }
 
 /**
- * Selbst-Update für die per APK verteilte App (Vorbild: HashRush). Beim Start nachsehen, ob der
- * Update-Worker eine höhere versionCode hat, die APK still im Hintergrund laden, prüfen und dann
- * Androids Installationsdialog anbieten. Ganz ohne Tippen geht es nicht – still installieren darf
- * nur ein App-Store.
+ * Selbst-Update für Player und Creator, beide per APK verteilt (Vorbild: HashRush). Beim Start
+ * nachsehen, ob der Update-Worker eine höhere versionCode hat, die APK still im Hintergrund laden,
+ * prüfen und dann Androids Installationsdialog anbieten. Ganz ohne Tippen geht es nicht – still
+ * installieren darf nur ein App-Store.
  *
- * Debug-Builds fragen nie: sie heißen `….debug` und sind anders signiert – das Release-Update ließe
- * sich nicht darüber installieren, sondern käme als zweite App daneben.
+ * Jede App ruft [configure] in `Application.onCreate` mit der Adresse ihrer version.json auf
+ * (Player: `/version.json`, Creator: `/creator/version.json`); die Stücke liegen daneben.
+ * Debug-Builds übergeben nichts und fragen nie: sie heißen `….debug` und sind anders signiert –
+ * das Release-Update ließe sich nicht darüber installieren, sondern käme als zweite App daneben.
  */
 object Updater {
-    /** Der Worker „streamplayer-update“ (update/wrangler.toml); im Debug-Build leer. */
-    private val BASE = BuildConfig.UPDATE_URL
+    private var versionUrl = ""
+
+    fun configure(versionJsonUrl: String) { versionUrl = versionJsonUrl }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow<UpdateState>(UpdateState.None)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
@@ -49,10 +51,10 @@ object Updater {
     private val _offer = MutableStateFlow(false)
     val offer: StateFlow<Boolean> = _offer.asStateFlow()
 
-    val enabled get() = BASE.isNotEmpty()
+    val enabled get() = versionUrl.isNotEmpty()
     private var checked = false
 
-    private fun apk(context: Context) = File(File(context.cacheDir, "update").apply { mkdirs() }, "streamplayer.apk")
+    private fun apk(context: Context) = File(File(context.cacheDir, "update").apply { mkdirs() }, "update.apk")
 
     private fun currentCode(context: Context): Long = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
 
@@ -91,7 +93,7 @@ object Updater {
         lastCheckAt = now
         lastResult = try {
             val info = withContext(Dispatchers.IO) {
-                val c = URL("$BASE/version.json").openConnection() as HttpURLConnection
+                val c = URL(versionUrl).openConnection() as HttpURLConnection
                 try {
                     c.connectTimeout = 8_000
                     c.readTimeout = 8_000
@@ -129,7 +131,7 @@ object Updater {
                     // In Stücken: eine Datei des Workers darf höchstens 25 MB groß sein.
                     val parts = info.getJSONArray("parts")
                     for (i in 0 until parts.length()) {
-                        val c = URL("$BASE/${parts.getString(i)}").openConnection() as HttpURLConnection
+                        val c = URL(URL(versionUrl), parts.getString(i)).openConnection() as HttpURLConnection
                         try {
                             c.connectTimeout = 15_000
                             c.readTimeout = 30_000
@@ -182,6 +184,7 @@ object Updater {
         _offer.value = false
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         // ACTION_VIEW statt einer PackageInstaller-Sitzung: so läuft es bei HashRush auf demselben Handy.
+        // Der FileProvider „<paket>.files“ muss den Cache-Ordner „update/“ freigeben (res/xml/file_paths.xml).
         context.startActivity(
             Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -189,4 +192,6 @@ object Updater {
     }
 
     fun later() { _offer.value = false }
+
+    fun versionName(context: Context): String = context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "–"
 }

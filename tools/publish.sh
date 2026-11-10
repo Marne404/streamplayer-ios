@@ -1,43 +1,88 @@
 #!/bin/bash
-# Stellt den Player als Update bereit: Release bauen, in Stücke teilen, version.json schreiben,
-# auf den Worker „streamplayer-update“ hochladen, APK nach dist/.
+# Veröffentlicht Player und Creator als Selbst-Update auf dem Worker „streamplayer-update“:
+#   /version.json            + streamplayer-<code>.partNN   (Player)
+#   /creator/version.json    + creator-<code>.partNN        (Creator)
 #
-# Vorher versionCode in app/build.gradle.kts erhöhen und committen – nur eine höhere Nummer gilt
-# als Update. Gebaut wird aus einem sauberen Abzug von HEAD, nicht aus dem Arbeitsordner: was
-# ausgeliefert wird, soll genau ein Commit sein, nicht halbfertige Änderungen daneben.
+# Veröffentlicht wird jede App, deren versionCode in HEAD höher ist als die live – die andere wird
+# vom Worker zurückgeladen und unverändert mit hochgeladen (ein Deploy ersetzt immer alle Dateien).
+# Ist nichts neuer, endet das Skript sofort. Darum kann es nach jedem Commit laufen
+# (tools/git-hooks/post-commit, eingeschaltet mit `git config core.hooksPath tools/git-hooks`).
 #
+# Gebaut wird aus einem sauberen Abzug von HEAD, nicht aus dem Arbeitsordner: was ausgeliefert
+# wird, soll genau ein Commit sein, nicht halbfertige Änderungen daneben.
 # Muss von diesem Rechner laufen: Android nimmt ein Update nur an, wenn es mit demselben
 # Schlüssel signiert ist (~/.android/streamplayer-release.jks über keystore.properties).
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 BASE=https://streamplayer-update.marne-gamingx.workers.dev
+STAGE="$ROOT/update/public"
 
-CODE=$(git show HEAD:app/build.gradle.kts | grep -oP 'versionCode = \K[0-9]+')
-NAME=$(git show HEAD:app/build.gradle.kts | grep -oP 'versionName = "\K[^"]+')
-LIVE=$(curl -fsS "$BASE/version.json" 2>/dev/null | grep -oP '"versionCode":\K[0-9]+' || echo 0)
-if [ "$CODE" -le "$LIVE" ]; then
-  echo "versionCode $CODE ist nicht höher als die veröffentlichte $LIVE – erst erhöhen und committen." >&2
-  exit 1
-fi
-if ! git diff --quiet HEAD -- app core; then
-  echo "Hinweis: Ungespeicherte Änderungen in app/ oder core/ kommen NICHT mit – gebaut wird HEAD ($(git rev-parse --short HEAD))."
+# Nie zwei Läufe gleichzeitig (zwei Commits kurz hintereinander).
+mkdir -p update
+exec 9>"$ROOT/update/.lock"
+flock 9
+
+# Modul : Pfad beim Worker : Name der Stücke : Name in dist/
+APPS=("app::streamplayer:streamplayer" "creator:creator/:creator:streamplayer-creator")
+
+code_of() { git show "HEAD:$1/build.gradle.kts" | grep -oP 'versionCode = \K[0-9]+'; }
+name_of() { git show "HEAD:$1/build.gradle.kts" | grep -oP 'versionName = "\K[^"]+'; }
+
+rm -rf "$STAGE" && mkdir -p "$STAGE"
+TODO=()
+for spec in "${APPS[@]}"; do
+  IFS=: read -r module prefix stem dist <<<"$spec"
+  live=$(curl -fsS "$BASE/${prefix}version.json" 2>/dev/null || true)
+  livecode=$(grep -oP '"versionCode":\K[0-9]+' <<<"$live" || echo 0)
+  if [ "$(code_of "$module")" -gt "$livecode" ]; then
+    TODO+=("$spec")
+  elif [ -n "$live" ]; then
+    # Unverändert: die veröffentlichte Fassung wieder mitnehmen.
+    mkdir -p "$STAGE/$prefix"
+    printf '%s\n' "$live" > "$STAGE/${prefix}version.json"
+    for part in $(grep -oP '"parts":\[\K[^]]*' <<<"$live" | tr -d '"' | tr , ' '); do
+      curl -fsS "$BASE/$prefix$part" -o "$STAGE/$prefix$part"
+    done
+  fi
+done
+
+if [ ${#TODO[@]} -eq 0 ]; then
+  echo "$(date '+%F %T') Nichts Neues – Player $(code_of app), Creator $(code_of creator) sind schon veröffentlicht."
+  exit 0
 fi
 
+echo "$(date '+%F %T') Veröffentliche aus $(git rev-parse --short HEAD): ${TODO[*]}"
 WORK=$(mktemp -d)
 trap 'git -C "$ROOT" worktree remove --force "$WORK/src" >/dev/null 2>&1 || true; rm -rf "$WORK"' EXIT
 git worktree add --detach -q "$WORK/src" HEAD
 # Was nicht im Repo liegt, aber zum Bauen gehört.
 cp local.properties keystore.properties "$WORK/src/"
 cp app/google-services.json "$WORK/src/app/"
-(cd "$WORK/src" && ./gradlew -q :app:testDebugUnitTest :app:assembleRelease -Pupdate.url="$BASE")
-APK="$WORK/src/app/build/outputs/apk/release/app-release.apk"
 
-rm -rf update/public && mkdir -p update/public
-split -b 20M -d "$APK" "update/public/streamplayer-$CODE.part"
-PARTS=$(cd update/public && ls streamplayer-$CODE.part* | sed 's/.*/"&"/' | paste -sd,)
-printf '{"versionCode":%s,"versionName":"%s","size":%s,"sha256":"%s","parts":[%s]}\n' \
-  "$CODE" "$NAME" "$(stat -c %s "$APK")" "$(sha256sum "$APK" | cut -d' ' -f1)" "$PARTS" > update/public/version.json
+TASKS=(:core:testDebugUnitTest)
+for spec in "${TODO[@]}"; do
+  IFS=: read -r module _ <<<"$spec"
+  TASKS+=(":$module:testDebugUnitTest" ":$module:assembleRelease")
+done
+(cd "$WORK/src" && ./gradlew -q "${TASKS[@]}" -Pupdate.url="$BASE")
+
+mkdir -p dist
+for spec in "${TODO[@]}"; do
+  IFS=: read -r module prefix stem dist <<<"$spec"
+  code=$(code_of "$module"); name=$(name_of "$module")
+  apk="$WORK/src/$module/build/outputs/apk/release/$module-release.apk"
+  mkdir -p "$STAGE/$prefix"
+  # In Stücken: eine Datei des Workers darf höchstens 25 MB groß sein.
+  split -b 20M -d "$apk" "$STAGE/$prefix$stem-$code.part"
+  parts=$(cd "$STAGE/$prefix" && ls "$stem-$code".part* | sed 's/.*/"&"/' | paste -sd,)
+  printf '{"versionCode":%s,"versionName":"%s","size":%s,"sha256":"%s","parts":[%s]}\n' \
+    "$code" "$name" "$(stat -c %s "$apk")" "$(sha256sum "$apk" | cut -d' ' -f1)" "$parts" > "$STAGE/${prefix}version.json"
+  cp "$apk" "dist/$dist-$name.apk"
+done
+
 (cd update && npx --yes wrangler deploy)
-mkdir -p dist && cp "$APK" "dist/streamplayer-$NAME.apk"
-echo "Veröffentlicht: $NAME ($CODE) → $BASE/version.json, APK in dist/streamplayer-$NAME.apk"
+for spec in "${TODO[@]}"; do
+  IFS=: read -r module prefix stem dist <<<"$spec"
+  echo "$(date '+%F %T') Veröffentlicht: $module $(name_of "$module") ($(code_of "$module")) → $BASE/${prefix}version.json, dist/$dist-$(name_of "$module").apk"
+done

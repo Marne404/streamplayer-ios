@@ -6,6 +6,9 @@ plugins {
 }
 
 // Zweite App: Kataloge bauen (Serien-Muster, Staffeln, TMDB) und an den Player geben.
+
+// Selbst-Update wie beim Player (tools/publish.sh); nur zum Testen umbiegen mit -Pupdate.url=….
+val updateUrl = (findProperty("update.url") as String?) ?: "https://streamplayer-update.marne-gamingx.workers.dev"
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
@@ -32,8 +35,8 @@ android {
         applicationId = "de.marne.streamplayer.creator"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.3.0"
+        versionCode = 6
+        versionName = "1.4.0"
     }
 
     buildTypes {
@@ -42,9 +45,11 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
         }
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "UPDATE_URL", "\"\"")
         }
     }
 
@@ -55,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

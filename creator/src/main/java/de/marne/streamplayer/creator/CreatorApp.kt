@@ -41,6 +41,8 @@ class CreatorApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Selbst-Update: liegt beim Worker unter /creator/, der Player unter /. Im Debug-Build leer.
+        de.marne.streamplayer.update.Updater.configure(BuildConfig.UPDATE_URL.ifEmpty { null }?.let { "$it/creator/version.json" }.orEmpty())
         prefs = CreatorPrefs(this)
         store = CatalogStore(this)
         val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()

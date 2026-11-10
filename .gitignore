@@ -25,3 +25,5 @@ firebase/*.log
 # Update-Worker: wird von tools/publish.sh befüllt
 update/public/
 update/.wrangler/
+update/.lock
+update/publish.log

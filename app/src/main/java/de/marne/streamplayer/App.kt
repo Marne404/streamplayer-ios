@@ -51,6 +51,8 @@ class App : Application(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()
+        // Selbst-Update: im Debug-Build leer, dann fragt die App nie.
+        de.marne.streamplayer.update.Updater.configure(BuildConfig.UPDATE_URL.ifEmpty { null }?.let { "$it/version.json" }.orEmpty())
         instance = this
         settings = Settings(this)
         http = Http.client(this)

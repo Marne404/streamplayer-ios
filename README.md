@@ -280,29 +280,36 @@ ist für die private Nutzung frei.
 
 ## Selbst-Update
 
-Der Player hält sich selbst aktuell, wie HashRush. Beim Start fragt er den Cloudflare-Worker
-`streamplayer-update` nach `version.json`. Gibt es dort eine höhere `versionCode`, lädt er die
-APK still im Hintergrund, prüft die SHA-256-Summe und bietet sie dann an: „Installieren“ öffnet
-Androids Installationsdialog. Beim ersten Mal fragt Android, ob Streamplayer Apps installieren
-darf. Ganz ohne Tippen geht es nicht, still installieren darf nur ein App-Store. Von Hand:
-Einstellungen → Über → „Nach Updates suchen“.
+Player und Creator halten sich selbst aktuell, wie HashRush. Beim Start fragt jede App den
+Cloudflare-Worker `streamplayer-update` nach ihrer `version.json` (Player: `/version.json`,
+Creator: `/creator/version.json`). Gibt es dort eine höhere `versionCode`, lädt sie die APK still
+im Hintergrund, prüft die SHA-256-Summe und bietet sie dann an. „Installieren“ öffnet Androids
+Installationsdialog; beim ersten Mal fragt Android, ob die App Apps installieren darf. Ganz ohne
+Tippen geht es nicht, still installieren darf nur ein App-Store. Von Hand: Einstellungen → Über →
+„Nach Updates suchen“. Code: `core/…/update/` (Updater, Dialog, Einstellungszeile).
 
-Veröffentlichen: `versionCode` und `versionName` in `app/build.gradle.kts` erhöhen, committen, dann
+**Veröffentlichen geht von selbst:** `versionCode` und `versionName` in `app/build.gradle.kts`
+bzw. `creator/build.gradle.kts` erhöhen und committen. Der Hook `tools/git-hooks/post-commit`
+startet daraufhin `tools/publish.sh` im Hintergrund (Protokoll: `update/publish.log`).
+Eingeschaltet ist er mit
 
 ```
-tools/publish.sh
+git config core.hooksPath tools/git-hooks
 ```
 
-Das Skript baut das Release aus einem sauberen Abzug von `HEAD` (halbfertige Änderungen im
-Arbeitsordner kommen nicht mit) und teilt die APK in 20-MB-Stücke (Grenze des Workers:
-25 MB pro Datei). Danach schreibt es `version.json`, lädt alles mit `wrangler deploy` hoch und
-legt die APK nach `dist/`. Eine Nummer, die nicht höher ist als die veröffentlichte, lehnt es ab.
-Es muss von diesem Rechner laufen, weil Android ein Update nur mit demselben Release-Schlüssel annimmt.
+`tools/publish.sh` geht so vor:
+- Es veröffentlicht jede App, deren Nummer in `HEAD` höher ist als die live. Ist nichts neuer,
+  endet es sofort. Die andere App lädt es vom Worker zurück und lädt sie unverändert mit hoch,
+  denn ein Deploy ersetzt alle Dateien.
+- Es baut aus einem sauberen Abzug von `HEAD`. Halbfertiges im Arbeitsordner kommt nie mit.
+- Es lässt vorher die Unit-Tests laufen. Schlägt einer fehl, wird nichts veröffentlicht.
+- Es teilt die APK in 20-MB-Stücke (der Worker erlaubt 25 MB pro Datei) und legt sie in `dist/`.
+- Es muss von diesem Rechner laufen, weil Android ein Update nur mit demselben Release-Schlüssel
+  annimmt. Ohne `keystore.properties` tut der Hook nichts.
 
 - Debug-Builds (`….debug`) fragen nie; sie sind anders signiert.
-- Testen ohne Worker: `./gradlew :app:assembleRelease -Pupdate.url=http://10.0.2.2:8766` und
-  `version.json` samt Stücken lokal ausliefern.
-- Der Creator aktualisiert sich noch nicht selbst.
+- Testen ohne Worker: `./gradlew :app:assembleRelease -Pupdate.url=http://10.0.2.2:8766` (bzw.
+  `:creator:…`) und `version.json` samt Stücken lokal ausliefern (`creator/` als Unterordner).
 
 ## Konto, Profile, Abgleich (Firebase)
 

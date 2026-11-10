@@ -76,6 +76,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val prefs = CreatorApp.instance.prefs
         if (savedInstanceState == null) handleShare(intent)
+        de.marne.streamplayer.update.Updater.check(this)
         setContent {
             val theme by prefs.theme.collectAsState()
             val dark = isAppDark(theme)
@@ -163,6 +164,7 @@ private fun CreatorRoot() {
             Snackbar(data, shape = RoundedCornerShape(16.dp), containerColor = Palette.ink, contentColor = Palette.onInk, modifier = Modifier.padding(horizontal = 20.dp))
         }
         Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(Palette.bg))
+        de.marne.streamplayer.update.UpdateOffer("Streamplayer Creator")
     }
 }
 
@@ -312,6 +314,8 @@ private fun SettingsScreen(onBack: () -> Unit, toast: (String) -> Unit) {
         }
         item { SectionTitle("Darstellung") }
         item { Segmented(listOf("system" to "System", "light" to "Hell", "dark" to "Dunkel"), theme, app.prefs::setTheme) }
+        item { SectionTitle("Über") }
+        item { de.marne.streamplayer.ui.design.ListGroup { de.marne.streamplayer.update.UpdateRow() } }
         item {
             SectionTitle("Format")
             Text(

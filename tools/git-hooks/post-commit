@@ -1,0 +1,10 @@
+#!/bin/bash
+# Nach jedem Commit: Ist Player oder Creator in HEAD neuer als veröffentlicht, im Hintergrund
+# veröffentlichen (tools/publish.sh). Sonst endet publish.sh nach zwei kurzen Abfragen.
+# Protokoll: update/publish.log. Eingeschaltet mit `git config core.hooksPath tools/git-hooks`.
+# Im Hilfs-Abzug von publish.sh selbst nicht – der committet nie, aber sicher ist sicher.
+ROOT=$(git rev-parse --show-toplevel)
+[ -f "$ROOT/keystore.properties" ] || exit 0
+mkdir -p "$ROOT/update"
+setsid nohup "$ROOT/tools/publish.sh" >> "$ROOT/update/publish.log" 2>&1 < /dev/null &
+exit 0

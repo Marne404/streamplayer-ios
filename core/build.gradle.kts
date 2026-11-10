@@ -41,6 +41,8 @@ dependencies {
     api(libs.okhttp)
     api(libs.kotlinx.coroutines.android)
     implementation(libs.jsoup)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     testImplementation(libs.junit)
     testImplementation(libs.orgjson)
 }

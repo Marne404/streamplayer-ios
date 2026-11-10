@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,7 +29,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.marne.streamplayer.App
@@ -52,8 +50,7 @@ import de.marne.streamplayer.ui.design.Segmented
 import de.marne.streamplayer.ui.design.SheetHandle
 import de.marne.streamplayer.ui.design.StatusLine
 import de.marne.streamplayer.ui.design.VSpace
-import de.marne.streamplayer.update.UpdateState
-import de.marne.streamplayer.update.Updater
+import de.marne.streamplayer.update.UpdateRow
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -77,16 +74,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val tmdbAuto by settings.tmdbAuto.collectAsStateWithLifecycle()
     val askProfile by settings.askProfile.collectAsStateWithLifecycle()
     val profiles by app.profiles.profiles.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val version = remember {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "–"
-    }
     var confirmClear by remember { mutableStateOf(false) }
     var tmdbSheet by remember { mutableStateOf(false) }
-    val update by Updater.state.collectAsStateWithLifecycle()
-    var checking by remember { mutableStateOf(false) }
-    var updateNote by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     LazyColumn(
@@ -258,33 +247,7 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         item { SectionTitle("Über") }
         item {
             ListGroup {
-                ListRow(
-                    title = "Nach Updates suchen",
-                    subtitle = when (val u = update) {
-                        is UpdateState.Downloading -> "Lädt ${u.version} … ${(u.progress * 100).toInt().coerceIn(0, 100)} %"
-                        is UpdateState.Ready -> "${u.version} ist bereit – tippen zum Installieren"
-                        UpdateState.None -> updateNote ?: if (Updater.enabled) "Version $version · prüft bei jedem Start" else "Version $version · Testversion, ohne Updates"
-                    },
-                    icon = Ic.download,
-                    showChevron = false,
-                    trailing = if (checking) ({ androidx.compose.material3.CircularProgressIndicator(Modifier.size(22.dp), color = Palette.text, strokeWidth = 2.dp) }) else null,
-                    onClick = {
-                        if (update is UpdateState.Ready) Updater.install(context)
-                        else if (!checking) scope.launch {
-                            checking = true
-                            // Immer kurz „prüfen“ – auch wenn die letzte Antwort noch gilt und gar keine Anfrage rausgeht.
-                            val started = System.currentTimeMillis()
-                            val result = Updater.checkNow(context)
-                            kotlinx.coroutines.delay((700 - (System.currentTimeMillis() - started)).coerceAtLeast(0))
-                            updateNote = when (result) {
-                                Updater.CheckResult.UpToDate -> "Version $version ist die neueste."
-                                Updater.CheckResult.Found -> null
-                                Updater.CheckResult.Failed -> "Keine Verbindung zum Update-Server."
-                            }
-                            checking = false
-                        }
-                    },
-                )
+                UpdateRow()
                 RowDivider()
                 ListRow(title = "Einführung noch einmal zeigen", icon = Ic.sparkle, onClick = { settings.setOnboarded(false) })
                 RowDivider()
