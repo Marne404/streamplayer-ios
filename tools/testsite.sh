@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Baut eine lokale Testseite mit einer MP4 und einem HLS-Stream (zwei Qualitäten)
+# Baut lokale Testseiten: MP4 + HLS (index.html), Erkennung ohne Play (jw.html, vjs.html,
+# config.html) und Werbeblocker (ads.html)
 # und stellt sie auf Port 8765 bereit. Im Emulator: http://10.0.2.2:8765/
 set -euo pipefail
 DIR="${1:-${TMPDIR:-/tmp}/streamplayer-testsite}"
@@ -41,6 +42,62 @@ M3U
   var v = document.getElementById('hls');
   if (window.Hls && Hls.isSupported()) { var h = new Hls(); h.loadSource('hls/master.m3u8'); h.attachMedia(v); }
   else { v.src = 'hls/master.m3u8'; }
+</script>
+</body></html>
+HTML
+  cat > jw.html <<'HTML'
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JW-Test</title><style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}#player{height:200px;background:#222;color:#aaa;display:grid;place-items:center}</style></head>
+<body><h1>JW Player (wie VOE)</h1><div id="player">Player – nicht gestartet</div>
+<script>
+// Nachbau der öffentlichen JW-Player-API. Wie bei VOE: Aufbau verzögert, kein Netzwerkzugriff vor Play.
+setTimeout(function () {
+  var items = [{ title: 'Episode 1 (JW)', image: 'poster.jpg',
+    sources: [{ file: 'hls/master.m3u8', type: 'hls', label: 'Auto' }] }];
+  var api = { getPlaylist: function () { return items; }, getPlaylistItem: function () { return items[0]; }, on: function () { return api; } };
+  window.jwplayer = function (i) { return (i === undefined || i === 0 || i === 'player') ? api : {}; };
+  document.getElementById('player').textContent = 'JW Player bereit – noch nicht gestartet';
+}, 2500);
+</script></body></html>
+HTML
+  cat > config.html <<'HTML'
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Konfig-Test</title><style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}</style></head>
+<body><h1>Adresse nur im Code</h1><p>Kein Player, kein video-Tag – nur eine Konfiguration.</p>
+<script>var playerConfig = {"title":"Konfig-Video","hls":"http:\/\/10.0.2.2:8765\/hls\/master.m3u8","autoplay":false};</script>
+</body></html>
+HTML
+  cat > vjs.html <<'HTML'
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Video.js-Test</title>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video-js.min.css" rel="stylesheet">
+<style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}</style></head>
+<body><h1>Video.js, preload=none</h1>
+<video id="v" class="video-js" controls preload="none" width="340" height="200"></video>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/8.10.0/video.min.js"></script>
+<script>videojs('v').src({ src: 'sample.mp4', type: 'video/mp4' });</script>
+</body></html>
+HTML
+  cat > ads.html <<'HTML'
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Werbetest</title>
+<style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}.box{padding:16px;margin:10px 0;border:2px solid #333}</style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+<script async src="https://securepubads.g.doubleclick.net/tag/js/gpt.js"></script>
+</head><body>
+<h1>Werbetest</h1>
+<div class="box">Normaler Inhalt bleibt sichtbar.</div>
+<div class="box ad-slot" style="background:#e33;color:#fff">WERBEBANNER (sollte verschwinden)</div>
+<ins class="adsbygoogle box" style="display:block;background:#e33;color:#fff">ADSENSE-FLÄCHE (sollte verschwinden)</ins>
+<p id="status">Tipp irgendwo hin: ein Popunder versucht ein Fenster zu öffnen.</p>
+<p><a href="https://example.com/" target="_blank">Echter Link mit target=_blank</a></p>
+<script>
+  document.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A') return;
+    var w = window.open('https://example.org/popunder');
+    document.getElementById('status').textContent = w ? 'Popup ging auf' : 'Popup blockiert';
+  }, true);
 </script>
 </body></html>
 HTML

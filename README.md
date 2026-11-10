@@ -18,6 +18,10 @@ Die Oberfläche folgt dem Design-System **Ivory & Ink**.
     Es hört auf `play`-Events (Capture-Phase), scannt das DOM nach `<video>`, `<audio>`, `<source>`
     und VideoObject-Schema und prüft den Content-Type von XHR- und fetch-Antworten.
     Zurück zur App geht es über einen `WebMessageListener`, nicht über `@JavascriptInterface`.
+  - *Ohne Play:* Dasselbe Skript fragt 20 Sekunden lang jede Sekunde die Player der Seite ab,
+    so wie das Original: JW Player (`getPlaylist()`, z. B. VOE) und Video.js (`currentSources()`).
+    Dazu kommen Manifest-Adressen in Inline-Skripten und `data-`-Attributen. Viele Player kennen
+    die Adresse lange bevor sie sie abrufen.
 - **Prüfen, bevor etwas erscheint:** Ein-Byte-Range-Anfrage für Dateien. HLS-Master und
   DASH-Manifeste werden mit den Media3-Parsern gelesen und liefern Qualitäten, Dauer,
   geschätzte Größe sowie DRM- und Live-Erkennung. Segmente und Teil-Playlists werden

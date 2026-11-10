@@ -182,6 +182,121 @@
   // Single-Page-Apps wechseln die Adresse ohne neues Dokument.
   if (isTop) setInterval(meta, 2500);
 
+  // ---------- 4: Player fragen, bevor jemand auf Play drückt ----------
+  // Viele Player laden das Video erst beim Start, kennen die Adresse aber schon vorher.
+  // Wir fragen sie direkt: JW Player (z. B. VOE), Video.js, dazu Player-Konfigurationen im Seitencode.
+
+  function fromJwItem(item) {
+    if (!item) return;
+    var extra = { title: item.title, poster: item.image ? abs(item.image) : null };
+    if (item.file) report(item.file, 'player', extra);
+    var sources = item.sources || item.allSources || [];
+    for (var i = 0; i < sources.length; i++) {
+      var s = sources[i];
+      if (s && s.file) report(s.file, 'player', { title: extra.title, poster: extra.poster, mime: jwMime(s.type) });
+    }
+  }
+
+  function jwMime(type) {
+    if (!type) return null;
+    type = String(type).toLowerCase();
+    if (type === 'hls' || type === 'm3u8') return 'application/vnd.apple.mpegurl';
+    if (type === 'dash' || type === 'mpd') return 'application/dash+xml';
+    if (type === 'mp4' || type === 'webm') return 'video/' + type;
+    return null;
+  }
+
+  var hookedJw = [];
+  function probeJwPlayer() {
+    var jw = window.jwplayer;
+    if (typeof jw !== 'function') return;
+    for (var i = 0; i < 8; i++) {
+      var p;
+      try { p = jw(i); } catch (e) { break; }
+      if (!p || typeof p.getPlaylist !== 'function') break;
+      try {
+        var list = p.getPlaylist() || [];
+        for (var j = 0; j < list.length; j++) fromJwItem(list[j]);
+        if (typeof p.getPlaylistItem === 'function') fromJwItem(p.getPlaylistItem());
+      } catch (e) { }
+      if (hookedJw.indexOf(p) < 0 && typeof p.on === 'function') {
+        hookedJw.push(p);
+        try { p.on('ready playlist playlistItem', function () { setTimeout(probeJwPlayer, 50); }); } catch (e) { }
+      }
+    }
+  }
+
+  function probeVideoJs() {
+    var vjs = window.videojs;
+    if (!vjs || typeof vjs.getPlayers !== 'function') return;
+    var players = vjs.getPlayers() || {};
+    for (var id in players) {
+      var p = players[id];
+      if (!p) continue;
+      try {
+        var poster = p.poster && p.poster();
+        var list = (p.currentSources && p.currentSources()) || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i] && list[i].src) report(list[i].src, 'player', { mime: list[i].type, poster: poster ? abs(poster) : null });
+        }
+        var cur = p.currentSrc && p.currentSrc();
+        if (cur && !/^blob:/i.test(cur)) report(cur, 'player', { poster: poster ? abs(poster) : null });
+      } catch (e) { }
+    }
+  }
+
+  // Absolute Medien-Adressen im Seitencode, auch JSON-escaped (https:\/\/…).
+  var URL_IN_CODE = /https?:(?:\\?\/){2}[^\s"'<>`]+?\.(m3u8|mpd|mp4|webm)(?:\?[^\s"'<>`]*)?(?=["'\s<>`,;)\]}]|$)/gi;
+  var scannedScripts = typeof WeakSet === 'function' ? new WeakSet() : null;
+
+  function collectUrls(text, manifests, files) {
+    if (!text || text.length > 2000000) return;
+    URL_IN_CODE.lastIndex = 0;
+    var m;
+    while ((m = URL_IN_CODE.exec(text)) !== null) {
+      var u = m[0].replace(/\\\//g, '/').replace(/\\u0026/gi, '&').replace(/&amp;/g, '&');
+      var ext = m[1].toLowerCase();
+      (ext === 'm3u8' || ext === 'mpd' ? manifests : files)[u] = 1;
+    }
+  }
+
+  function probeCode() {
+    var manifests = {}, files = {};
+    var scripts = document.querySelectorAll('script:not([src])');
+    for (var i = 0; i < scripts.length; i++) {
+      var s = scripts[i];
+      if (scannedScripts) { if (scannedScripts.has(s)) continue; scannedScripts.add(s); }
+      collectUrls(s.textContent, manifests, files);
+    }
+    var attrs = document.querySelectorAll('[data-src],[data-video],[data-video-src],[data-hls],[data-file],[data-url],[data-stream]');
+    for (var j = 0; j < attrs.length; j++) {
+      var a = attrs[j].attributes;
+      for (var k = 0; k < a.length; k++) if (a[k].name.indexOf('data-') === 0) collectUrls(a[k].value, manifests, files);
+    }
+    for (var u in manifests) report(u, 'player');
+    // Viele MP4s im Code sind meist Vorschau-Clips einer Übersicht, nicht das Video der Seite.
+    var fileList = Object.keys(files);
+    if (fileList.length <= 3) for (var f = 0; f < fileList.length; f++) report(fileList[f], 'player');
+  }
+
+  function probePlayers() {
+    try { probeJwPlayer(); } catch (e) { }
+    try { probeVideoJs(); } catch (e) { }
+    try { probeCode(); } catch (e) { }
+  }
+
+  // Wie ein Wecker: 20 Sekunden lang jede Sekunde nachsehen. Player werden oft erst spät aufgebaut.
+  function startProbing() {
+    var ticks = 0;
+    probePlayers();
+    var id = setInterval(function () {
+      probePlayers();
+      if (++ticks >= 20) clearInterval(id);
+    }, 1000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startProbing);
+  else startProbing();
+
   // ---------- Werbeblocker: Werbeflächen ausblenden ----------
   // Die App antwortet auf „hello“ mit den Ausblende-Regeln für genau diesen Frame.
 
