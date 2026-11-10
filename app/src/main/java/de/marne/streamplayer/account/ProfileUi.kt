@@ -60,11 +60,11 @@ import de.marne.streamplayer.ui.design.Serif
 import de.marne.streamplayer.ui.design.VSpace
 
 /** Gedeckte Töne aus Ivory & Ink: Messing, Grün, Wein, Blau, Pflaume, Graphit. */
-private val ProfileColors = listOf(
+internal val ProfileColors = listOf(
     Color(0xFF8E6F43), Color(0xFF34503F), Color(0xFF7A2E2E),
     Color(0xFF3B4D63), Color(0xFF5E4B6E), Color(0xFF5B5750),
 )
-private val OnProfile = Color(0xFFF4F1EA)
+internal val OnProfile = Color(0xFFF4F1EA)
 
 private val Spring = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
 private val Bouncy = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)

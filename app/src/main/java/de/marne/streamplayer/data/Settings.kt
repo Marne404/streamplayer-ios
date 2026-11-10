@@ -62,6 +62,15 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_LAST_URL, null)
         set(value) = prefs.edit().putString(KEY_LAST_URL, value).apply()
 
+    /** Willkommens-Ablauf gesehen. Fehlt bei allen, die ihn noch nie hatten – auch nach einem Update. */
+    private val _onboarded = MutableStateFlow(prefs.getBoolean("onboarded", false))
+    val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
+
+    fun setOnboarded(value: Boolean) {
+        _onboarded.value = value
+        prefs.edit().putBoolean("onboarded", value).apply()
+    }
+
     fun setTheme(value: String) {
         _theme.value = value
         prefs.edit().putString(KEY_THEME, value).apply()

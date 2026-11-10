@@ -68,6 +68,11 @@ class ProfileStore(context: Context) {
         return p
     }
 
+    /** Name und Farbe auf einmal (Willkommens-Ablauf). */
+    fun update(id: String, name: String, color: Int) = _profiles.update { list ->
+        list.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }, color = color.mod(COLORS)) else it }
+    }
+
     fun rename(id: String, name: String) = _profiles.update { list -> list.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it } }
 
     /** Das letzte Profil bleibt immer: ohne Profil gäbe es keinen Ort für Fortschritt. */

@@ -70,6 +70,7 @@ import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.ui.Format
 import de.marne.streamplayer.library.ResolveScreen
 import android.app.ActivityOptions
+import androidx.compose.animation.togetherWith
 import de.marne.streamplayer.detect.Candidate
 import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.MediaKind
@@ -149,7 +150,20 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             IvoryInkTheme(dark) {
-                AppRoot(browser, hub, watch, nav)
+                val onboarded by app.settings.onboarded.collectAsStateWithLifecycle()
+                // Willkommen → Bibliothek: der Ablauf blendet weg, die Bibliothek kommt leicht auf einen zu.
+                androidx.compose.animation.AnimatedContent(
+                    targetState = onboarded,
+                    transitionSpec = {
+                        (androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(420, delayMillis = 80)) +
+                            androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(420, delayMillis = 80, easing = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)), initialScale = 0.97f)) togetherWith
+                            androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(220))
+                    },
+                    label = "onboarding",
+                ) { done ->
+                    if (done) AppRoot(browser, hub, watch, nav)
+                    else de.marne.streamplayer.onboarding.OnboardingScreen(onFinished = { })
+                }
             }
         }
     }

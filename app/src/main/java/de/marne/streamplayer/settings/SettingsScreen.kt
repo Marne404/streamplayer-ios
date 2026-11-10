@@ -239,6 +239,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             ListGroup {
                 ListRow(title = "Version", icon = Ic.info, value = version)
                 RowDivider()
+                ListRow(title = "Einführung noch einmal zeigen", icon = Ic.sparkle, onClick = { settings.setOnboarded(false) })
+                RowDivider()
                 Disclosure(title = "So findet die App Videos", icon = Ic.search) {
                     Text(
                         "Die App ist ein Browser. Sie sieht jede Anfrage einer Seite und liest zusätzlich " +

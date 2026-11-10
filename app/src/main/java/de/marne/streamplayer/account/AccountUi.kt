@@ -128,29 +128,10 @@ private fun ago(at: Long): String {
     }
 }
 
-/** Anmelden oder Konto anlegen: Google oder E-Mail. [onDone] mit Meldung für die Snackbar. */
+/** Anmelden oder Konto anlegen als Blatt (Einstellungen). [onDone] mit Meldung für die Snackbar. */
 @Composable
 private fun SignInSheet(onDone: (String?) -> Unit) {
-    val app = App.instance
-    val activity = LocalActivity.current
-    val scope = rememberCoroutineScope()
     var register by remember { mutableStateOf(false) }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var info by remember { mutableStateOf<String?>(null) }
-
-    fun run(block: suspend () -> Unit, success: String?) {
-        if (busy) return
-        busy = true; error = null; info = null
-        scope.launch {
-            runCatching { block() }
-                .onSuccess { busy = false; if (success != null) onDone(success) }
-                .onFailure { busy = false; error = Cloud.message(it) }
-        }
-    }
-
     ModalBottomSheet(
         onDismissRequest = { onDone(null) },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -169,41 +150,71 @@ private fun SignInSheet(onDone: (String?) -> Unit) {
                 Text(if (r) "Konto anlegen." else "Willkommen zurück.", style = MaterialTheme.typography.headlineSmall)
             }
             VSpace(20.dp)
-            if (app.cloud.googleAvailable && activity != null) {
-                SecondaryButton("Mit Google ${if (register) "anlegen" else "anmelden"}", icon = Ic.account, enabled = !busy) {
-                    run({ app.cloud.signInWithGoogle(activity) }, "Angemeldet. Bibliothek wird abgeglichen.")
-                }
-                VSpace(16.dp)
-                Text("oder mit E-Mail", style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally))
-                VSpace(12.dp)
+            SignInForm(register, { register = it }, onSignedIn = { onDone(it) })
+        }
+    }
+}
+
+/**
+ * Google-Knopf und E-Mail-Formular. Im Blatt der Einstellungen und im Willkommens-Ablauf –
+ * eine Fassung, damit beide sich gleich verhalten. [onSignedIn] mit einer Meldung.
+ */
+@Composable
+fun SignInForm(register: Boolean, onRegister: (Boolean) -> Unit, onSignedIn: (String) -> Unit) {
+    val app = App.instance
+    val activity = LocalActivity.current
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var info by remember { mutableStateOf<String?>(null) }
+
+    fun run(block: suspend () -> Unit, success: String?) {
+        if (busy) return
+        busy = true; error = null; info = null
+        scope.launch {
+            runCatching { block() }
+                .onSuccess { busy = false; if (success != null) onSignedIn(success) }
+                .onFailure { busy = false; error = Cloud.message(it) }
+        }
+    }
+
+    Column(Modifier.fillMaxWidth().animateContentSize()) {
+        if (app.cloud.googleAvailable && activity != null) {
+            SecondaryButton("Mit Google ${if (register) "anlegen" else "anmelden"}", icon = Ic.account, enabled = !busy) {
+                run({ app.cloud.signInWithGoogle(activity) }, "Angemeldet. Bibliothek wird abgeglichen.")
             }
-            IvoryField(email, { email = it; error = null }, placeholder = "E-Mail", type = KeyboardType.Email)
-            VSpace(10.dp)
-            IvoryField(password, { password = it; error = null }, placeholder = if (register) "Passwort (mind. 6 Zeichen)" else "Passwort", password = true)
-            error?.let { VSpace(10.dp); StatusLine(Ic.error, it) }
-            info?.let { VSpace(10.dp); StatusLine(Ic.mail, it, Palette.muted) }
-            VSpace(18.dp)
-            val ready = email.isNotBlank() && password.length >= (if (register) 6 else 1) && !busy
-            PrimaryButton(
-                when { busy -> "Einen Moment …"; register -> "Konto anlegen"; else -> "Anmelden" },
-                enabled = ready,
-            ) {
-                if (register) run({ app.cloud.register(email, password) }, "Konto angelegt. Bibliothek wird abgeglichen.")
-                else run({ app.cloud.signIn(email, password) }, "Angemeldet. Bibliothek wird abgeglichen.")
+            VSpace(16.dp)
+            Text("oder mit E-Mail", style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally))
+            VSpace(12.dp)
+        }
+        IvoryField(email, { email = it; error = null }, placeholder = "E-Mail", type = KeyboardType.Email)
+        VSpace(10.dp)
+        IvoryField(password, { password = it; error = null }, placeholder = if (register) "Passwort (mind. 6 Zeichen)" else "Passwort", password = true)
+        error?.let { VSpace(10.dp); StatusLine(Ic.error, it) }
+        info?.let { VSpace(10.dp); StatusLine(Ic.mail, it, Palette.muted) }
+        VSpace(18.dp)
+        val ready = email.isNotBlank() && password.length >= (if (register) 6 else 1) && !busy
+        PrimaryButton(
+            when { busy -> "Einen Moment …"; register -> "Konto anlegen"; else -> "Anmelden" },
+            enabled = ready,
+        ) {
+            if (register) run({ app.cloud.register(email, password) }, "Konto angelegt. Bibliothek wird abgeglichen.")
+            else run({ app.cloud.signIn(email, password) }, "Angemeldet. Bibliothek wird abgeglichen.")
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            QuietButton(if (register) "Ich habe schon ein Konto" else "Neues Konto anlegen", color = Palette.text) {
+                onRegister(!register); error = null; info = null
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                QuietButton(if (register) "Ich habe schon ein Konto" else "Neues Konto anlegen", color = Palette.text) {
-                    register = !register; error = null; info = null
-                }
-                if (!register) QuietButton("Passwort vergessen?", color = Palette.muted) {
-                    if (email.isBlank()) error = "Erst die E-Mail-Adresse eintragen."
-                    else run({ app.cloud.resetPassword(email); info = "Mail zum Zurücksetzen ist unterwegs." }, null)
-                }
+            if (!register) QuietButton("Passwort vergessen?", color = Palette.muted) {
+                if (email.isBlank()) error = "Erst die E-Mail-Adresse eintragen."
+                else run({ app.cloud.resetPassword(email); info = "Mail zum Zurücksetzen ist unterwegs." }, null)
             }
-            if (app.cloud.emulator) {
-                VSpace(4.dp)
-                Text("Testbetrieb: lokaler Firebase-Emulator.", style = MaterialTheme.typography.bodySmall, color = Palette.faint)
-            }
+        }
+        if (app.cloud.emulator) {
+            VSpace(4.dp)
+            Text("Testbetrieb: lokaler Firebase-Emulator.", style = MaterialTheme.typography.bodySmall, color = Palette.faint)
         }
     }
 }
