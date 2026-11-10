@@ -72,6 +72,7 @@ import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.ScreenHeader
 import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 @Composable
 fun BrowserScreen(
@@ -134,7 +135,7 @@ fun BrowserScreen(
             onSubmit = open,
             onHome = { if (watching) watch.cancel() else browser.showStart() },
             onClose = onClose,
-            placeholder = if (watchMode) "Link zum Ansehen einfügen" else "Adresse oder Suchbegriff",
+            placeholder = if (watchMode) tr("Link zum Ansehen einfügen", "Paste a link to watch") else tr("Adresse oder Suchbegriff", "Address or search term"),
             saved = if (showStart) null else pageSaved,
             onToggleSaved = {
                 if (pageSaved) library.removeLink(url)
@@ -237,7 +238,7 @@ private fun FoundButton(count: Int, onClick: () -> Unit) {
         GIcon(Ic.download, tint = Palette.onInk, size = 20.dp)
         HSpace(10.dp)
         Text(
-            if (count == 1) "1 Video gefunden" else "$count Videos gefunden",
+            if (count == 1) tr("1 Video gefunden", "1 video found") else tr("$count Videos gefunden", "$count videos found"),
             style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp),
         )
     }
@@ -355,20 +356,20 @@ private fun StartPage(
     ) {
         item {
             ScreenHeader(
-                title = if (watchMode) "Was willst du sehen?" else "Was willst du laden?",
+                title = if (watchMode) tr("Was willst du sehen?", "What do you want to watch?") else tr("Was willst du laden?", "What do you want to download?"),
                 eyebrow = "Browser",
-                subtitle = if (watchMode) "Link einfügen – das Video startet direkt im Player."
-                else "Öffne eine Seite und starte das Video. Die App findet es.",
+                subtitle = if (watchMode) tr("Link einfügen – das Video startet direkt im Player.", "Paste a link – the video starts right in the player.")
+                else tr("Öffne eine Seite und starte das Video. Die App findet es.", "Open a page and start the video. The app will find it."),
             )
             VSpace(24.dp)
             de.marne.streamplayer.ui.design.Segmented(
-                options = listOf("browse" to "Browsen", "watch" to "Nur ansehen"),
+                options = listOf("browse" to tr("Browsen", "Browse"), "watch" to tr("Nur ansehen", "Just watch")),
                 selected = if (watchMode) "watch" else "browse",
                 onSelect = { onWatchMode(it == "watch") },
             )
             if (watchMode) {
                 VSpace(8.dp)
-                QuietButton("Link aus der Zwischenablage ansehen", color = Palette.text) {
+                QuietButton(tr("Link aus der Zwischenablage ansehen", "Watch link from clipboard"), color = Palette.text) {
                     // Erst auf Tipp lesen: Android zeigt beim Lesen der Zwischenablage einen Hinweis.
                     val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
                     Regex("""https?://\S+""").find(text.orEmpty())?.value?.let(onOpen)
@@ -382,18 +383,18 @@ private fun StartPage(
                     icon = Ic.browser,
                     title = current.second.ifBlank { Format.host(current.first) },
                     text = Format.host(current.first),
-                    action = "Zurück",
+                    action = tr("Zurück", "Back"),
                     onAction = onResume,
                 )
             }
         }
         item {
-            SectionTitle("Zuletzt besucht", action = if (history.isNotEmpty()) "Löschen" else null, onAction = onClear)
+            SectionTitle(tr("Zuletzt besucht", "Recently visited"), action = if (history.isNotEmpty()) tr("Löschen", "Delete") else null, onAction = onClear)
         }
         if (history.isEmpty()) {
             item {
                 Text(
-                    "Hier stehen die Seiten, die du öffnest.",
+                    tr("Hier stehen die Seiten, die du öffnest.", "Pages you open will show up here."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Palette.muted,
                 )
@@ -438,7 +439,7 @@ private fun Shield(state: ShieldState, onToggle: () -> Unit) {
             GIcon(Ic.shield, tint = if (state.allowed) Palette.faint else Palette.muted, size = 16.dp)
             HSpace(4.dp)
             Text(
-                if (state.allowed) "aus" else "${state.blocked}",
+                if (state.allowed) tr("aus", "off") else "${state.blocked}",
                 style = MaterialTheme.typography.labelMedium,
                 color = Palette.muted,
             )
@@ -453,13 +454,13 @@ private fun Shield(state: ShieldState, onToggle: () -> Unit) {
             border = androidx.compose.foundation.BorderStroke(1.dp, Palette.line),
         ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("WERBEBLOCKER", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                Text(tr("WERBEBLOCKER", "AD BLOCKER"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                 VSpace(4.dp)
                 Text(
                     when {
-                        state.allowed -> "Auf ${state.host} aus."
-                        state.blocked == 1 -> "1 Anfrage blockiert."
-                        else -> "${state.blocked} Anfragen blockiert."
+                        state.allowed -> tr("Auf ${state.host} aus.", "Off on ${state.host}.")
+                        state.blocked == 1 -> tr("1 Anfrage blockiert.", "1 request blocked.")
+                        else -> tr("${state.blocked} Anfragen blockiert.", "${state.blocked} requests blocked.")
                     },
                     style = MaterialTheme.typography.titleSmall,
                 )
@@ -467,7 +468,7 @@ private fun Shield(state: ShieldState, onToggle: () -> Unit) {
             androidx.compose.material3.DropdownMenuItem(
                 text = {
                     Text(
-                        if (state.allowed) "Hier wieder blockieren" else "Auf dieser Seite erlauben",
+                        if (state.allowed) tr("Hier wieder blockieren", "Block here again") else tr("Auf dieser Seite erlauben", "Allow on this site"),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 },

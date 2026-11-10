@@ -75,6 +75,7 @@ import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.Keys
 import de.marne.streamplayer.library.LibTitle
+import de.marne.streamplayer.ui.Lang
 import de.marne.streamplayer.ui.design.Bar
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace
@@ -83,6 +84,7 @@ import de.marne.streamplayer.ui.design.OutlinePill
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -229,7 +231,7 @@ internal fun NextUpCard(
             Thumb(Tmdb.largeModel(e.still ?: title?.wide), Modifier.width(96.dp).aspectRatio(16f / 9f), radius = 10.dp)
             HSpace(12.dp)
             Column(Modifier.weight(1f)) {
-                Text("NÄCHSTE FOLGE", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                Text(tr("NÄCHSTE FOLGE", "NEXT EPISODE"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                 Text(
                     listOfNotNull(e.label, e.title).joinToString(" · "),
                     style = MaterialTheme.typography.titleSmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -250,7 +252,7 @@ internal fun NextUpCard(
                 Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                     GIcon(Ic.play, tint = Palette.bg, size = 18.dp)
                     HSpace(6.dp)
-                    Text("Abspielen", style = MaterialTheme.typography.labelLarge, color = Palette.bg)
+                    Text(tr("Abspielen", "Play"), style = MaterialTheme.typography.labelLarge, color = Palette.bg)
                 }
             }
             Box(
@@ -314,7 +316,7 @@ internal fun EpisodesPanel(t: LibTitle, current: Episode?, onPick: (Episode) -> 
         initialFirstVisibleItemIndex = list.indexOfFirst { it.season == current?.season && it.number == current.number }.coerceAtLeast(0),
     )
     Column(Modifier.fillMaxSize()) {
-        PanelHeader("Folgen", t.title)
+        PanelHeader(tr("Folgen", "Episodes"), t.title)
         if (seasons.size > 1) {
             LazyRow(contentPadding = PaddingValues(horizontal = 22.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(seasons) { n -> OutlinePill(t.seasonLabel(n), selected = n == season, onClick = { season = n }) }
@@ -347,13 +349,13 @@ internal fun EpisodesPanel(t: LibTitle, current: Episode?, onPick: (Episode) -> 
                     HSpace(14.dp)
                     Column(Modifier.weight(1f)) {
                         Text(
-                            e.title?.let { "${e.number}. $it" } ?: "Folge ${e.number}",
+                            e.title?.let { "${e.number}. $it" } ?: tr("Folge ${e.number}", "Episode ${e.number}"),
                             style = MaterialTheme.typography.titleSmall,
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                         val meta = when {
-                            isCurrent -> "Läuft gerade"
-                            else -> listOfNotNull(e.runtimeMin?.let { "$it Min." }, if (p?.finished == true) "gesehen" else null).joinToString(" · ")
+                            isCurrent -> tr("Läuft gerade", "Now playing")
+                            else -> listOfNotNull(e.runtimeMin?.let { tr("$it Min.", "$it min") }, if (p?.finished == true) tr("gesehen", "watched") else null).joinToString(" · ")
                         }
                         if (meta.isNotEmpty()) {
                             Text(meta, style = MaterialTheme.typography.bodySmall, color = if (isCurrent) Palette.brass else Palette.muted)
@@ -370,7 +372,7 @@ private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 @Composable
 internal fun SpeedPanel(current: Float, onPick: (Float) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        PanelHeader("Wiedergabe", "Geschwindigkeit")
+        PanelHeader(tr("Wiedergabe", "Playback"), tr("Geschwindigkeit", "Speed"))
         LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 20.dp)) {
             items(SPEEDS) { s ->
                 OptionRow(if (s == 1f) "1× · normal" else speedLabel(s), null, selected = s == current, onClick = { onPick(s) })
@@ -393,11 +395,11 @@ internal fun TracksPanel(player: ExoPlayer, version: Int) {
     val textOff = remember(tracks, tick) { text.none { (g, i) -> g.isTrackSelected(i) } || C.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes }
 
     Column(Modifier.fillMaxSize()) {
-        PanelHeader("Wiedergabe", "Ton & Untertitel")
+        PanelHeader(tr("Wiedergabe", "Playback"), tr("Ton & Untertitel", "Audio & subtitles"))
         LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 20.dp)) {
-            item { SectionLabel("Ton") }
+            item { SectionLabel(tr("Ton", "Audio")) }
             if (audio.size <= 1) {
-                item { Hint(if (audio.isEmpty()) "Keine Angaben zur Tonspur." else "Nur eine Tonspur: ${trackLabel(audio.first().first.getTrackFormat(audio.first().second), audio = true)}") }
+                item { Hint(if (audio.isEmpty()) tr("Keine Angaben zur Tonspur.", "No audio track info.") else tr("Nur eine Tonspur: ", "Only one audio track: ") + trackLabel(audio.first().first.getTrackFormat(audio.first().second), audio = true)) }
             } else {
                 items(audio.size) { n ->
                     val (g, i) = audio[n]
@@ -409,12 +411,12 @@ internal fun TracksPanel(player: ExoPlayer, version: Int) {
                     }
                 }
             }
-            item { VSpace(10.dp); SectionLabel("Untertitel") }
+            item { VSpace(10.dp); SectionLabel(tr("Untertitel", "Subtitles")) }
             if (text.isEmpty()) {
-                item { Hint("Dieses Video bringt keine Untertitel mit.") }
+                item { Hint(tr("Dieses Video bringt keine Untertitel mit.", "This video has no subtitles.")) }
             } else {
                 item {
-                    OptionRow("Aus", null, selected = textOff) {
+                    OptionRow(tr("Aus", "Off"), null, selected = textOff) {
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                             .build()
@@ -469,17 +471,17 @@ private fun OptionRow(label: String, sub: String?, selected: Boolean, onClick: (
 /** „Deutsch · 5.1“, „Englisch (Untertitel für Hörgeschädigte)“ – Sprache aus dem Code, sonst das Label des Streams. */
 private fun trackLabel(f: Format, audio: Boolean): String {
     val language = f.language?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }?.let { code ->
-        Locale.forLanguageTag(code).getDisplayLanguage(Locale.GERMAN).takeIf { it.isNotBlank() && it != code }
-            ?.replaceFirstChar { it.uppercase(Locale.GERMAN) }
+        Locale.forLanguageTag(code).getDisplayLanguage(Lang.locale).takeIf { it.isNotBlank() && it != code }
+            ?.replaceFirstChar { it.uppercase(Lang.locale) }
     }
-    val name = f.label?.takeIf { it.isNotBlank() } ?: language ?: "Spur ${f.id ?: ""}".trim()
+    val name = f.label?.takeIf { it.isNotBlank() } ?: language ?: tr("Spur ${f.id ?: ""}", "Track ${f.id ?: ""}").trim()
     val extra = buildList {
         if (language != null && f.label != null && !f.label!!.contains(language, ignoreCase = true)) add(language)
         if (audio) when (f.channelCount) {
             1 -> add("Mono"); 2 -> add("Stereo"); 6 -> add("5.1"); 8 -> add("7.1")
         }
-        if (!audio && f.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0) add("für Hörgeschädigte")
-        if (!audio && f.selectionFlags and C.SELECTION_FLAG_FORCED != 0) add("erzwungen")
+        if (!audio && f.roleFlags and C.ROLE_FLAG_DESCRIBES_MUSIC_AND_SOUND != 0) add(tr("für Hörgeschädigte", "SDH"))
+        if (!audio && f.selectionFlags and C.SELECTION_FLAG_FORCED != 0) add(tr("erzwungen", "forced"))
     }
     return (listOf(name) + extra).joinToString(" · ")
 }

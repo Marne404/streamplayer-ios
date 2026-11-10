@@ -6,6 +6,7 @@ import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.MediaKind
 import de.marne.streamplayer.detect.ProbeStatus
 import de.marne.streamplayer.ui.Format
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -70,7 +71,7 @@ class WatchController(
         hub.reset(url)
         browser.setAutoplay(true)
         browser.load(url)
-        _state.value = State.Searching(request.label ?: host, "Seite lädt …")
+        _state.value = State.Searching(request.label ?: host, tr("Seite lädt …", "Loading page …"))
 
         job = scope.launch {
             val t0 = SystemClock.elapsedRealtime()
@@ -86,7 +87,7 @@ class WatchController(
                 if (usable.isNotEmpty()) {
                     if (firstHit == 0L) {
                         firstHit = now
-                        _state.value = State.Searching(host, "Gefunden. Player startet …", 3)
+                        _state.value = State.Searching(host, tr("Gefunden. Player startet …", "Found. Starting player …"), 3)
                     }
                     // Kurz weitersammeln: Oft kommen Manifest und Qualitäten gleich hinterher.
                     if (now - firstHit >= GRACE_MS) {
@@ -111,9 +112,9 @@ class WatchController(
                     if (!nudged && ((loaded && elapsed > NUDGE_AFTER_MS) || elapsed > NUDGE_LATEST_MS)) {
                         nudged = true
                         browser.nudgePlayback()
-                        _state.value = State.Searching(host, "Starte das Video stumm …", 2)
+                        _state.value = State.Searching(host, tr("Starte das Video stumm …", "Starting the video muted …"), 2)
                     } else if (!nudged && loaded) {
-                        _state.value = State.Searching(host, "Frage den Player …", 1)
+                        _state.value = State.Searching(host, tr("Frage den Player …", "Asking the player …"), 1)
                     }
                 }
 

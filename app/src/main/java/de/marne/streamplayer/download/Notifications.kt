@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import de.marne.streamplayer.MainActivity
 import de.marne.streamplayer.core.R
 import de.marne.streamplayer.ui.Format
+import de.marne.streamplayer.ui.tr
 
 object Notifications {
     private const val CHANNEL_PROGRESS = "progress"
@@ -25,12 +26,12 @@ object Notifications {
     fun createChannels(context: Context) {
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_PROGRESS, "Laufende Downloads", NotificationManager.IMPORTANCE_LOW).apply {
+            NotificationChannel(CHANNEL_PROGRESS, tr("Laufende Downloads", "Active downloads"), NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
             }
         )
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_RESULT, "Fertige Downloads", NotificationManager.IMPORTANCE_DEFAULT)
+            NotificationChannel(CHANNEL_RESULT, tr("Fertige Downloads", "Finished downloads"), NotificationManager.IMPORTANCE_DEFAULT)
         )
     }
 
@@ -47,14 +48,14 @@ object Notifications {
         val waiting = items.count { it.state == DlState.WAITING_WIFI }
         val title = when {
             running.size == 1 -> running.first().title
-            running.size > 1 -> "${running.size} Downloads laufen"
-            waiting > 0 -> "Wartet auf WLAN"
+            running.size > 1 -> tr("${running.size} Downloads laufen", "${running.size} downloads in progress")
+            waiting > 0 -> tr("Wartet auf WLAN", "Waiting for Wi-Fi")
             else -> "Downloads"
         }
         val text = when {
             running.size == 1 -> Format.metaLine(running.first())
             running.size > 1 -> running.sumOf { it.speedBps }.let { if (it > 0) Format.speed(it) else "" }
-            waiting > 0 -> "$waiting in der Warteschlange"
+            waiting > 0 -> tr("$waiting in der Warteschlange", "$waiting queued")
             else -> ""
         }
         val progress = if (running.isEmpty()) -1 else (running.map { it.progress }.average() * 100).toInt()
@@ -75,7 +76,7 @@ object Notifications {
         context, item.id.hashCode(),
         NotificationCompat.Builder(context, CHANNEL_RESULT)
             .setSmallIcon(R.drawable.ic_check)
-            .setContentTitle("Geladen")
+            .setContentTitle(tr("Geladen", "Downloaded"))
             .setContentText(item.title)
             .setAutoCancel(true)
             .setContentIntent(openDownloads(context))
@@ -86,7 +87,7 @@ object Notifications {
         context, item.id.hashCode(),
         NotificationCompat.Builder(context, CHANNEL_RESULT)
             .setSmallIcon(R.drawable.ic_error)
-            .setContentTitle("Download fehlgeschlagen")
+            .setContentTitle(tr("Download fehlgeschlagen", "Download failed"))
             .setContentText(item.title)
             .setAutoCancel(true)
             .setContentIntent(openDownloads(context))

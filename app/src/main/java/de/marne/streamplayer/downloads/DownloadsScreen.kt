@@ -44,6 +44,7 @@ import de.marne.streamplayer.ui.design.ScreenHeader
 import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 class DownloadActions(
     val play: (DownloadItem) -> Unit,
@@ -65,11 +66,11 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
     var confirm by remember { mutableStateOf<DownloadItem?>(null) }
 
     val title = when {
-        items.isEmpty() -> "Noch nichts geladen."
-        active.size == 1 -> "Ein Download läuft."
-        active.size > 1 -> "${active.size} Downloads laufen."
-        stopped.isNotEmpty() -> "Da fehlt noch etwas."
-        else -> "Alles geladen."
+        items.isEmpty() -> tr("Noch nichts geladen.", "Nothing downloaded yet.")
+        active.size == 1 -> tr("Ein Download läuft.", "One download in progress.")
+        active.size > 1 -> tr("${active.size} Downloads laufen.", "${active.size} downloads in progress.")
+        stopped.isNotEmpty() -> tr("Da fehlt noch etwas.", "Something's still missing.")
+        else -> tr("Alles geladen.", "All downloaded.")
     }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
@@ -80,7 +81,7 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
         // Seit 1.7.0 eine Seite unter „Meins“, kein eigener Tab mehr: dann mit Zurück.
         if (onBack != null) item { androidx.compose.material3.IconButton(onClick = onBack) { de.marne.streamplayer.ui.design.GIcon(Ic.back) } }
         item {
-            val subtitle = if (done.isNotEmpty()) "${done.size} in Filme/Streamplayer" else null
+            val subtitle = if (done.isNotEmpty()) tr("${done.size} in Filme/Streamplayer", "${done.size} in Movies/Streamplayer") else null
             ScreenHeader(title = title, eyebrow = "Downloads", subtitle = subtitle)
         }
         if (items.isEmpty()) {
@@ -88,15 +89,15 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
                 VSpace(32.dp)
                 NoticeCard(
                     icon = Ic.browser,
-                    title = "So geht es",
-                    text = "Seite öffnen, Video starten, auf „gefunden“ tippen.",
+                    title = tr("So geht es", "How it works"),
+                    text = tr("Seite öffnen, Video starten, auf „gefunden“ tippen.", "Open a page, start the video, tap “found”."),
                     action = "Browser",
                     onAction = actions.goBrowse,
                 )
             }
         }
         if (active.isNotEmpty()) {
-            item { SectionTitle("Läuft") }
+            item { SectionTitle(tr("Läuft", "In progress")) }
             item {
                 ListGroup {
                     active.forEachIndexed { i, d ->
@@ -109,7 +110,7 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
             }
         }
         if (stopped.isNotEmpty()) {
-            item { SectionTitle("Angehalten") }
+            item { SectionTitle(tr("Angehalten", "Paused")) }
             item {
                 ListGroup {
                     stopped.forEachIndexed { i, d ->
@@ -117,9 +118,9 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
                         DownloadRow(d, onClick = { actions.resume(d) }) {
                             RowMenu(
                                 listOf(
-                                    MenuAction(if (d.state == DlState.FAILED) "Erneut versuchen" else "Fortsetzen") { actions.resume(d) },
-                                    MenuAction("Seite öffnen") { actions.openPage(d) },
-                                    MenuAction("Abbrechen", destructive = true) { confirm = d },
+                                    MenuAction(if (d.state == DlState.FAILED) tr("Erneut versuchen", "Try again") else tr("Fortsetzen", "Resume")) { actions.resume(d) },
+                                    MenuAction(tr("Seite öffnen", "Open page")) { actions.openPage(d) },
+                                    MenuAction(tr("Abbrechen", "Cancel"), destructive = true) { confirm = d },
                                 )
                             )
                         }
@@ -128,7 +129,7 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
             }
         }
         if (done.isNotEmpty()) {
-            item { SectionTitle("Fertig") }
+            item { SectionTitle(tr("Fertig", "Done")) }
             item {
                 ListGroup {
                     done.forEachIndexed { i, d ->
@@ -136,12 +137,12 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
                         DownloadRow(d, onClick = { actions.play(d) }) {
                             RowMenu(
                                 listOf(
-                                    MenuAction("Abspielen") { actions.play(d) },
-                                    MenuAction("Teilen") { actions.share(d) },
-                                    MenuAction("Öffnen mit …") { actions.openWith(d) },
-                                    MenuAction("In Bibliothek") { actions.saveToLibrary(d) },
-                                    MenuAction("Seite öffnen") { actions.openPage(d) },
-                                    MenuAction("Löschen", destructive = true) { confirm = d },
+                                    MenuAction(tr("Abspielen", "Play")) { actions.play(d) },
+                                    MenuAction(tr("Teilen", "Share")) { actions.share(d) },
+                                    MenuAction(tr("Öffnen mit …", "Open with …")) { actions.openWith(d) },
+                                    MenuAction(tr("In Bibliothek", "Add to library")) { actions.saveToLibrary(d) },
+                                    MenuAction(tr("Seite öffnen", "Open page")) { actions.openPage(d) },
+                                    MenuAction(tr("Löschen", "Delete"), destructive = true) { confirm = d },
                                 )
                             )
                         }
@@ -156,21 +157,21 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack:
         AlertDialog(
             onDismissRequest = { confirm = null },
             containerColor = Palette.surface,
-            title = { Text(if (isDone) "Video löschen?" else "Download abbrechen?", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(if (isDone) tr("Video löschen?", "Delete video?") else tr("Download abbrechen?", "Cancel download?"), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    if (isDone) "Die Datei verschwindet auch aus der Mediathek." else "Was schon geladen ist, wird verworfen.",
+                    if (isDone) tr("Die Datei verschwindet auch aus der Mediathek.", "The file will also be removed from your media library.") else tr("Was schon geladen ist, wird verworfen.", "Anything already downloaded will be discarded."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Palette.muted,
                 )
             },
             confirmButton = {
-                QuietButton(if (isDone) "Löschen" else "Abbrechen", color = Palette.wine) {
+                QuietButton(if (isDone) tr("Löschen", "Delete") else tr("Abbrechen", "Cancel"), color = Palette.wine) {
                     confirm = null
                     actions.remove(d)
                 }
             },
-            dismissButton = { QuietButton("Behalten", color = Palette.muted) { confirm = null } },
+            dismissButton = { QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirm = null } },
         )
     }
 }

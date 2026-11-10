@@ -66,14 +66,15 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.LibTitle
+import de.marne.streamplayer.ui.Lang
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.delay
-import java.util.Locale
 
 // Das Vokabular der Bewegungssprache: zwei Kurven, vier Dauern. Hin lang, zurück eine Stufe kürzer.
 internal val Spring = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
@@ -174,7 +175,7 @@ fun PlayerScreen(
     BackHandler(enabled = panel != null || locked) {
         when {
             panel != null -> panel = null
-            locked -> showHint("Zum Entsperren das Schloss lange drücken")
+            locked -> showHint(tr("Zum Entsperren das Schloss lange drücken", "Press and hold the lock to unlock"))
         }
     }
 
@@ -226,11 +227,11 @@ fun PlayerScreen(
             onBack = onBack,
             onTouch = ::touch,
             onScrubbing = { scrubbing = it; touch() },
-            onLock = { locked = true; controls = false; showHint("Bildschirm gesperrt") },
+            onLock = { locked = true; controls = false; showHint(tr("Bildschirm gesperrt", "Screen locked")) },
             onResize = {
                 resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                 else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                showHint(if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) "Füllen" else "Anpassen")
+                showHint(if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) tr("Füllen", "Fill") else tr("Anpassen", "Fit"))
                 touch()
             },
             onPanel = { panel = it },
@@ -390,16 +391,16 @@ private fun Controls(
                     onSeek = { player.seekTo(it) },
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    LabelButton(Ic.lock, "Sperren", onClick = onLock)
+                    LabelButton(Ic.lock, tr("Sperren", "Lock"), onClick = onLock)
                     LabelButton(
                         if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) Ic.cropFree else Ic.fitScreen,
-                        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) "Füllen" else "Anpassen",
+                        if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) tr("Füllen", "Fill") else tr("Anpassen", "Fit"),
                         onClick = onResize,
                     )
                     Spacer(Modifier.weight(1f))
                     if (info.libTitle != null && info.episode != null) {
-                        LabelButton(Ic.episodes, "Folgen", onClick = { onPanel(Panel.Episodes) })
-                        if (info.next != null) LabelButton(Ic.skipNext, "Nächste Folge", onClick = onNext)
+                        LabelButton(Ic.episodes, tr("Folgen", "Episodes"), onClick = { onPanel(Panel.Episodes) })
+                        if (info.next != null) LabelButton(Ic.skipNext, tr("Nächste Folge", "Next episode"), onClick = onNext)
                     }
                 }
             }
@@ -474,7 +475,7 @@ private fun ErrorCard(e: PlaybackException, onClose: () -> Unit, modifier: Modif
     ) {
         GIcon(Ic.error, tint = Palette.wine, size = 26.dp)
         VSpace(12.dp)
-        Text("Das Video lässt sich nicht abspielen.", style = MaterialTheme.typography.headlineSmall)
+        Text(tr("Das Video lässt sich nicht abspielen.", "This video can't be played."), style = MaterialTheme.typography.headlineSmall)
         VSpace(6.dp)
         Text(
             listOfNotNull(e.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' '), e.cause?.message ?: e.message)
@@ -482,12 +483,12 @@ private fun ErrorCard(e: PlaybackException, onClose: () -> Unit, modifier: Modif
             style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 3, overflow = TextOverflow.Ellipsis,
         )
         VSpace(14.dp)
-        QuietButton("Schließen", modifier = Modifier.align(Alignment.End), onClick = onClose)
+        QuietButton(tr("Schließen", "Close"), modifier = Modifier.align(Alignment.End), onClick = onClose)
     }
 }
 
 internal fun speedLabel(s: Float): String =
-    (if (s % 1f == 0f) "%.0f".format(Locale.GERMANY, s) else "%s".format(Locale.GERMANY, s.toString().replace('.', ','))) + "×"
+    (if (s % 1f == 0f) "%.0f".format(Lang.locale, s) else "%s".format(Lang.locale, if (Lang.isGerman) s.toString().replace('.', ',') else s.toString())) + "×"
 
 /** „1:02:03“ bzw. „4:05“. */
 internal fun clock(ms: Long): String {
@@ -495,5 +496,5 @@ internal fun clock(ms: Long): String {
     val h = s / 3600
     val m = (s % 3600) / 60
     val sec = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(Locale.GERMANY, h, m, sec) else "%d:%02d".format(Locale.GERMANY, m, sec)
+    return if (h > 0) "%d:%02d:%02d".format(Lang.locale, h, m, sec) else "%d:%02d".format(Lang.locale, m, sec)
 }

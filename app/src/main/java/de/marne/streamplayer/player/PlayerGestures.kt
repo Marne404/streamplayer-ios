@@ -62,6 +62,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -273,7 +274,7 @@ internal fun LockLayer(onUnlock: () -> Unit) {
                     contentAlignment = Alignment.Center,
                 ) { GIcon(Ic.lock, tint = OnVideo, size = 26.dp) }
                 VSpace(8.dp)
-                Text("Zum Entsperren lange drücken", style = MaterialTheme.typography.labelMedium, color = OnVideo.copy(alpha = 0.8f))
+                Text(tr("Zum Entsperren lange drücken", "Press and hold to unlock"), style = MaterialTheme.typography.labelMedium, color = OnVideo.copy(alpha = 0.8f))
             }
         }
     }

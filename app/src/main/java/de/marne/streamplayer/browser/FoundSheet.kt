@@ -42,6 +42,7 @@ import de.marne.streamplayer.ui.design.SheetHandle
 import de.marne.streamplayer.ui.design.StatusLine
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /** Titel für einen Fund: eigener Titel, sonst der der Seite, sonst der Dateiname. */
 fun titleFor(c: Candidate, meta: PageMeta, pageTitle: String): String =
@@ -77,10 +78,10 @@ fun FoundSheet(
         ) {
             item {
                 Column {
-                    Text("AUF DIESER SEITE", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                    Text(tr("AUF DIESER SEITE", "ON THIS PAGE"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                     VSpace(6.dp)
                     Text(
-                        if (found.size == 1) "Ein Video gefunden" else "${found.size} Videos gefunden",
+                        if (found.size == 1) tr("Ein Video gefunden", "One video found") else tr("${found.size} Videos gefunden", "${found.size} videos found"),
                         style = MaterialTheme.typography.headlineSmall,
                     )
                     VSpace(8.dp)
@@ -127,11 +128,11 @@ private fun CandidateCard(
             when {
                 c.drm -> {
                     VSpace(14.dp)
-                    StatusLine(Ic.shieldLock, "Geschützt (DRM). Lässt sich nicht laden.", Palette.wine)
+                    StatusLine(Ic.shieldLock, tr("Geschützt (DRM). Lässt sich nicht laden.", "Protected (DRM). Can't be downloaded."), Palette.wine)
                 }
                 c.live -> {
                     VSpace(14.dp)
-                    StatusLine(Ic.info, "Livestream. Lässt sich nicht laden.", Palette.muted)
+                    StatusLine(Ic.info, tr("Livestream. Lässt sich nicht laden.", "Livestream. Can't be downloaded."), Palette.muted)
                 }
                 selected -> {
                     var variant by remember(c.url) { mutableStateOf(c.variants.firstOrNull()) }
@@ -147,17 +148,17 @@ private fun CandidateCard(
                     val exact = c.sizeBytes
                     val estimate = variant?.estimatedBytes
                     val label = when {
-                        exact != null -> "Laden · ${Format.bytes(exact)}"
-                        estimate != null -> "Laden · ca. ${Format.bytes(estimate)}"
-                        else -> "Laden"
+                        exact != null -> tr("Laden · ${Format.bytes(exact)}", "Download · ${Format.bytes(exact)}")
+                        estimate != null -> tr("Laden · ca. ${Format.bytes(estimate)}", "Download · approx. ${Format.bytes(estimate)}")
+                        else -> tr("Laden", "Download")
                     }
                     PrimaryButton(label, icon = Ic.download) { onDownload(variant) }
                     Row(Modifier.align(Alignment.CenterHorizontally)) {
-                        QuietButton("Vorher ansehen", color = Palette.muted) { onPreview() }
+                        QuietButton(tr("Vorher ansehen", "Preview"), color = Palette.muted) { onPreview() }
                         val library = de.marne.streamplayer.App.instance.library
                         val items by library.titles.collectAsState()
                         val saved = items.any { it.pageUrl != null && de.marne.streamplayer.detect.UrlClassifier.key(it.pageUrl) == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
-                        QuietButton(if (saved) "Gemerkt" else "Merken", color = if (saved) Palette.muted else Palette.text) {
+                        QuietButton(if (saved) tr("Gemerkt", "Saved") else tr("Merken", "Save"), color = if (saved) Palette.muted else Palette.text) {
                             if (!saved) library.addMovie(c.pageUrl, title, thumb)
                         }
                     }

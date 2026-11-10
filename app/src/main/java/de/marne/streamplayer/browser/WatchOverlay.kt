@@ -34,6 +34,7 @@ import de.marne.streamplayer.ui.design.SecondaryButton
 import de.marne.streamplayer.ui.design.StatusLine
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /** Deckt die WebView ab, solange „Nur ansehen“ läuft. Fängt alle Berührungen ab. */
 @Composable
@@ -71,11 +72,11 @@ fun WatchOverlay(
                         LoadingIndicator(color = Palette.ink, modifier = Modifier.size(56.dp))
                         VSpace(28.dp)
                         Eyebrow(s.host)
-                        Text("Suche das Video …", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                        Text(tr("Suche das Video …", "Looking for the video …"), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                         VSpace(6.dp)
                         Text(s.step, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, textAlign = TextAlign.Center)
                         VSpace(32.dp)
-                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                        QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onCancel)
                     }
                     is WatchController.State.Ready -> {
                         Thumb(s.thumbnail, Modifier.fillMaxWidth(0.72f).aspectRatio(16f / 9f), radius = 22.dp)
@@ -87,42 +88,42 @@ fun WatchOverlay(
                         )
                         if (s.candidate.live) {
                             VSpace(10.dp)
-                            StatusLine(Ic.info, "Livestream. Ansehen geht, Laden nicht.", Palette.muted)
+                            StatusLine(Ic.info, tr("Livestream. Ansehen geht, Laden nicht.", "Livestream. You can watch it, but not download it."), Palette.muted)
                         }
                         VSpace(32.dp)
-                        PrimaryButton("Nochmal ansehen", icon = Ic.play, onClick = onPlay)
+                        PrimaryButton(tr("Nochmal ansehen", "Watch again"), icon = Ic.play, onClick = onPlay)
                         if (s.candidate.downloadable) {
                             VSpace(12.dp)
-                            SecondaryButton("Laden", icon = Ic.download, onClick = onDownload)
+                            SecondaryButton(tr("Laden", "Download"), icon = Ic.download, onClick = onDownload)
                         }
                         VSpace(4.dp)
                         androidx.compose.foundation.layout.Row {
-                            QuietButton(if (saved) "In der Bibliothek" else "Merken", color = if (saved) Palette.muted else Palette.text, onClick = onSave)
-                            QuietButton("Seite anzeigen", color = Palette.muted, onClick = onShowPage)
+                            QuietButton(if (saved) tr("In der Bibliothek", "In your library") else tr("Merken", "Save"), color = if (saved) Palette.muted else Palette.text, onClick = onSave)
+                            QuietButton(tr("Seite anzeigen", "Show page"), color = Palette.muted, onClick = onShowPage)
                         }
                     }
                     is WatchController.State.NotFound -> {
                         Eyebrow(s.host)
-                        Text("Kein Video gefunden.", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                        Text(tr("Kein Video gefunden.", "No video found."), style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
                         VSpace(6.dp)
                         Text(
-                            "Manche Seiten zeigen es erst nach einem Tipp. Öffne die Seite und starte es selbst.",
+                            tr("Manche Seiten zeigen es erst nach einem Tipp. Öffne die Seite und starte es selbst.", "Some sites only show it after a tap. Open the page and start it yourself."),
                             style = MaterialTheme.typography.bodyMedium, color = Palette.muted, textAlign = TextAlign.Center,
                         )
                         VSpace(32.dp)
-                        PrimaryButton("Seite anzeigen", icon = Ic.browser, onClick = onShowPage)
+                        PrimaryButton(tr("Seite anzeigen", "Show page"), icon = Ic.browser, onClick = onShowPage)
                         VSpace(4.dp)
-                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                        QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onCancel)
                     }
                     is WatchController.State.Protected -> {
-                        Eyebrow("Geschützt")
+                        Eyebrow(tr("Geschützt", "Protected"))
                         Text(s.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         VSpace(10.dp)
-                        StatusLine(Ic.shieldLock, "Kopierschutz (DRM). Geht nur auf der Seite selbst.", Palette.wine)
+                        StatusLine(Ic.shieldLock, tr("Kopierschutz (DRM). Geht nur auf der Seite selbst.", "Copy protection (DRM). Only plays on the site itself."), Palette.wine)
                         VSpace(32.dp)
-                        PrimaryButton("Seite anzeigen", icon = Ic.browser, onClick = onShowPage)
+                        PrimaryButton(tr("Seite anzeigen", "Show page"), icon = Ic.browser, onClick = onShowPage)
                         VSpace(4.dp)
-                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                        QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onCancel)
                     }
                     WatchController.State.Idle -> Unit
                 }

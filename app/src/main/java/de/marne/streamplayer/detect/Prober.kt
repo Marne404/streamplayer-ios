@@ -10,6 +10,7 @@ import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser
 import de.marne.streamplayer.net.Http
 import de.marne.streamplayer.net.Http.headers
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -180,7 +181,7 @@ class Prober(private val http: OkHttpClient, private val userAgent: () -> String
 
         val variants = if (videoReps.isEmpty()) {
             listOfNotNull(audio?.let {
-                Variant("Nur Ton", null, it.third.takeIf { b -> b > 0 }, audioKeys, estimate(it.third.takeIf { b -> b > 0 }, durationMs))
+                Variant(tr("Nur Ton", "Audio only"), null, it.third.takeIf { b -> b > 0 }, audioKeys, estimate(it.third.takeIf { b -> b > 0 }, durationMs))
             })
         } else {
             videoReps.map { (si, ri, f) ->

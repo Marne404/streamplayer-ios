@@ -5,6 +5,7 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import de.marne.streamplayer.data.Settings
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -166,7 +167,7 @@ class AdBlocker(
             load()
         }
         _status.update {
-            it.copy(updating = false, error = if (ok == 0) "Listen nicht erreichbar. Später noch einmal." else null)
+            it.copy(updating = false, error = if (ok == 0) tr("Listen nicht erreichbar. Später noch einmal.", "Lists unreachable. Try again later.") else null)
         }
     }
 
