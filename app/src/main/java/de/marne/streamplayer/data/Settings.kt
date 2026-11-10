@@ -31,6 +31,23 @@ class Settings(context: Context) {
         prefs.edit().putBoolean(KEY_WATCH, value).apply()
     }
 
+    // TMDB: Schlüssel (v3-API-Key oder v4-Token), Sprache, automatische Erkennung beim Import.
+    private val _tmdbKey = MutableStateFlow(prefs.getString(KEY_TMDB, "") ?: "")
+    val tmdbKey: StateFlow<String> = _tmdbKey.asStateFlow()
+    private val _tmdbAuto = MutableStateFlow(prefs.getBoolean(KEY_TMDB_AUTO, true))
+    val tmdbAuto: StateFlow<Boolean> = _tmdbAuto.asStateFlow()
+    val tmdbLanguage: String get() = prefs.getString(KEY_TMDB_LANG, "de-DE") ?: "de-DE"
+
+    fun setTmdbKey(value: String) {
+        _tmdbKey.value = value.trim()
+        prefs.edit().putString(KEY_TMDB, value.trim()).apply()
+    }
+
+    fun setTmdbAuto(value: Boolean) {
+        _tmdbAuto.value = value
+        prefs.edit().putBoolean(KEY_TMDB_AUTO, value).apply()
+    }
+
     private val _adblock = MutableStateFlow(prefs.getBoolean(KEY_ADBLOCK, true))
     val adblock: StateFlow<Boolean> = _adblock.asStateFlow()
 
@@ -100,6 +117,9 @@ class Settings(context: Context) {
         const val KEY_PARALLEL = "parallel"
         const val KEY_ADBLOCK = "adblock"
         const val KEY_WATCH = "watch_mode"
+        const val KEY_TMDB = "tmdb_key"
+        const val KEY_TMDB_AUTO = "tmdb_auto"
+        const val KEY_TMDB_LANG = "tmdb_language"
         const val KEY_ALLOWLIST = "adblock_allowlist"
         const val KEY_HISTORY = "history"
         const val KEY_LAST_URL = "last_url"

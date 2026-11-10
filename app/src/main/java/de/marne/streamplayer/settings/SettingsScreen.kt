@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import de.marne.streamplayer.ui.design.VSpace
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -45,6 +48,12 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val allowlist by settings.allowlist.collectAsStateWithLifecycle()
     val adblock = de.marne.streamplayer.App.instance.adblock
     val filter by adblock.status.collectAsStateWithLifecycle()
+    val tmdbKey by settings.tmdbKey.collectAsStateWithLifecycle()
+    val tmdbAuto by settings.tmdbAuto.collectAsStateWithLifecycle()
+    var keyDraft by remember(tmdbKey) { mutableStateOf(tmdbKey) }
+    var keyState by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val app = de.marne.streamplayer.App.instance
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "–"
@@ -65,6 +74,64 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 selected = theme,
                 onSelect = settings::setTheme,
             )
+        }
+
+        item { SectionTitle("Mediathek · TMDB") }
+        item {
+            Column {
+                Text(
+                    "Mit einem TMDB-Schlüssel erkennt die App Titel und holt Cover, Hintergründe, Beschreibungen, Staffeln und Folgennamen. Kostenlos unter themoviedb.org → Einstellungen → API.",
+                    style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                )
+                VSpace(14.dp)
+                androidx.compose.material3.OutlinedTextField(
+                    value = keyDraft,
+                    onValueChange = { keyDraft = it; keyState = null },
+                    singleLine = true,
+                    label = { Text("API-Schlüssel oder Lese-Token") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Palette.text, unfocusedBorderColor = Palette.line, focusedLabelColor = Palette.text,
+                        unfocusedLabelColor = Palette.muted, cursorColor = Palette.text,
+                        focusedContainerColor = Palette.surface, unfocusedContainerColor = Palette.surface,
+                    ),
+                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                )
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    QuietButton("Speichern und prüfen", color = Palette.text) {
+                        settings.setTmdbKey(keyDraft)
+                        keyState = "Prüfe …"
+                        scope.launch {
+                            keyState = if (keyDraft.isBlank()) "Kein Schlüssel – TMDB ist aus."
+                            else if (app.tmdb.check()) "Schlüssel funktioniert." else "TMDB lehnt den Schlüssel ab."
+                        }
+                    }
+                    keyState?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.contains("lehnt")) Palette.wine else Palette.muted) }
+                }
+                VSpace(8.dp)
+                ListGroup {
+                    ListRow(
+                        title = "Titel automatisch erkennen",
+                        subtitle = "Ohne TMDB-ID im Katalog nach Namen suchen.",
+                        icon = Ic.sparkle,
+                        trailing = { IvorySwitch(tmdbAuto, settings::setTmdbAuto) },
+                    )
+                    RowDivider()
+                    ListRow(
+                        title = "Alle Titel neu laden",
+                        icon = Ic.refresh,
+                        showChevron = false,
+                        onClick = {
+                            if (!app.enricher.available) onToast("Erst einen Schlüssel eintragen.")
+                            else {
+                                app.enricher.enqueue(app.library.titles.value.map { it.id }, force = true)
+                                onToast("TMDB lädt alle Titel neu.")
+                            }
+                        },
+                    )
+                }
+            }
         }
 
         item { SectionTitle("Downloads") }

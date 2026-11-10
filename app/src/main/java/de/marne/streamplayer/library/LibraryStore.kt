@@ -1,6 +1,10 @@
 package de.marne.streamplayer.library
 
 import android.content.Context
+import de.marne.streamplayer.catalog.CatalogTitle
+import de.marne.streamplayer.catalog.CatalogType
+import de.marne.streamplayer.catalog.Episodes
+import de.marne.streamplayer.catalog.SeasonSpec
 import de.marne.streamplayer.detect.UrlClassifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,28 +53,60 @@ class LibraryStore(context: Context) {
         val t = LibTitle(
             id = newId(), kind = TitleKind.MOVIE,
             title = title?.takeIf { it.isNotBlank() } ?: hostOf(url),
-            pageUrl = url, image = image, description = description,
+            pageUrl = url, backdrop = image, description = description,
         )
         _titles.update { listOf(t) + it }
         return t
     }
 
-    fun addSeries(title: String, template: String, seasons: List<Int>, image: String?, description: String?): LibTitle {
-        val t = LibTitle(
-            id = newId(), kind = TitleKind.SERIES, title = title.trim(),
-            pageUrl = Pattern.fill(template, 1, 1), template = template, seasons = seasons,
-            image = image, description = description,
+    /**
+     * Titel aus einem Katalog anlegen oder aktualisieren. Wiedererkannt wird über die Katalog-ID,
+     * sonst über Art + Titel (+ Jahr). Fortschritt, Downloads und eigenes Cover bleiben erhalten.
+     */
+    fun upsert(c: CatalogTitle, localPoster: String?, localBackdrop: String?): Pair<LibTitle, Boolean> {
+        val kind = if (c.type == CatalogType.SERIES) TitleKind.SERIES else TitleKind.MOVIE
+        val existing = _titles.value.firstOrNull { it.sourceId == c.id }
+            ?: _titles.value.firstOrNull { it.kind == kind && it.title.equals(c.title, ignoreCase = true) && (c.year == null || it.year == null || it.year == c.year) }
+        val firstEpisode = if (kind == TitleKind.SERIES) Episodes.generate(c.template, c.seasons, c.episodes).firstOrNull()?.url else null
+        val base = existing ?: LibTitle(id = newId(), kind = kind, title = c.title, pageUrl = null)
+        val updated = base.copy(
+            kind = kind,
+            title = c.title,
+            pageUrl = (if (kind == TitleKind.MOVIE) c.url else firstEpisode ?: c.template) ?: base.pageUrl,
+            template = c.template,
+            seasons = c.seasons,
+            overrides = c.episodes,
+            poster = localPoster ?: c.poster?.takeIf { !it.startsWith("data:") },
+            backdrop = localBackdrop ?: c.backdrop?.takeIf { !it.startsWith("data:") } ?: base.backdrop,
+            description = c.description ?: base.description,
+            year = c.year ?: base.year,
+            tmdbId = c.tmdb?.id ?: base.tmdbId,
+            tmdbQuery = c.tmdb?.query,
+            sourceId = c.id,
         )
-        _titles.update { listOf(t) + it }
-        return t
+        _titles.update { list -> if (existing != null) list.map { if (it.id == base.id) updated else it } else listOf(updated) + list }
+        return updated to (existing != null)
     }
+
+    /** TMDB-Angaben eintragen. Fehlen der Serie Staffeln, kommen sie von TMDB. */
+    fun applyTmdb(id: String, info: TmdbInfo, seasons: List<SeasonSpec>?) = update(id) { t ->
+        t.copy(
+            tmdb = info,
+            tmdbId = info.id,
+            seasons = if (t.seasons.isEmpty() && seasons != null) seasons else t.seasons,
+        )
+    }
+
+    fun setEpisodeInfo(id: String, info: Map<String, EpInfo>) = update(id) { it.copy(episodeInfo = it.episodeInfo + info) }
+
+    fun setCustomPoster(id: String, path: String?) = update(id) { it.copy(customPoster = path) }
 
     /** Fertiger Download ohne Titel in der Mediathek: wird ein Film mit Offline-Datei. */
     fun addOfflineMovie(uri: String, title: String, pageUrl: String?, image: String?, durationMs: Long?): LibTitle {
         _titles.value.firstOrNull { uri in it.offline.values }?.let { return it }
         val id = newId()
         val t = LibTitle(
-            id = id, kind = TitleKind.MOVIE, title = title, pageUrl = pageUrl, image = image,
+            id = id, kind = TitleKind.MOVIE, title = title, pageUrl = pageUrl, backdrop = image,
             durationMs = durationMs, offline = mapOf("m:$id" to uri),
         )
         _titles.update { listOf(t) + it }
@@ -86,7 +122,7 @@ class LibraryStore(context: Context) {
     fun enrich(id: String, title: String?, image: String?, description: String? = null, durationMs: Long? = null) = update(id) { t ->
         t.copy(
             title = if ((t.title == hostOf(t.pageUrl.orEmpty()) || t.title.isBlank()) && !title.isNullOrBlank()) title else t.title,
-            image = t.image ?: image,
+            backdrop = t.backdrop ?: image,
             description = t.description ?: description?.takeIf { it.isNotBlank() },
             durationMs = t.durationMs ?: durationMs?.takeIf { t.kind == TitleKind.MOVIE },
         )
@@ -96,9 +132,6 @@ class LibraryStore(context: Context) {
         if (title.isNotBlank()) update(id) { it.copy(title = title.trim()) }
     }
 
-    fun updateSeries(id: String, template: String, seasons: List<Int>) = update(id) {
-        it.copy(template = template, seasons = seasons, pageUrl = Pattern.fill(template, 1, 1))
-    }
 
     fun remove(id: String) = _titles.update { list -> list.filterNot { it.id == id } }
 
@@ -144,7 +177,7 @@ class LibraryStore(context: Context) {
             LibTitle(
                 id = id, kind = TitleKind.MOVIE, title = o.optString("title"),
                 pageUrl = if (isFile) s("pageUrl") else o.getString("url"),
-                image = s("thumbnail"),
+                backdrop = s("thumbnail"),
                 durationMs = if (o.isNull("durationMs") || !o.has("durationMs")) null else o.optLong("durationMs"),
                 offline = if (isFile) mapOf("m:$id" to o.getString("url")) else emptyMap(),
                 addedAt = o.optLong("addedAt"),

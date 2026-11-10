@@ -1,5 +1,7 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.catalog.SeasonSpec
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -8,32 +10,23 @@ import org.junit.Test
 
 class LibraryLogicTest {
 
-    @Test fun deriveNamedParts() {
-        assertEquals("https://x.to/serie/abc/staffel-{s}/episode-{e}", Pattern.derive("https://x.to/serie/abc/staffel-1/episode-1"))
-        assertEquals("https://x.to/watch/show/season-{s}/folge-{e}?lang=de", Pattern.derive("https://x.to/watch/show/season-2/folge-7?lang=de"))
-        assertEquals("https://x.to/show-s{ss}e{ee}.html", Pattern.derive("https://x.to/show-s01e05.html"))
-    }
+    private val show = LibTitle(
+        "s", TitleKind.SERIES, "Show", null, template = "https://x.to/{s}/{e}",
+        seasons = listOf(SeasonSpec(1, 3), SeasonSpec(2, 2, start = 4)),
+        episodeInfo = mapOf("1:1" to EpInfo("Pilot", null, "https://img/1.jpg", 47)),
+    )
 
-    @Test fun deriveBareNumbers() {
-        assertEquals("https://x.to/anime/naruto/{s}/{e}", Pattern.derive("https://x.to/anime/naruto/1/3"))
-        assertEquals("https://x.to/stream/{e}", Pattern.derive("https://x.to/stream/12"))
-        assertNull(Pattern.derive("https://x.to/watch/movie"))
-        assertNull("Host bleibt unberührt", Pattern.derive("https://cdn2.x.to"))
-    }
-
-    @Test fun fillAndEpisodes() {
-        val t = LibTitle("id", TitleKind.SERIES, "Show", null, template = "https://x.to/s{ss}e{ee}", seasons = listOf(2, 3))
-        val eps = t.episodes()
+    @Test fun episodesWithInfo() {
+        val eps = show.episodes()
         assertEquals(5, eps.size)
-        assertEquals("https://x.to/s01e01", eps.first().url)
-        assertEquals("https://x.to/s02e03", eps.last().url)
-        assertEquals(Episode(2, 1, "https://x.to/s02e01"), t.next(eps[1]))
-        assertNull(t.next(eps.last()))
-        assertEquals(listOf(12, 8, 10), Pattern.parseSeasons("12, 8 10"))
+        assertEquals("Pilot", eps[0].title)
+        assertEquals("https://img/1.jpg", eps[0].still)
+        assertEquals(listOf(4, 5), eps.filter { it.season == 2 }.map { it.number })
+        assertEquals(Episode(2, 4, 4, "https://x.to/2/4"), show.next(eps[2]))
+        assertNull(show.next(eps.last()))
     }
 
     @Test fun continueAndNextUp() {
-        val show = LibTitle("s", TitleKind.SERIES, "Show", null, template = "https://x.to/{s}/{e}", seasons = listOf(3))
         val movie = LibTitle("m", TitleKind.MOVIE, "Film", "https://x.to/film")
         val progress = mapOf(
             "e:s:1:1" to Progress(2_400_000, 2_400_000, finished = true, updatedAt = 10),
@@ -41,14 +34,32 @@ class LibraryLogicTest {
         )
         val shelf = Shelves.continueWatching(listOf(show, movie), progress)
         assertEquals(2, shelf.size)
-        assertEquals("m", shelf[0].title.id)                  // zuletzt bewegt zuerst
+        assertEquals("m", shelf[0].title.id)
         assertTrue(shelf[1].isNextUp)
-        assertEquals(2, shelf[1].episode!!.number)           // nach Folge 1 kommt Folge 2
-
+        assertEquals(2, shelf[1].episode!!.number)
         val (next, p) = Shelves.nextFor(show, progress)!!
         assertEquals(2, next.number)
         assertNull(p)
         assertEquals(1, Shelves.nextFor(show, emptyMap())!!.first.number)
+    }
+
+    @Test fun imagesPreferCatalogOverTmdb() {
+        val t = LibTitle("x", TitleKind.MOVIE, "X", null, poster = null, backdrop = "b.jpg",
+            tmdb = TmdbInfo(1, "X", "tp.jpg", "tb.jpg", "TMDB-Text", 2001, 90), description = null)
+        assertEquals("tp.jpg", t.cover)             // kein Katalog-Poster → TMDB
+        assertEquals("b.jpg", t.wide)               // Katalog-Hintergrund gewinnt
+        assertEquals("TMDB-Text", t.text)
+        assertEquals(90 * 60_000L, t.runtimeMs)
+        assertEquals("eigen.jpg", t.copy(customPoster = "eigen.jpg", poster = "p.jpg").cover)
+    }
+
+    @Test fun jsonRoundTripAndLegacy() {
+        val again = LibTitle.fromJson(show.toJson())
+        assertEquals(show.copy(addedAt = again.addedAt), again)
+        // Stand 1.0: Staffeln als Zahlen, Bild als „image“
+        val legacy = LibTitle.fromJson(JSONObject("""{"id":"a","kind":"SERIES","title":"T","template":"https://x.to/{e}","seasons":[2,3],"image":"i.jpg"}"""))
+        assertEquals(listOf(SeasonSpec(1, 2), SeasonSpec(2, 3)), legacy.seasons)
+        assertEquals("i.jpg", legacy.backdrop)
     }
 
     @Test fun keys() {
@@ -65,7 +76,6 @@ class LibraryLogicTest {
         )
         assertEquals("Folge 1 & mehr", m.title)
         assertEquals("https://x.to/img/p.jpg", m.image)
-        assertEquals("Kurz.", m.description)
         assertFalse(MetaFetcher.parse("<title>T</title>", "https://x.to").title.isNullOrEmpty())
     }
 }

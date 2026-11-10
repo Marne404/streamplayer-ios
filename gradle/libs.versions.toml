@@ -38,7 +38,10 @@ coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version
 coil-video = { module = "io.coil-kt.coil3:coil-video", version.ref = "coil" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 junit = { module = "junit:junit", version = "4.13.2" }
+# org.json ist im Android-Framework, in JVM-Unit-Tests aber nur ein Stub.
+orgjson = { module = "org.json:json", version = "20240303" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

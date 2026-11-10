@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -171,4 +174,38 @@ fun SheetHandle() {
     Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 14.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.height(4.dp).fillMaxWidth(0.1f).clip(RoundedCornerShape(50)).background(Palette.surface3))
     }
+}
+
+/** Textfeld in Ivory & Ink: radius-field, Haarlinie, Fokus in text. */
+@Composable
+fun IvoryField(
+    value: String,
+    onChange: (String) -> Unit,
+    placeholder: String,
+    type: KeyboardType = KeyboardType.Text,
+    label: String? = null,
+    singleLine: Boolean = true,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = singleLine,
+        label = label?.let { { Text(it) } },
+        placeholder = { Text(placeholder, color = Palette.muted) },
+        shape = RoundedCornerShape(16.dp),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = type, autoCorrectEnabled = false),
+        textStyle = MaterialTheme.typography.bodyLarge,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Palette.text,
+            unfocusedBorderColor = Palette.line,
+            focusedLabelColor = Palette.text,
+            unfocusedLabelColor = Palette.muted,
+            cursorColor = Palette.text,
+            focusedTextColor = Palette.text,
+            unfocusedTextColor = Palette.text,
+            focusedContainerColor = Palette.surface,
+            unfocusedContainerColor = Palette.surface,
+        ),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }

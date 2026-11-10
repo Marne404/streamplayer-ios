@@ -14,7 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import de.marne.streamplayer.MainActivity
-import de.marne.streamplayer.R
+import de.marne.streamplayer.core.R
 import de.marne.streamplayer.ui.Format
 
 object Notifications {

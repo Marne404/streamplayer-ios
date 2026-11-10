@@ -32,8 +32,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 6
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "1.1.0"
     }
 
     buildTypes {
@@ -71,6 +71,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":core"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
@@ -94,4 +95,5 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
+    testImplementation(libs.orgjson)
 }

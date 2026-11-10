@@ -2,7 +2,7 @@
 // Die Namen, die Components.kt erwartet (chevron, back, check, info, expandMore, expandLess), bleiben gleich.
 package de.marne.streamplayer.ui.design
 
-import de.marne.streamplayer.R
+import de.marne.streamplayer.core.R
 
 object Ic {
     // Navigation (gefüllt nur für den gewählten Tab)
@@ -49,5 +49,11 @@ object Ic {
     val bookmarkFilled = R.drawable.ic_bookmark_filled
     val add = R.drawable.ic_add
     val edit = R.drawable.ic_edit
+    val importFile = R.drawable.ic_upload_file
+    val image = R.drawable.ic_image
+    val minus = R.drawable.ic_remove
+    val sparkle = R.drawable.ic_auto_awesome
+    val editNote = R.drawable.ic_edit_note
+    val tv = R.drawable.ic_tv
     val download = R.drawable.ic_download
 }

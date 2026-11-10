@@ -22,7 +22,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import de.marne.streamplayer.R
+import de.marne.streamplayer.core.R
 
 /**
  * „Old Money“-Palette: warmes Off-White und Off-Black, dazu sehr sparsam Messing,

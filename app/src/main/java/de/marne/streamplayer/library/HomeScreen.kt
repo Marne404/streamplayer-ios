@@ -35,13 +35,13 @@ class HomeActions(
     val open: (LibTitle) -> Unit,
     val play: (ContinueItem) -> Unit,
     val playTitle: (LibTitle) -> Unit,
-    val add: () -> Unit,
+    val import: () -> Unit,
     val browser: () -> Unit,
 )
 
 /** Startseite wie eine Mediathek: eine dunkle Hero-Karte, darunter Regale. */
 @Composable
-fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions: HomeActions) {
+fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, enrich: Enricher.Status, actions: HomeActions) {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val cont = remember(titles, progress) { Shelves.continueWatching(titles, progress) }
     val series = remember(titles) { titles.filter { it.kind == TitleKind.SERIES } }
@@ -60,7 +60,14 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
                     Text(greeting(), style = MaterialTheme.typography.headlineLarge)
                 }
                 IconButton(onClick = actions.browser) { GIcon(Ic.browser, tint = Palette.text) }
-                IconButton(onClick = actions.add) { IconBadge(Ic.add) }
+                IconButton(onClick = actions.import) { IconBadge(Ic.importFile) }
+            }
+        }
+        if (enrich.running) {
+            item {
+                Row(Modifier.padding(start = 20.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    de.marne.streamplayer.ui.design.Pill("TMDB ergänzt · ${enrich.done} von ${enrich.total}", icon = Ic.sparkle)
+                }
             }
         }
 
@@ -71,11 +78,11 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
                     Text("Noch leer.", style = MaterialTheme.typography.headlineSmall)
                     VSpace(6.dp)
                     Text(
-                        "Füg einen Film oder eine Serie per Link hinzu. Abgespielt wird direkt im eigenen Player.",
+                        "Filme und Serien kommen als Katalog-Datei. Bauen lässt sie sich im Streamplayer Creator; von dort mit „Teilen“ direkt hierher.",
                         style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
                     )
                     VSpace(28.dp)
-                    PrimaryButton("Titel hinzufügen", icon = Ic.add, onClick = actions.add)
+                    PrimaryButton("Katalog importieren", icon = Ic.importFile, onClick = actions.import)
                     VSpace(4.dp)
                     QuietButton("Im Browser suchen", color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally), onClick = actions.browser)
                 }
@@ -89,7 +96,7 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
                 val first = cont.firstOrNull()
                 if (first != null) {
                     HeroCard(
-                        image = first.title.image ?: first.title.offline.values.firstOrNull(),
+                        image = first.episode?.still ?: first.title.wide ?: first.title.offline.values.firstOrNull(),
                         eyebrow = if (first.isNextUp) "Nächste Folge" else "Weiterschauen",
                         title = first.title.title,
                         meta = continueMeta(first).removePrefix("Nächste Folge · "),
@@ -101,7 +108,7 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
                 } else {
                     val newest = titles.maxBy { it.addedAt }
                     HeroCard(
-                        image = newest.image ?: newest.offline.values.firstOrNull(),
+                        image = newest.wide ?: newest.offline.values.firstOrNull(),
                         eyebrow = "Neu in der Bibliothek",
                         title = newest.title,
                         meta = titleMeta(newest),
@@ -119,7 +126,7 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
             shelf("Weiterschauen") {
                 items(more, key = { it.key }) { c ->
                     WideTile(
-                        image = c.title.image, title = c.title.title, meta = continueMeta(c), width = 240.dp,
+                        image = c.episode?.still ?: c.title.wide, title = c.title.title, meta = continueMeta(c), width = 240.dp,
                         progress = c.progress?.takeIf { !it.finished }?.fraction,
                         onClick = { actions.play(c) }, onLongClick = { actions.open(c.title) },
                     )
@@ -129,7 +136,7 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
         if (series.isNotEmpty()) {
             shelf("Serien") {
                 items(series, key = { it.id }) { t ->
-                    WideTile(t.image, t.title, titleMeta(t), 200.dp, onClick = { actions.open(t) })
+                    PosterTile(t.cover, t.title, shortMeta(t), onClick = { actions.open(t) })
                 }
             }
         }
@@ -137,11 +144,10 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
             shelf("Filme") {
                 items(movies, key = { it.id }) { t ->
                     val p = progress[Keys.movie(t)]
-                    WideTile(
-                        t.image ?: t.offline.values.firstOrNull(), t.title, titleMeta(t), 200.dp,
+                    PosterTile(
+                        t.cover ?: t.offline.values.firstOrNull(), t.title, shortMeta(t),
                         progress = p?.takeIf { !it.finished }?.fraction,
-                        badgeIcon = if (p?.finished == true) Ic.check else null,
-                        badge = if (p?.finished == true) "Gesehen" else null,
+                        watched = p?.finished == true,
                         onClick = { actions.open(t) },
                     )
                 }
@@ -150,10 +156,9 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, actions:
         if (offline.isNotEmpty()) {
             shelf("Offline") {
                 items(offline, key = { "o" + it.id }) { t ->
-                    WideTile(
-                        t.image ?: t.offline.values.firstOrNull(), t.title,
-                        if (t.kind == TitleKind.SERIES) "${t.offline.size} Folgen offline" else titleMeta(t), 200.dp,
-                        badgeIcon = Ic.download, badge = "Offline",
+                    PosterTile(
+                        t.cover ?: t.offline.values.firstOrNull(), t.title,
+                        if (t.kind == TitleKind.SERIES) "${t.offline.size} Folgen offline" else shortMeta(t),
                         onClick = { actions.open(t) },
                     )
                 }

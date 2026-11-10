@@ -1,14 +1,40 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.catalog.EpisodeOverride
+import de.marne.streamplayer.catalog.Episodes
+import de.marne.streamplayer.catalog.SeasonSpec
 import org.json.JSONArray
 import org.json.JSONObject
 
 enum class TitleKind { MOVIE, SERIES }
 
-/** Eine Folge, erzeugt aus dem Muster der Serie. */
-data class Episode(val season: Int, val number: Int, val url: String) {
-    val label: String get() = "S$season · F$number"
+/** Eine Folge: aus Muster und Staffeln erzeugt, ergänzt um TMDB-Angaben. */
+data class Episode(
+    val season: Int,
+    val number: Int,
+    val absolute: Int,
+    val url: String,
+    val title: String? = null,
+    val still: String? = null,
+    val overview: String? = null,
+    val runtimeMin: Int? = null,
+) {
+    val label: String get() = if (season == 0) "Special $number" else "S$season · F$number"
 }
+
+/** Was TMDB über eine Folge weiß. */
+data class EpInfo(val title: String?, val overview: String?, val still: String?, val runtimeMin: Int?)
+
+/** Was TMDB über einen Titel weiß – getrennt gehalten, damit Katalog-Angaben immer gewinnen. */
+data class TmdbInfo(
+    val id: Int,
+    val title: String?,
+    val poster: String?,
+    val backdrop: String?,
+    val overview: String?,
+    val year: Int?,
+    val runtimeMin: Int?,
+)
 
 /**
  * Ein Titel der Mediathek – Film oder Serie.
@@ -16,8 +42,7 @@ data class Episode(val season: Int, val number: Int, val url: String) {
  * Gespeichert wird immer die *Seite*, nie der Stream: Stream-Adressen der Hoster leben
  * wenige Stunden. Aufgelöst wird erst beim Abspielen.
  *
- * Serie: [template] ist eine Adresse mit `{s}` und `{e}` (zweistellig: `{ss}`, `{ee}`),
- * [seasons] die Folgenzahl je Staffel. Daraus entstehen alle Folgen.
+ * Bildreihenfolge: eigenes Cover › Poster aus dem Katalog › TMDB-Poster › Hintergrund.
  */
 data class LibTitle(
     val id: String,
@@ -25,18 +50,48 @@ data class LibTitle(
     val title: String,
     val pageUrl: String?,
     val template: String? = null,
-    val seasons: List<Int> = emptyList(),
-    val image: String? = null,
+    val seasons: List<SeasonSpec> = emptyList(),
+    val overrides: List<EpisodeOverride> = emptyList(),
+    /** Poster (2:3) aus dem Katalog. */
+    val poster: String? = null,
+    /** Breites Bild (16:9): Katalog oder og:image der Seite. */
+    val backdrop: String? = null,
+    /** Vom Nutzer gewähltes Cover (Datei in filesDir/posters). */
+    val customPoster: String? = null,
     val description: String? = null,
     val durationMs: Long? = null,
+    val year: Int? = null,
+    val tmdbId: Int? = null,
+    val tmdbQuery: String? = null,
+    val tmdb: TmdbInfo? = null,
+    /** ID aus dem Katalog: ein erneuter Import aktualisiert statt zu verdoppeln. */
+    val sourceId: String? = null,
+    /** TMDB-Angaben je Folge, Schlüssel "s:e". */
+    val episodeInfo: Map<String, EpInfo> = emptyMap(),
     /** Fertige Downloads: Fortschritts-Schlüssel ([Keys]) → content://-Adresse. */
     val offline: Map<String, String> = emptyMap(),
     val addedAt: Long = System.currentTimeMillis(),
 ) {
     val host: String? get() = (pageUrl ?: template)?.let { runCatching { java.net.URI(it.replace("{", "").replace("}", "")).host?.removePrefix("www.") }.getOrNull() }
 
-    fun episodes(): List<Episode> = if (kind != TitleKind.SERIES || template == null) emptyList()
-    else seasons.flatMapIndexed { i, count -> (1..count).map { e -> Episode(i + 1, e, Pattern.fill(template, i + 1, e)) } }
+    /** Hochformat-Cover für Regale. */
+    val cover: String? get() = customPoster ?: poster ?: tmdb?.poster ?: backdrop ?: tmdb?.backdrop
+
+    /** Breitbild für Hero und Detailseite. */
+    val wide: String? get() = backdrop ?: tmdb?.backdrop ?: poster ?: tmdb?.poster ?: customPoster
+
+    /** Alte Stellen fragen nach einem Bild: das breite. */
+    val image: String? get() = wide
+
+    val text: String? get() = description ?: tmdb?.overview
+    val shownYear: Int? get() = year ?: tmdb?.year
+    val runtimeMs: Long? get() = durationMs ?: tmdb?.runtimeMin?.let { it * 60_000L }
+
+    fun episodes(): List<Episode> = if (kind != TitleKind.SERIES) emptyList()
+    else Episodes.generate(template, seasons, overrides).map { g ->
+        val info = episodeInfo["${g.season}:${g.number}"]
+        Episode(g.season, g.number, g.absolute, g.url, g.title ?: info?.title, info?.still, info?.overview, info?.runtimeMin)
+    }
 
     fun episode(season: Int, number: Int): Episode? = episodes().firstOrNull { it.season == season && it.number == number }
 
@@ -46,35 +101,84 @@ data class LibTitle(
         return all.getOrNull(i + 1)
     }
 
-    val episodeCount: Int get() = seasons.sum()
+    val episodeCount: Int get() = seasons.sumOf { it.episodes }
+
+    fun seasonLabel(number: Int): String =
+        seasons.firstOrNull { it.number == number }?.title ?: if (number == 0) "Specials" else "Staffel $number"
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("kind", kind.name); put("title", title); put("pageUrl", pageUrl)
-        put("template", template); put("seasons", JSONArray(seasons)); put("image", image)
-        put("description", description); put("durationMs", durationMs)
+        put("template", template)
+        put("seasons", JSONArray().apply {
+            seasons.forEach { s ->
+                put(JSONObject().put("number", s.number).put("episodes", s.episodes).put("start", s.start).put("template", s.template).put("title", s.title))
+            }
+        })
+        put("overrides", JSONArray().apply {
+            overrides.forEach { o -> put(JSONObject().put("season", o.season).put("episode", o.episode).put("url", o.url).put("title", o.title)) }
+        })
+        put("poster", poster); put("backdrop", backdrop); put("customPoster", customPoster)
+        put("description", description); put("durationMs", durationMs); put("year", year)
+        put("tmdbId", tmdbId); put("tmdbQuery", tmdbQuery); put("sourceId", sourceId)
+        tmdb?.let { t ->
+            put("tmdb", JSONObject().put("id", t.id).put("title", t.title).put("poster", t.poster).put("backdrop", t.backdrop)
+                .put("overview", t.overview).put("year", t.year).put("runtimeMin", t.runtimeMin))
+        }
+        put("episodeInfo", JSONObject().apply {
+            episodeInfo.forEach { (k, e) ->
+                put(k, JSONObject().put("title", e.title).put("overview", e.overview).put("still", e.still).put("runtimeMin", e.runtimeMin))
+            }
+        })
         put("offline", JSONObject(offline as Map<*, *>)); put("addedAt", addedAt)
     }
 
     companion object {
         fun fromJson(o: JSONObject): LibTitle {
             val s = o.optJSONArray("seasons") ?: JSONArray()
+            val seasons = List(s.length()) { i ->
+                when (val v = s.get(i)) {
+                    is Number -> SeasonSpec(i + 1, v.toInt())                // bis 1.0: nur Folgenzahlen
+                    is JSONObject -> SeasonSpec(v.optInt("number", i + 1), v.optInt("episodes"), v.optInt("start", 1), v.str("template"), v.str("title"))
+                    else -> SeasonSpec(i + 1, 0)
+                }
+            }
+            val ov = o.optJSONArray("overrides") ?: JSONArray()
+            val overrides = List(ov.length()) { i ->
+                val e = ov.getJSONObject(i)
+                EpisodeOverride(e.getInt("season"), e.getInt("episode"), e.str("url"), e.str("title"))
+            }
             val off = o.optJSONObject("offline") ?: JSONObject()
+            val ei = o.optJSONObject("episodeInfo") ?: JSONObject()
+            val tm = o.optJSONObject("tmdb")
             return LibTitle(
                 id = o.getString("id"),
                 kind = TitleKind.valueOf(o.getString("kind")),
                 title = o.optString("title"),
                 pageUrl = o.str("pageUrl"),
                 template = o.str("template"),
-                seasons = List(s.length()) { s.getInt(it) },
-                image = o.str("image"),
+                seasons = seasons,
+                overrides = overrides,
+                poster = o.str("poster"),
+                backdrop = o.str("backdrop") ?: o.str("image"),          // bis 1.0 hieß es „image“
+                customPoster = o.str("customPoster"),
                 description = o.str("description"),
-                durationMs = if (o.isNull("durationMs") || !o.has("durationMs")) null else o.optLong("durationMs"),
+                durationMs = o.long("durationMs"),
+                year = o.long("year")?.toInt(),
+                tmdbId = o.long("tmdbId")?.toInt(),
+                tmdbQuery = o.str("tmdbQuery"),
+                tmdb = tm?.let { TmdbInfo(it.getInt("id"), it.str("title"), it.str("poster"), it.str("backdrop"), it.str("overview"), it.long("year")?.toInt(), it.long("runtimeMin")?.toInt()) },
+                sourceId = o.str("sourceId"),
+                episodeInfo = ei.keys().asSequence().associateWith { k ->
+                    val e = ei.getJSONObject(k)
+                    EpInfo(e.str("title"), e.str("overview"), e.str("still"), e.long("runtimeMin")?.toInt())
+                },
                 offline = off.keys().asSequence().associateWith { off.getString(it) },
                 addedAt = o.optLong("addedAt"),
             )
         }
 
         private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optString(k).takeIf { it.isNotEmpty() }
+        private fun JSONObject.long(k: String): Long? = if (isNull(k) || !has(k)) null else optLong(k)
     }
 }
 
@@ -92,61 +196,4 @@ object Keys {
             else -> null
         }
     }
-}
-
-/** Muster für Serien: aus einer Folgen-Adresse wird eine Vorlage, aus der Vorlage jede Folge. */
-object Pattern {
-
-    fun fill(template: String, season: Int, episode: Int): String = template
-        .replace("{ss}", season.toString().padStart(2, '0'))
-        .replace("{ee}", episode.toString().padStart(2, '0'))
-        .replace("{s}", season.toString())
-        .replace("{e}", episode.toString())
-
-    private val seasonWord = Regex("""(staffel|season|saison|stagione|temporada|s)([-_/ ]?)(\d{1,3})(?=\D|$)""", RegexOption.IGNORE_CASE)
-    private val episodeWord = Regex("""(episode|episodio|folge|ep|e)([-_/ ]?)(\d{1,4})(?=\D|$)""", RegexOption.IGNORE_CASE)
-
-    /**
-     * Schlägt aus der Adresse einer Folge eine Vorlage vor. Erst benannte Teile
-     * (staffel-2, episode-5, s02e05), sonst die letzten beiden Zahlen im Pfad.
-     * Nur der Pfad wird angefasst, nie der Host.
-     */
-    fun derive(url: String): String? {
-        val schemeEnd = url.indexOf("://").takeIf { it >= 0 }?.plus(3) ?: return null
-        val pathStart = url.indexOf('/', schemeEnd).takeIf { it >= 0 } ?: return null
-        val head = url.substring(0, pathStart)
-        var path = url.substring(pathStart)
-
-        val s = seasonWord.findAll(path).lastOrNull()
-        val e = episodeWord.findAll(path).lastOrNull { it.range.first > (s?.range?.last ?: -1) || s == null }
-        if (e != null) {
-            path = replaceNumber(path, e)
-            if (s != null && s.range.last < e.range.first) path = replaceNumber(path, s, season = true)
-            return head + path
-        }
-        // Ohne Namen: die letzten zwei Zahlen sind Staffel und Folge, eine einzelne ist die Folge.
-        val numbers = Regex("""\d+""").findAll(path).toList()
-        if (numbers.isEmpty()) return null
-        val sb = StringBuilder(path)
-        val last = numbers.last()
-        sb.replace(last.range.first, last.range.last + 1, placeholder(last.value, "e"))
-        if (numbers.size >= 2) {
-            val prev = numbers[numbers.size - 2]
-            sb.replace(prev.range.first, prev.range.last + 1, placeholder(prev.value, "s"))
-        }
-        return head + sb
-    }
-
-    private fun replaceNumber(path: String, m: MatchResult, season: Boolean = false): String {
-        val digits = m.groups[3]!!
-        val ph = placeholder(digits.value, if (season) "s" else "e")
-        return path.replaceRange(digits.range, ph)
-    }
-
-    private fun placeholder(digits: String, letter: String) =
-        if (digits.length >= 2 && digits.startsWith('0')) "{$letter$letter}" else "{$letter}"
-
-    /** "12, 8 10" → [12, 8, 10]; Unsinn → leer */
-    fun parseSeasons(text: String): List<Int> =
-        text.split(',', ';', ' ', '/').mapNotNull { it.trim().toIntOrNull() }.filter { it in 1..999 }
 }

@@ -10,6 +10,9 @@ import de.marne.streamplayer.adblock.AdBlocker
 import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.download.DownloadStore
 import de.marne.streamplayer.download.Notifications
+import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.library.Enricher
+import de.marne.streamplayer.library.Importer
 import de.marne.streamplayer.library.LibraryStore
 import de.marne.streamplayer.library.MetaFetcher
 import de.marne.streamplayer.library.ProgressStore
@@ -33,6 +36,12 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var meta: MetaFetcher
         private set
+    lateinit var tmdb: Tmdb
+        private set
+    lateinit var enricher: Enricher
+        private set
+    lateinit var importer: Importer
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +52,9 @@ class App : Application(), SingletonImageLoader.Factory {
         library = LibraryStore(this)
         progress = ProgressStore(this)
         meta = MetaFetcher(http) { Http.defaultUserAgent(this) }
+        tmdb = Tmdb(http, key = { settings.tmdbKey.value }, language = { settings.tmdbLanguage })
+        enricher = Enricher(tmdb, library, settings)
+        importer = Importer(this, library, enricher)
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)
     }

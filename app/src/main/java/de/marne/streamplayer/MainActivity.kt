@@ -74,8 +74,8 @@ import de.marne.streamplayer.download.DownloadItem
 import de.marne.streamplayer.download.DownloadService
 import de.marne.streamplayer.downloads.DownloadActions
 import de.marne.streamplayer.downloads.DownloadsScreen
-import de.marne.streamplayer.library.AddActions
-import de.marne.streamplayer.library.AddSheet
+import de.marne.streamplayer.library.LinkActions
+import de.marne.streamplayer.library.LinkSheet
 import de.marne.streamplayer.library.DetailActions
 import de.marne.streamplayer.library.DetailScreen
 import de.marne.streamplayer.library.Episode
@@ -83,7 +83,6 @@ import de.marne.streamplayer.library.HomeActions
 import de.marne.streamplayer.library.HomeScreen
 import de.marne.streamplayer.library.Keys
 import de.marne.streamplayer.library.LibTitle
-import de.marne.streamplayer.library.Pattern
 import de.marne.streamplayer.library.Shelves
 import de.marne.streamplayer.library.TitleKind
 import de.marne.streamplayer.player.PlayerActivity
@@ -101,8 +100,10 @@ class AppNav {
     /** Browser ist ein Nebenraum über den Tabs, kein Tab mehr. */
     var browserOpen by mutableStateOf(false)
     var detailId by mutableStateOf<String?>(null)
-    /** Hinzufügen-Sheet: null = zu, sonst vorbelegter Link (leer = ohne). */
-    var addUrl by mutableStateOf<String?>(null)
+    /** Geteilter Link: null = kein Sheet. */
+    var linkUrl by mutableStateOf<String?>(null)
+    /** Geteilte/geöffnete Katalog-Datei, wird beim nächsten Durchlauf importiert. */
+    var pendingImport by mutableStateOf<Uri?>(null)
     /** Browser wurde nur zum Auflösen geöffnet: danach wieder schließen. */
     var resolving by mutableStateOf(false)
 }
@@ -144,10 +145,19 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
-            Intent.ACTION_VIEW -> intent.dataString?.takeIf { it.startsWith("http") }?.let(::openLink)
-            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
-                ?.let { Regex("""https?://\S+""").find(it)?.value }
-                ?.let(::openLink)
+            Intent.ACTION_VIEW -> {
+                val data = intent.data ?: return
+                if (data.scheme == "http" || data.scheme == "https") openLink(data.toString()) else importCatalog(data)
+            }
+            Intent.ACTION_SEND -> {
+                // Katalog-Datei aus dem Creator (oder einem Dateimanager) – sonst ein Link als Text.
+                @Suppress("DEPRECATION")
+                val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (stream != null) importCatalog(stream)
+                else intent.getStringExtra(Intent.EXTRA_TEXT)
+                    ?.let { Regex("""https?://\S+""").find(it)?.value }
+                    ?.let(::openLink)
+            }
             ACTION_SHOW_DOWNLOADS -> {
                 nav.browserOpen = false
                 nav.tab = TAB_DOWNLOADS
@@ -155,11 +165,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Geteilter Link: Hinzufügen-Sheet mit dem Link – dort auch „Nur ansehen“ und „Im Browser öffnen“. */
+    /** Geteilter Link: kurzes Sheet mit „Ansehen“ und „Im Browser öffnen“. */
     private fun openLink(url: String) {
         nav.browserOpen = false
         nav.tab = TAB_LIBRARY
-        nav.addUrl = url
+        nav.linkUrl = url
+    }
+
+    private fun importCatalog(uri: Uri) {
+        nav.browserOpen = false
+        nav.tab = TAB_LIBRARY
+        nav.detailId = null
+        nav.pendingImport = uri
     }
 
     override fun onPause() {
@@ -205,6 +222,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val progress by app.progress.all.collectAsStateWithLifecycle()
     val fullscreen by browser.fullscreen.collectAsStateWithLifecycle()
     val watchState by watch.state.collectAsStateWithLifecycle()
+    val enrichStatus by app.enricher.status.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     fun toast(text: String, action: String? = null, onAction: () -> Unit = {}) {
@@ -212,6 +230,33 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             snackbar.currentSnackbarData?.dismiss()
             val r = snackbar.showSnackbar(text, actionLabel = action, duration = SnackbarDuration.Short)
             if (r == SnackbarResult.ActionPerformed) onAction()
+        }
+    }
+
+    fun doImport(uri: Uri) {
+        scope.launch {
+            runCatching { app.importer.import(uri) }
+                .onSuccess { r ->
+                    val hint = if (!app.enricher.available) " Für Cover und Beschreibungen: TMDB-Schlüssel in den Einstellungen." else ""
+                    toast("Katalog importiert: ${r.summary}.$hint")
+                }
+                .onFailure { toast(it.message ?: "Import fehlgeschlagen.") }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(::doImport) }
+    LaunchedEffect(nav.pendingImport) {
+        nav.pendingImport?.let { uri ->
+            nav.pendingImport = null
+            doImport(uri)
+        }
+    }
+
+    var coverFor by remember { mutableStateOf<String?>(null) }
+    val coverPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val id = coverFor ?: return@rememberLauncherForActivityResult
+        coverFor = null
+        if (uri != null) scope.launch {
+            app.importer.saveCustomPoster(uri, id)?.let { app.library.setCustomPoster(id, it) } ?: toast("Bild lässt sich nicht lesen.")
         }
     }
 
@@ -330,7 +375,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             open = { nav.detailId = it.id },
             play = { c -> resolve(c.title, c.episode, false) },
             playTitle = { playTitle(it) },
-            add = { nav.addUrl = "" },
+            import = { importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
             browser = { nav.browserOpen = true },
         )
     }
@@ -346,7 +391,17 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             },
             setWatched = { key, watched -> app.progress.setWatched(key, watched) },
             rename = { t, title -> app.library.rename(t.id, title) },
-            editSeries = { t, tpl, seasons -> app.library.updateSeries(t.id, tpl, seasons) },
+            changeCover = { t ->
+                coverFor = t.id
+                coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            },
+            resetCover = { t -> app.library.setCustomPoster(t.id, null) },
+            refreshTmdb = { t ->
+                if (app.enricher.available) {
+                    app.enricher.enqueue(listOf(t.id), force = true)
+                    toast("TMDB lädt neu …")
+                } else toast("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.")
+            },
             remove = { t ->
                 app.library.remove(t.id)
                 app.progress.removeTitle(t.id)
@@ -385,7 +440,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                                 Crossfade(detail?.id, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "detail") { id ->
                                     val d = id?.let { i -> titles.firstOrNull { it.id == i } }
                                     if (d != null) DetailScreen(d, progress, detailActions)
-                                    else HomeScreen(titles, progress, homeActions)
+                                    else HomeScreen(titles, progress, enrichStatus, homeActions)
                                 }
                             }
                             MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, downloadActions)
@@ -401,35 +456,21 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             }
         }
 
-        nav.addUrl?.let { initial ->
-            AddSheet(
-                initialUrl = initial,
-                actions = AddActions(
-                    dismiss = { nav.addUrl = null },
-                    addMovie = { url ->
-                        val t = app.library.addMovie(url, null, null)
-                        fetchMeta(t.id, url)
-                        nav.addUrl = null
-                        nav.tab = MainActivity.TAB_LIBRARY
-                        nav.detailId = t.id
-                    },
-                    addSeries = { name, tpl, seasons ->
-                        val t = app.library.addSeries(name, tpl, seasons, null, null)
-                        fetchMeta(t.id, Pattern.fill(tpl, 1, 1))
-                        nav.addUrl = null
-                        nav.tab = MainActivity.TAB_LIBRARY
-                        nav.detailId = t.id
-                    },
-                    watchNow = { url ->
-                        nav.addUrl = null
+        nav.linkUrl?.let { url ->
+            LinkSheet(
+                url = url,
+                actions = LinkActions(
+                    dismiss = { nav.linkUrl = null },
+                    watchNow = { u ->
+                        nav.linkUrl = null
                         nav.resolving = true
                         nav.browserOpen = true
-                        watch.start(url, WatchController.Request(fromLibrary = true))
+                        watch.start(u, WatchController.Request(fromLibrary = true))
                     },
-                    openInBrowser = { url ->
-                        nav.addUrl = null
+                    openInBrowser = { u ->
+                        nav.linkUrl = null
                         nav.browserOpen = true
-                        browser.load(url)
+                        browser.load(u)
                     },
                 ),
             )

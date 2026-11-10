@@ -9,6 +9,73 @@ Abspielen, mit derselben Erkennung wie im eingebauten Browser.
 Der Browser ist dafür nur noch ein Nebenraum: zum Finden, für Seiten, die mehr brauchen, und
 als Werkzeug hinter den Kulissen. Die Oberfläche folgt dem Design-System **Ivory & Ink**.
 
+## Zwei Apps, ein Kern
+
+| Modul | APK | wofür |
+| --- | --- | --- |
+| `:app` | `de.marne.streamplayer` | Player: Mediathek, Abspielen, Downloads, Browser |
+| `:creator` | `de.marne.streamplayer.creator` | Kataloge bauen: Serien-Muster, Staffeln, TMDB, Cover |
+| `:core` | (Bibliothek) | Ivory & Ink, Katalogformat, Muster, TMDB-Client |
+
+Filme und Serien kommen nur noch über **Katalog-Dateien** in den Player. Gebaut werden sie im
+Creator und mit „An Streamplayer senden“ direkt übergeben. Alternativ gibt es das
+Import-Symbol oben rechts in der Bibliothek, oder man öffnet bzw. teilt eine `.json` aus einem
+Dateimanager. Ein erneuter Import aktualisiert Titel mit derselben Katalog-ID; Fortschritt,
+Downloads und eigene Cover bleiben dabei erhalten. Kaputte Einträge werden übersprungen und
+gemeldet, statt die ganze Datei abzulehnen.
+
+### Katalogformat (`streamplayer-catalog`, Version 1)
+
+```json
+{
+  "format": "streamplayer-catalog", "version": 1, "name": "Mein Katalog",
+  "titles": [
+    { "type": "series", "id": "beispiel-serie", "title": "Beispielserie", "year": 2020,
+      "tmdb": { "id": 1396 },
+      "template": "https://example.org/serie/beispiel/staffel-{s}/episode-{e}",
+      "seasons": [
+        { "number": 1, "episodes": 10 },
+        { "number": 2, "episodes": 8, "start": 11 },
+        { "number": 0, "episodes": 2, "title": "Specials", "template": "https://example.org/special-{e}" }
+      ],
+      "episodes": [ { "season": 1, "episode": 4, "url": "https://example.org/anders/folge-4" } ],
+      "poster": "https://… oder data:image/jpeg;base64,…" },
+    { "type": "movie", "id": "beispiel-film", "title": "Beispielfilm", "year": 2010,
+      "tmdb": { "query": "Beispielfilm" }, "url": "https://example.org/film/beispiel" }
+  ]
+}
+```
+
+- **Platzhalter:** `{s}` Staffel, `{e}` Folge, `{a}` absolute Folge über alle Staffeln (für
+  Anime-Seiten). Mit Nullen aufgefüllt: `{ss}`, `{ee}`, `{eee}`, `{aa}`, `{aaa}`.
+- **Staffeln:** eigene Folgenzahl, Startnummer (`start`, wenn eine Seite weiterzählt), eigenes
+  Muster und Titel. Die Kurzform `"seasons": [12, 8, 10]` geht auch.
+- **`episodes`:** Ausnahmen für einzelne Folgen (eigene Adresse oder eigener Titel).
+- **`tmdb`:** feste `id` oder `query`. Fehlt beides, sucht der Player bei „automatisch erkennen“
+  nach dem Titel (plus Jahr).
+- **Bilder:** als Adresse oder eingebettet (`data:`). Der Creator bettet Bilder aus der Galerie
+  verkleinert ein, damit der Katalog jede Weitergabe übersteht.
+
+### TMDB
+
+Ein kostenloser Schlüssel von themoviedb.org kommt in die Einstellungen beider Apps. Akzeptiert
+werden der API-Schlüssel (v3) und das Lese-Token (v4, `eyJ…`). Der Schlüssel bleibt auf dem
+Gerät und landet nie im Katalog. Im Player ergänzt `Enricher` danach Poster, Hintergrund,
+Beschreibung, Jahr und Laufzeit. Fehlen einer Serie die Staffeln, liefert TMDB sie samt
+Folgenzahl, und je Folge kommen Name, Standbild und Inhalt dazu. Katalog-Angaben gewinnen immer,
+TMDB füllt nur Lücken. Die Bildreihenfolge ist: eigenes Cover › Katalog › TMDB › Seitenbild.
+
+### Creator
+
+Eine Liste von Serien und Filmen, dazu ein Editor, der jede Änderung sofort speichert. Er bietet:
+- Name und Jahr
+- TMDB-Suche mit Postern und „Staffeln übernehmen“
+- „Link einer Folge“ → Muster ableiten
+- Staffeln mit Plus/Minus, Schnell-Eingabe „12, 8, 10“ sowie Nummer, Startfolge, eigenem
+  Muster und Titel je Staffel
+- Vorschau aller Adressen: tippen öffnet sie im Browser, einzelne Folgen lassen sich ändern
+- Cover und Hintergrund aus der Galerie oder als Adresse
+
 ## Mediathek
 
 - **Startseite:** Oben die eine dunkle Hero-Karte (Ivory & Ink erlaubt eine pro Screen), mit
@@ -17,9 +84,9 @@ als Werkzeug hinter den Kulissen. Die Oberfläche folgt dem Design-System **Ivor
 - **Detailseite:** Bild, Titel, Beschreibung, „Abspielen“ bzw. „Fortsetzen · noch 12 Min.“.
   Bei Serien gibt es Staffel-Pills und eine Folgenliste mit Fortschritt; gesehene Folgen haben
   ein gefülltes Häkchen. Folgen lassen sich einzeln laden oder als (un)gesehen markieren.
-- **Film hinzufügen:** ein Link. Titel, Bild und Beschreibung holt `MetaFetcher` per einfachem
+- **Film hinzufügen (bis 1.0, heute per Katalog):** ein Link. Titel, Bild und Beschreibung holt `MetaFetcher` per einfachem
   Abruf aus og:-Angaben. Was fehlt, ergänzt das erste Ansehen.
-- **Serie hinzufügen:** Link zu einer Folge. `Pattern.derive` macht daraus eine Vorlage
+- **Serie hinzufügen (bis 1.0, heute im Creator):** Link zu einer Folge. `Pattern.derive` macht daraus eine Vorlage
   (`staffel-1/episode-1` → `staffel-{s}/episode-{e}`, `s01e05` → `s{ss}e{ee}`, sonst die
   letzten zwei Zahlen im Pfad). Dazu kommen die Folgen je Staffel („12, 8, 10“). Die Vorschau
   zeigt erste und letzte Adresse, damit ein falsches Muster sofort auffällt. Neue Staffel:
@@ -158,8 +225,9 @@ Die Icons sind Material Symbols Rounded in Stärke 300.
 Voraussetzungen: JDK 17+, Android SDK mit Plattform 37.1, Gradle-Wrapper liegt bei.
 
 ```sh
-./gradlew :app:assembleDebug        # APK unter app/build/outputs/apk/debug/
-./gradlew :app:testDebugUnitTest    # Unit-Tests (UrlClassifier)
+./gradlew :app:assembleDebug        # Player-APK unter app/build/outputs/apk/debug/
+./gradlew :creator:assembleDebug    # Creator-APK unter creator/build/outputs/apk/debug/
+./gradlew testDebugUnitTest         # alle Unit-Tests (Kern, Player)
 ```
 
 Der Debug-Build hat die ID `de.marne.streamplayer.debug` und läuft neben einem Release-Build.

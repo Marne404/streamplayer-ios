@@ -105,6 +105,40 @@ fun WideTile(
     }
 }
 
+/** Hochformat-Kachel (2:3) wie in Jellyfin/Netflix: Cover, darunter Titel und Jahr. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun PosterTile(
+    image: Any?,
+    title: String,
+    meta: String?,
+    width: Dp = 124.dp,
+    progress: Float? = null,
+    watched: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Column(Modifier.width(width).combinedClickable(onClick = onClick)) {
+        Box {
+            Thumb(image, Modifier.fillMaxWidth().aspectRatio(2f / 3f), radius = 18.dp)
+            if (watched) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp).clip(RoundedCornerShape(50)).background(Palette.ink).padding(4.dp)
+                ) { GIcon(Ic.check, tint = Palette.onInk, size = 14.dp) }
+            }
+            if (progress != null && progress > 0f) {
+                Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 10.dp, vertical = 10.dp)) {
+                    Bar(progress, height = 4.dp, color = Palette.ink, track = Palette.bg.copy(alpha = 0.85f))
+                }
+            }
+        }
+        VSpace(8.dp)
+        Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
+        if (!meta.isNullOrBlank()) {
+            Text(meta, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 2.dp))
+        }
+    }
+}
+
 /**
  * Die eine dunkle Karte pro Screen (Ivory & Ink): großes Bild, Titel, ein Knopf.
  * Für „Weiterschauen“ oder den neuesten Titel.
@@ -152,48 +186,19 @@ fun HeroCard(
     }
 }
 
-/** Textfeld in Ivory & Ink: radius-field, Haarlinie, Fokus in text. */
-@Composable
-fun IvoryField(
-    value: String,
-    onChange: (String) -> Unit,
-    placeholder: String,
-    type: KeyboardType = KeyboardType.Text,
-    label: String? = null,
-    singleLine: Boolean = true,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        singleLine = singleLine,
-        label = label?.let { { Text(it) } },
-        placeholder = { Text(placeholder, color = Palette.muted) },
-        shape = RoundedCornerShape(16.dp),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = type, autoCorrectEnabled = false),
-        textStyle = MaterialTheme.typography.bodyLarge,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Palette.text,
-            unfocusedBorderColor = Palette.line,
-            focusedLabelColor = Palette.text,
-            unfocusedLabelColor = Palette.muted,
-            cursorColor = Palette.text,
-            focusedTextColor = Palette.text,
-            unfocusedTextColor = Palette.text,
-            focusedContainerColor = Palette.surface,
-            unfocusedContainerColor = Palette.surface,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
 /** Metazeile eines Titels: „Serie · 3 Staffeln · 30 Folgen“ / „Film · 1:42:10 · voe.sx“ */
-fun titleMeta(t: LibTitle): String = buildList {
+fun titleMeta(t: LibTitle, withHost: Boolean = true): String = buildList {
+    t.shownYear?.let { add(it.toString()) }
     if (t.kind == TitleKind.SERIES) {
-        add(if (t.seasons.size == 1) "1 Staffel" else "${t.seasons.size} Staffeln")
-        add("${t.episodeCount} Folgen")
+        val real = t.seasons.count { it.number > 0 }
+        if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
+        if (t.episodeCount > 0) add("${t.episodeCount} Folgen")
     } else {
-        t.durationMs?.let { add(Format.duration(it)) }
+        t.runtimeMs?.let { add(Format.duration(it)) }
         if (t.offline.isNotEmpty()) add("offline")
     }
-    t.host?.let { add(it) }
+    if (withHost) t.host?.let { add(it) }
 }.joinToString(" · ")
+
+/** Kurz für Poster-Kacheln: „2008 · 5 Staffeln“ / „2010 · 2:28:00“ */
+fun shortMeta(t: LibTitle): String = titleMeta(t, withHost = false).split(" · ").take(2).joinToString(" · ")

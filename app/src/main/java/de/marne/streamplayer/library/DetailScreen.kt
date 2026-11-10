@@ -41,6 +41,7 @@ import de.marne.streamplayer.ui.design.ExpandableText
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace
 import de.marne.streamplayer.ui.design.Ic
+import de.marne.streamplayer.ui.design.IvoryField
 import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.MenuAction
 import de.marne.streamplayer.ui.design.OutlinePill
@@ -61,17 +62,19 @@ class DetailActions(
     val openPage: (String) -> Unit,
     val setWatched: (String, Boolean) -> Unit,
     val rename: (LibTitle, String) -> Unit,
-    val editSeries: (LibTitle, String, List<Int>) -> Unit,
+    val changeCover: (LibTitle) -> Unit,
+    val resetCover: (LibTitle) -> Unit,
+    val refreshTmdb: ((LibTitle) -> Unit)?,
     val remove: (LibTitle) -> Unit,
 )
 
 @Composable
 fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailActions) {
     var renaming by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     val next = remember(t, progress) { Shelves.nextFor(t, progress) }
-    var season by rememberSaveable(t.id) { mutableIntStateOf(next?.first?.season ?: 1) }
+    val seasonNumbers = remember(t) { t.seasons.map { it.number }.sorted() }
+    var season by rememberSaveable(t.id) { mutableIntStateOf(next?.first?.season ?: seasonNumbers.firstOrNull { it > 0 } ?: seasonNumbers.firstOrNull() ?: 1) }
 
     LazyColumn(
         Modifier.fillMaxSize().background(Palette.bg),
@@ -82,8 +85,10 @@ fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailAc
                 IconButton(onClick = actions.back) { GIcon(Ic.back) }
                 Box(Modifier.weight(1f))
                 RowMenu(buildList {
+                    add(MenuAction("Cover ändern") { actions.changeCover(t) })
+                    if (t.customPoster != null) add(MenuAction("Eigenes Cover entfernen") { actions.resetCover(t) })
+                    actions.refreshTmdb?.let { r -> add(MenuAction("TMDB neu laden") { r(t) }) }
                     add(MenuAction("Umbenennen") { renaming = true })
-                    if (t.kind == TitleKind.SERIES) add(MenuAction("Folgen bearbeiten") { editing = true })
                     t.pageUrl?.let { url -> add(MenuAction("Seite öffnen") { actions.openPage(url) }) }
                     add(MenuAction("Entfernen", destructive = true) { confirmRemove = true })
                 })
@@ -91,14 +96,23 @@ fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailAc
         }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
-                Thumb(t.image ?: t.offline.values.firstOrNull(), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 24.dp)
-                VSpace(24.dp)
-                Text((if (t.kind == TitleKind.SERIES) "Serie" else "Film").uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                VSpace(6.dp)
-                Text(t.title, style = MaterialTheme.typography.headlineLarge)
-                VSpace(6.dp)
-                Text(titleMeta(t), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-                t.description?.let {
+                Thumb(t.wide ?: t.offline.values.firstOrNull(), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 24.dp)
+                VSpace(20.dp)
+                // Cover und Titel nebeneinander, wie in einer Mediathek.
+                Row(verticalAlignment = Alignment.Bottom) {
+                    if (t.cover != null && t.cover != t.wide) {
+                        Thumb(t.cover, Modifier.size(width = 92.dp, height = 138.dp), radius = 14.dp)
+                        HSpace(16.dp)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text((if (t.kind == TitleKind.SERIES) "Serie" else "Film").uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                        VSpace(6.dp)
+                        Text(t.title, style = MaterialTheme.typography.headlineLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        VSpace(6.dp)
+                        Text(titleMeta(t), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                    }
+                }
+                t.text?.let {
                     VSpace(14.dp)
                     ExpandableText(it, collapsedLines = 3, style = MaterialTheme.typography.bodyMedium)
                 }
@@ -111,14 +125,22 @@ fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailAc
         if (t.kind == TitleKind.SERIES) {
             val eps = t.episodes()
             item { SectionTitle("Folgen", modifier = Modifier.padding(horizontal = 20.dp)) }
-            if (t.seasons.size > 1) {
+            if (seasonNumbers.size > 1) {
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(t.seasons.size) { i ->
-                            OutlinePill("Staffel ${i + 1}", selected = season == i + 1, onClick = { season = i + 1 })
+                        items(seasonNumbers) { n ->
+                            OutlinePill(t.seasonLabel(n), selected = season == n, onClick = { season = n })
                         }
                     }
                     VSpace(14.dp)
+                }
+            }
+            if (eps.isEmpty()) {
+                item {
+                    Text(
+                        "Keine Folgen. Im Katalog fehlen Staffeln – oder TMDB liefert sie nach, sobald ein Schlüssel eingetragen ist.",
+                        style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(horizontal = 20.dp),
+                    )
                 }
             }
             item {
@@ -135,10 +157,6 @@ fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailAc
     if (renaming) TextDialog("Umbenennen", t.title, "Titel", onDismiss = { renaming = false }) {
         renaming = false
         actions.rename(t, it)
-    }
-    if (editing) EditSeriesDialog(t, onDismiss = { editing = false }) { tpl, seasons ->
-        editing = false
-        actions.editSeries(t, tpl, seasons)
     }
     if (confirmRemove) AlertDialog(
         onDismissRequest = { confirmRemove = false },
@@ -202,18 +220,33 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
         Modifier.fillMaxWidth().clickable { actions.play(t, e) }.padding(start = 18.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Nummer im Kreis; gesehen = gefülltes ink-Häkchen (wie „erledigt“ im Design-System).
-        Box(
-            Modifier.size(30.dp).clip(CircleShape).background(if (watched) Palette.ink else Palette.surface2),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (watched) GIcon(Ic.check, tint = Palette.onInk, size = 16.dp)
-            else Text("${e.number}", style = MaterialTheme.typography.labelLarge)
+        if (e.still != null) {
+            // Standbild von TMDB; gesehen = ink-Häkchen in der Ecke.
+            Box {
+                Thumb(e.still, Modifier.size(width = 104.dp, height = 58.dp), radius = 12.dp)
+                if (watched) Box(
+                    Modifier.align(Alignment.TopEnd).padding(4.dp).clip(CircleShape).background(Palette.ink).padding(3.dp)
+                ) { GIcon(Ic.check, tint = Palette.onInk, size = 12.dp) }
+            }
+        } else {
+            // Nummer im Kreis; gesehen = gefülltes ink-Häkchen (wie „erledigt“ im Design-System).
+            Box(
+                Modifier.size(30.dp).clip(CircleShape).background(if (watched) Palette.ink else Palette.surface2),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (watched) GIcon(Ic.check, tint = Palette.onInk, size = 16.dp)
+                else Text("${e.number}", style = MaterialTheme.typography.labelLarge)
+            }
         }
         HSpace(16.dp)
         Column(Modifier.weight(1f)) {
-            Text("Folge ${e.number}", style = MaterialTheme.typography.bodyLarge, color = if (watched) Palette.muted else Palette.text)
+            Text(
+                e.title?.let { "${e.number}. $it" } ?: "Folge ${e.number}",
+                style = MaterialTheme.typography.bodyLarge, color = if (watched) Palette.muted else Palette.text,
+                maxLines = 2, overflow = TextOverflow.Ellipsis,
+            )
             val meta = buildList {
+                e.runtimeMin?.let { add("$it Min.") }
                 if (offline) add("offline")
                 when {
                     watched -> add("gesehen")
@@ -244,30 +277,6 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
         title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
         text = { IvoryField(text, { text = it }, placeholder) },
         confirmButton = { QuietButton("Speichern", color = Palette.text) { onConfirm(text) } },
-        dismissButton = { QuietButton("Abbrechen", color = Palette.muted, onClick = onDismiss) },
-    )
-}
-
-@Composable
-private fun EditSeriesDialog(t: LibTitle, onDismiss: () -> Unit, onSave: (String, List<Int>) -> Unit) {
-    var tpl by remember { mutableStateOf(t.template.orEmpty()) }
-    var seasons by remember { mutableStateOf(t.seasons.joinToString(", ")) }
-    val parsed = Pattern.parseSeasons(seasons)
-    val valid = (tpl.contains("{e}") || tpl.contains("{ee}")) && parsed.isNotEmpty()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = Palette.surface,
-        title = { Text("Folgen bearbeiten", style = MaterialTheme.typography.headlineSmall) },
-        text = {
-            Column {
-                IvoryField(tpl, { tpl = it }, "https://…/staffel-{s}/episode-{e}", KeyboardType.Uri, label = "Muster")
-                VSpace(12.dp)
-                IvoryField(seasons, { seasons = it }, "12, 8, 10", KeyboardType.Text, label = "Folgen je Staffel")
-                VSpace(8.dp)
-                Text("Neue Staffel: Zahl anhängen. Fortschritt bleibt erhalten.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-            }
-        },
-        confirmButton = { QuietButton("Speichern", color = if (valid) Palette.text else Palette.faint) { if (valid) onSave(tpl.trim(), parsed) } },
         dismissButton = { QuietButton("Abbrechen", color = Palette.muted, onClick = onDismiss) },
     )
 }
