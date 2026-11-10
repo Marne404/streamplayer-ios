@@ -44,5 +44,10 @@ object Ic {
     val contrast = R.drawable.ic_contrast
     val folder = R.drawable.ic_folder_open
     val library = R.drawable.ic_video_library
+    val libraryFilled = R.drawable.ic_video_library_filled
+    val bookmark = R.drawable.ic_bookmark
+    val bookmarkFilled = R.drawable.ic_bookmark_filled
+    val add = R.drawable.ic_add
+    val edit = R.drawable.ic_edit
     val download = R.drawable.ic_download
 }

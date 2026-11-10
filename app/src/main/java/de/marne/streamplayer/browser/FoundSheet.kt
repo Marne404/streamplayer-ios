@@ -16,6 +16,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -151,7 +152,15 @@ private fun CandidateCard(
                         else -> "Laden"
                     }
                     PrimaryButton(label, icon = Ic.download) { onDownload(variant) }
-                    QuietButton("Vorher ansehen", color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally)) { onPreview() }
+                    Row(Modifier.align(Alignment.CenterHorizontally)) {
+                        QuietButton("Vorher ansehen", color = Palette.muted) { onPreview() }
+                        val library = de.marne.streamplayer.App.instance.library
+                        val items by library.items.collectAsState()
+                        val saved = items.any { de.marne.streamplayer.detect.UrlClassifier.key(it.url) == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
+                        QuietButton(if (saved) "Gemerkt" else "Merken", color = if (saved) Palette.muted else Palette.text) {
+                            if (!saved) library.addLink(c.pageUrl, title, thumb)
+                        }
+                    }
                 }
             }
         }

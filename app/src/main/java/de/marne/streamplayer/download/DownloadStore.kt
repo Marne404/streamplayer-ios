@@ -69,6 +69,7 @@ class DownloadStore(private val context: Context) {
         val item = get(id) ?: return
         item.fileUri?.let { uri ->
             runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
+            de.marne.streamplayer.App.instance.library.removeFile(uri)
         }
         Workdir.partFile(context, id).delete()
         Workdir.outFile(context, id).delete()

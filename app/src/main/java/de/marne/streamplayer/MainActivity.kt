@@ -72,6 +72,8 @@ import de.marne.streamplayer.download.DownloadItem
 import de.marne.streamplayer.download.DownloadService
 import de.marne.streamplayer.downloads.DownloadActions
 import de.marne.streamplayer.downloads.DownloadsScreen
+import de.marne.streamplayer.library.LibraryActions
+import de.marne.streamplayer.library.LibraryScreen
 import de.marne.streamplayer.player.PlayerActivity
 import de.marne.streamplayer.settings.SettingsScreen
 import de.marne.streamplayer.ui.design.Hairline
@@ -150,8 +152,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val ACTION_SHOW_DOWNLOADS = "de.marne.streamplayer.SHOW_DOWNLOADS"
         const val TAB_BROWSER = 0
-        const val TAB_DOWNLOADS = 1
-        const val TAB_SETTINGS = 2
+        const val TAB_LIBRARY = 1
+        const val TAB_DOWNLOADS = 2
+        const val TAB_SETTINGS = 3
     }
 }
 
@@ -159,6 +162,7 @@ private data class TabSpec(val label: String, val icon: Int, val iconSelected: I
 
 private val tabs = listOf(
     TabSpec("Browser", Ic.browser, Ic.browserFilled),
+    TabSpec("Bibliothek", Ic.library, Ic.libraryFilled),
     TabSpec("Downloads", Ic.downloads, Ic.downloadsFilled),
     TabSpec("Einstellungen", Ic.settings, Ic.settingsFilled),
 )
@@ -217,6 +221,36 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 browser.load(d.pageUrl)
             },
             goBrowse = { tab.intValue = MainActivity.TAB_BROWSER },
+            saveToLibrary = { d ->
+                d.fileUri?.let { app.library.addFile(it, d.title, d.pageUrl, d.thumbnail, d.durationMs, d.mime) }
+                toast("In der Bibliothek.", "Ansehen") { tab.intValue = MainActivity.TAB_LIBRARY }
+            },
+        )
+    }
+
+    val library by app.library.items.collectAsStateWithLifecycle()
+    val libraryActions = remember {
+        LibraryActions(
+            watch = { item ->
+                // Gemerkter Link: direkt im Player, über „Nur ansehen“.
+                tab.intValue = MainActivity.TAB_BROWSER
+                watch.start(item.url)
+            },
+            play = { item -> context.startActivity(PlayerActivity.intent(context, Uri.parse(item.url), item.title, item.mime)) },
+            openPage = { item ->
+                tab.intValue = MainActivity.TAB_BROWSER
+                browser.load(item.pageUrl ?: item.url)
+            },
+            addLink = { url ->
+                app.library.addLink(url, null, null)
+                toast("Gemerkt. Titel und Bild kommen beim ersten Ansehen.")
+            },
+            rename = { item, title -> app.library.rename(item.id, title) },
+            remove = { item ->
+                app.library.remove(item.id)
+                toast("Aus der Bibliothek entfernt.")
+            },
+            goBrowse = { tab.intValue = MainActivity.TAB_BROWSER },
         )
     }
 
@@ -236,6 +270,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                             onDownload = startDownload,
                             onPreview = preview,
                         )
+                        MainActivity.TAB_LIBRARY -> LibraryScreen(library, libraryActions)
                         MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, actions)
                         else -> SettingsScreen(
                             settings = app.settings,

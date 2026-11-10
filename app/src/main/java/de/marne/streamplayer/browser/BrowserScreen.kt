@@ -107,6 +107,9 @@ fun BrowserScreen(
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     val watchMode by settings.watchMode.collectAsStateWithLifecycle()
     val watchState by watch.state.collectAsStateWithLifecycle()
+    val library = de.marne.streamplayer.App.instance.library
+    val libraryItems by library.items.collectAsStateWithLifecycle()
+    val pageSaved = remember(url, libraryItems) { url.isNotBlank() && library.containsLink(url) }
     val watching = watchState != WatchController.State.Idle
 
     // Im Modus „Nur ansehen“ werden Links abgespielt; Suchbegriffe öffnen weiter die Suche.
@@ -134,6 +137,11 @@ fun BrowserScreen(
             onSubmit = open,
             onHome = { if (watching) watch.cancel() else browser.showStart() },
             placeholder = if (watchMode) "Link zum Ansehen einfügen" else "Adresse oder Suchbegriff",
+            saved = if (showStart) null else pageSaved,
+            onToggleSaved = {
+                if (pageSaved) library.removeLink(url)
+                else library.addLink(url, meta.title.ifBlank { title }, meta.image)
+            },
             onReload = browser::reload,
             onStop = browser::stop,
             shield = if (adblockOn && !showStart) ShieldState(blocked, allowedHere, pageHost.orEmpty()) else null,
@@ -174,6 +182,11 @@ fun BrowserScreen(
                     },
                     onShowPage = watch::showPage,
                     onCancel = watch::cancel,
+                    saved = pageSaved,
+                    onSave = {
+                        val s = watchState
+                        if (!pageSaved && s is WatchController.State.Ready) library.addLink(url, s.title, s.thumbnail)
+                    },
                 )
             }
 
@@ -244,6 +257,8 @@ private fun AddressBar(
     shield: ShieldState?,
     onToggleAllow: () -> Unit,
     placeholder: String,
+    saved: Boolean?,
+    onToggleSaved: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf(TextFieldValue("")) }
@@ -296,6 +311,14 @@ private fun AddressBar(
             if (!focused && shield != null) {
                 HSpace(8.dp)
                 Shield(shield, onToggleAllow)
+            }
+            if (!focused && saved != null) {
+                // Lesezeichen: gefüllt = in der Bibliothek.
+                GIcon(
+                    if (saved) Ic.bookmarkFilled else Ic.bookmark,
+                    tint = if (saved) Palette.text else Palette.muted, size = 18.dp,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onToggleSaved).padding(6.dp),
+                )
             }
             if (focused && text.text.isNotEmpty()) {
                 GIcon(

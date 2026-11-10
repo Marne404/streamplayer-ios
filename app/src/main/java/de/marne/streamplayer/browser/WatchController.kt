@@ -40,6 +40,7 @@ class WatchController(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var job: Job? = null
+    private var startUrl: String? = null
 
     val active: Boolean get() = _state.value != State.Idle
 
@@ -47,6 +48,7 @@ class WatchController(
         val url = BrowserController.toUrl(input) ?: return
         stopSearch()
         val host = Format.host(url)
+        startUrl = url
         // Sofort leeren, nicht erst beim ersten Netzwerk-Request: sonst zählt ein Fund der alten Seite.
         hub.reset(url)
         browser.setAutoplay(true)
@@ -74,12 +76,15 @@ class WatchController(
                         val best = pick(usable)
                         browser.pausePage()
                         browser.setAutoplay(false)
-                        _state.value = State.Ready(
+                        val ready = State.Ready(
                             candidate = best,
                             title = titleFor(best, hub.meta.value, browser.title.value),
                             thumbnail = best.thumbnail ?: hub.meta.value.image,
                             autoStart = true,
                         )
+                        // Gemerkter Link ohne Titel/Bild? Jetzt wissen wir beides.
+                        de.marne.streamplayer.App.instance.library.enrich(url, ready.title, ready.thumbnail, best.durationMs)
+                        _state.value = ready
                         return@launch
                     }
                 } else {

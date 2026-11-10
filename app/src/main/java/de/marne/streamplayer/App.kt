@@ -10,6 +10,7 @@ import de.marne.streamplayer.adblock.AdBlocker
 import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.download.DownloadStore
 import de.marne.streamplayer.download.Notifications
+import de.marne.streamplayer.library.LibraryStore
 import de.marne.streamplayer.net.Http
 import okhttp3.OkHttpClient
 
@@ -24,6 +25,8 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var adblock: AdBlocker
         private set
+    lateinit var library: LibraryStore
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -31,6 +34,7 @@ class App : Application(), SingletonImageLoader.Factory {
         settings = Settings(this)
         http = Http.client(this)
         downloads = DownloadStore(this)
+        library = LibraryStore(this)
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)
     }

@@ -43,6 +43,8 @@ fun WatchOverlay(
     onDownload: () -> Unit,
     onShowPage: () -> Unit,
     onCancel: () -> Unit,
+    saved: Boolean = false,
+    onSave: () -> Unit = {},
 ) {
     Box(
         Modifier
@@ -94,7 +96,10 @@ fun WatchOverlay(
                             SecondaryButton("Laden", icon = Ic.download, onClick = onDownload)
                         }
                         VSpace(4.dp)
-                        QuietButton("Seite anzeigen", color = Palette.muted, onClick = onShowPage)
+                        androidx.compose.foundation.layout.Row {
+                            QuietButton(if (saved) "In der Bibliothek" else "Merken", color = if (saved) Palette.muted else Palette.text, onClick = onSave)
+                            QuietButton("Seite anzeigen", color = Palette.muted, onClick = onShowPage)
+                        }
                     }
                     is WatchController.State.NotFound -> {
                         Eyebrow(s.host)

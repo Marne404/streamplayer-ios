@@ -55,6 +55,21 @@ auch für Links, die per „Teilen“ oder als Link aus anderen Apps kommen.
 5. Zurück aus dem Player gibt es „Nochmal ansehen“, „Laden“ und „Seite anzeigen“. Nach 30 Sekunden
    ohne Fund erscheint ein Hinweis mit „Seite anzeigen“. Livestreams lassen sich ansehen, DRM nicht.
 
+## Bibliothek
+
+Eigener Tab mit Kacheln (16:9-Vorschau, Titel, Herkunft). Zwei Arten:
+
+- **Links:** Ein Tipp spielt über „Nur ansehen“ direkt im Player ab. Gespeichert wird die Seite,
+  nicht die Stream-Adresse, denn die verfällt meist nach Stunden. Fehlen Titel oder Bild, trägt
+  die App sie beim ersten Ansehen nach.
+- **Geladen:** fertige Downloads, offline abspielbar. Wird der Download gelöscht, verschwindet
+  auch die Kachel.
+
+Hinein kommt etwas über das Lesezeichen in der Adressleiste, „Merken“ im Fund-Sheet und nach dem
+Ansehen, „In Bibliothek“ bei fertigen Downloads und „+“ in der Bibliothek (Link einfügen).
+Lange drücken öffnet Ansehen, Seite öffnen, Umbenennen und Entfernen. Gespeichert wird als
+`library.json` in filesDir.
+
 ## Werbeblocker
 
 uBlock Origin lässt sich in einer Android-WebView nicht installieren, denn WebViews laden keine

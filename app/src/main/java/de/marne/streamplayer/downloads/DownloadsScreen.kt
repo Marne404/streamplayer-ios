@@ -53,6 +53,7 @@ class DownloadActions(
     val share: (DownloadItem) -> Unit,
     val openWith: (DownloadItem) -> Unit,
     val openPage: (DownloadItem) -> Unit,
+    val saveToLibrary: (DownloadItem) -> Unit,
     val goBrowse: () -> Unit,
 )
 
@@ -136,6 +137,7 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions) {
                                     MenuAction("Abspielen") { actions.play(d) },
                                     MenuAction("Teilen") { actions.share(d) },
                                     MenuAction("Öffnen mit …") { actions.openWith(d) },
+                                    MenuAction("In Bibliothek") { actions.saveToLibrary(d) },
                                     MenuAction("Seite öffnen") { actions.openPage(d) },
                                     MenuAction("Löschen", destructive = true) { confirm = d },
                                 )
