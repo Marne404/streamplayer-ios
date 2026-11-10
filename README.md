@@ -37,6 +37,24 @@ Die Oberfläche folgt dem Design-System **Ivory & Ink**.
 - **Abspielen:** Fertige Dateien und eine Vorschau des gefundenen Streams laufen über
   ExoPlayer, mit denselben Kopfzeilen (Referer, Cookies, User-Agent) wie die Seite.
 
+## Modus „Nur ansehen“
+
+Schalter auf der Startseite: **Browsen** oder **Nur ansehen**. Im Modus „Nur ansehen“ zeigt die
+App einen eingefügten Link nicht an, sondern spielt das Video direkt im eigenen Player ab. Das gilt
+auch für Links, die per „Teilen“ oder als Link aus anderen Apps kommen.
+
+1. Die Seite lädt in der normalen WebView, verdeckt von einer Warte-Ansicht. Sie bleibt dabei
+   auf dem Bildschirm, weil viele Player sich erst aufbauen, wenn sie sichtbar sind.
+2. Die Erkennung läuft wie immer: Netzwerk, Player fragen, Seitencode.
+3. Ist nach 4 Sekunden (spätestens 10) nichts da, startet die App das Video stumm. Dafür schickt
+   sie über die Brücke `nudge` an jeden Frame (JW Player, Video.js, `<video>`). Sie klickt nirgends
+   hin, damit nichts Fremdes aufgeht.
+4. Beim ersten Fund sammelt sie noch 1,5 Sekunden weiter und nimmt dann das Hauptvideo: Streams
+   vor Dateien, sonst das längste. So rutschen kurze Werbeclips nicht durch. Die Seite wird
+   angehalten, der Player öffnet sich.
+5. Zurück aus dem Player gibt es „Nochmal ansehen“, „Laden“ und „Seite anzeigen“. Nach 30 Sekunden
+   ohne Fund erscheint ein Hinweis mit „Seite anzeigen“. Livestreams lassen sich ansehen, DRM nicht.
+
 ## Werbeblocker
 
 uBlock Origin lässt sich in einer Android-WebView nicht installieren, denn WebViews laden keine

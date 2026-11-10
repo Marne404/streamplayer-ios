@@ -65,6 +65,7 @@ import de.marne.streamplayer.ui.design.HSpace
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.ListRow
+import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.NoticeCard
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.RowDivider
@@ -76,6 +77,7 @@ import de.marne.streamplayer.ui.design.VSpace
 fun BrowserScreen(
     browser: BrowserController,
     hub: DetectionHub,
+    watch: WatchController,
     history: List<Visit>,
     onClearHistory: () -> Unit,
     onDownload: (Candidate, Variant?, String, String?) -> Unit,
@@ -103,16 +105,35 @@ fun BrowserScreen(
         )
     }
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
+    val watchMode by settings.watchMode.collectAsStateWithLifecycle()
+    val watchState by watch.state.collectAsStateWithLifecycle()
+    val watching = watchState != WatchController.State.Idle
+
+    // Im Modus „Nur ansehen“ werden Links abgespielt; Suchbegriffe öffnen weiter die Suche.
+    val open: (String) -> Unit = { input ->
+        if (watchMode && BrowserController.looksLikeUrl(input)) watch.start(input) else browser.load(input)
+    }
+
+    // Gefunden: Player sofort öffnen, genau einmal.
+    LaunchedEffect(watchState) {
+        val s = watchState
+        if (s is WatchController.State.Ready && s.autoStart) {
+            onPreview(s.candidate, s.title)
+            watch.playerOpened()
+        }
+    }
 
     BackHandler(enabled = !showStart) { browser.back() }
+    BackHandler(enabled = watching) { watch.cancel() }
 
     Column(Modifier.fillMaxSize().background(Palette.bg)) {
         AddressBar(
             url = if (showStart) "" else url,
             loading = loading,
             onPage = !showStart,
-            onSubmit = browser::load,
-            onHome = browser::showStart,
+            onSubmit = open,
+            onHome = { if (watching) watch.cancel() else browser.showStart() },
+            placeholder = if (watchMode) "Link zum Ansehen einfügen" else "Adresse oder Suchbegriff",
             onReload = browser::reload,
             onStop = browser::stop,
             shield = if (adblockOn && !showStart) ShieldState(blocked, allowedHere, pageHost.orEmpty()) else null,
@@ -126,9 +147,11 @@ fun BrowserScreen(
                 StartPage(
                     history = history,
                     current = url.takeIf { it.isNotBlank() }?.let { it to title },
-                    onOpen = browser::load,
+                    onOpen = open,
                     onResume = browser::resumePage,
                     onClear = onClearHistory,
+                    watchMode = watchMode,
+                    onWatchMode = settings::setWatchMode,
                 )
             } else {
                 AndroidView(
@@ -140,8 +163,22 @@ fun BrowserScreen(
                 )
             }
 
+            if (watching && !showStart) {
+                WatchOverlay(
+                    state = watchState,
+                    onPlay = { (watchState as? WatchController.State.Ready)?.let { onPreview(it.candidate, it.title) } },
+                    onDownload = {
+                        (watchState as? WatchController.State.Ready)?.let {
+                            onDownload(it.candidate, it.candidate.variants.firstOrNull(), it.title, it.thumbnail)
+                        }
+                    },
+                    onShowPage = watch::showPage,
+                    onCancel = watch::cancel,
+                )
+            }
+
             FoundOverlay(
-                visible = !showStart && found.isNotEmpty(),
+                visible = !showStart && !watching && found.isNotEmpty(),
                 count = found.size,
                 onClick = { sheetOpen = true },
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
@@ -206,6 +243,7 @@ private fun AddressBar(
     onStop: () -> Unit,
     shield: ShieldState?,
     onToggleAllow: () -> Unit,
+    placeholder: String,
 ) {
     var focused by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf(TextFieldValue("")) }
@@ -236,7 +274,7 @@ private fun AddressBar(
             HSpace(10.dp)
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (shown.text.isEmpty()) {
-                    Text("Adresse oder Suchbegriff", style = MaterialTheme.typography.bodyLarge, color = Palette.muted, maxLines = 1)
+                    Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = Palette.muted, maxLines = 1)
                 }
                 BasicTextField(
                     value = shown,
@@ -283,17 +321,36 @@ private fun StartPage(
     onOpen: (String) -> Unit,
     onResume: () -> Unit,
     onClear: () -> Unit,
+    watchMode: Boolean,
+    onWatchMode: (Boolean) -> Unit,
 ) {
+    val clipboard = androidx.compose.ui.platform.LocalContext.current
+        .getSystemService(android.content.ClipboardManager::class.java)
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 40.dp),
     ) {
         item {
             ScreenHeader(
-                title = "Was willst du laden?",
+                title = if (watchMode) "Was willst du sehen?" else "Was willst du laden?",
                 eyebrow = "Browser",
-                subtitle = "Öffne eine Seite und starte das Video. Die App findet es.",
+                subtitle = if (watchMode) "Link einfügen – das Video startet direkt im Player."
+                else "Öffne eine Seite und starte das Video. Die App findet es.",
             )
+            VSpace(24.dp)
+            de.marne.streamplayer.ui.design.Segmented(
+                options = listOf("browse" to "Browsen", "watch" to "Nur ansehen"),
+                selected = if (watchMode) "watch" else "browse",
+                onSelect = { onWatchMode(it == "watch") },
+            )
+            if (watchMode) {
+                VSpace(8.dp)
+                QuietButton("Link aus der Zwischenablage ansehen", color = Palette.text) {
+                    // Erst auf Tipp lesen: Android zeigt beim Lesen der Zwischenablage einen Hinweis.
+                    val text = clipboard?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                    Regex("""https?://\S+""").find(text.orEmpty())?.value?.let(onOpen)
+                }
+            }
         }
         if (current != null) {
             item {

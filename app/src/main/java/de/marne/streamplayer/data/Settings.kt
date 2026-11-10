@@ -22,6 +22,15 @@ class Settings(context: Context) {
     private val _parallel = MutableStateFlow(prefs.getInt(KEY_PARALLEL, 2).coerceIn(1, 3))
     val parallel: StateFlow<Int> = _parallel.asStateFlow()
 
+    /** Browser-Modus: Links nicht anzeigen, sondern direkt im eigenen Player abspielen. */
+    private val _watchMode = MutableStateFlow(prefs.getBoolean(KEY_WATCH, false))
+    val watchMode: StateFlow<Boolean> = _watchMode.asStateFlow()
+
+    fun setWatchMode(value: Boolean) {
+        _watchMode.value = value
+        prefs.edit().putBoolean(KEY_WATCH, value).apply()
+    }
+
     private val _adblock = MutableStateFlow(prefs.getBoolean(KEY_ADBLOCK, true))
     val adblock: StateFlow<Boolean> = _adblock.asStateFlow()
 
@@ -90,6 +99,7 @@ class Settings(context: Context) {
         const val KEY_WIFI = "wifi_only"
         const val KEY_PARALLEL = "parallel"
         const val KEY_ADBLOCK = "adblock"
+        const val KEY_WATCH = "watch_mode"
         const val KEY_ALLOWLIST = "adblock_allowlist"
         const val KEY_HISTORY = "history"
         const val KEY_LAST_URL = "last_url"

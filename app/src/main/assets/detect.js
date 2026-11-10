@@ -316,7 +316,48 @@
   bridge.onmessage = function (ev) {
     var d;
     try { d = JSON.parse(ev.data); } catch (e) { return; }
-    if (d && d.t === 'css' && d.css) insertCss(d.css);
+    if (!d) return;
+    if (d.t === 'css' && d.css) insertCss(d.css);
+    else if (d.t === 'nudge') nudge();
+    else if (d.t === 'pause') pauseAll();
   };
+
+  // ---------- Modus „Nur ansehen“: anstoßen und anhalten ----------
+
+  function quiet(promise) { if (promise && promise.catch) promise.catch(function () { }); }
+
+  // Stumm abspielen, damit der Player seine Adresse abruft. Kein Klick auf irgendetwas:
+  // Klicks auf Seiten mit Werbung öffnen sonst gern Fremdes.
+  function nudge() {
+    try {
+      if (typeof window.jwplayer === 'function') {
+        var jw = window.jwplayer();
+        if (jw && jw.play) { try { jw.setMute(true); } catch (e) { } jw.play(); }
+      }
+    } catch (e) { }
+    try {
+      if (window.videojs && window.videojs.getPlayers) {
+        var ps = window.videojs.getPlayers();
+        for (var id in ps) if (ps[id]) { ps[id].muted(true); quiet(ps[id].play()); }
+      }
+    } catch (e) { }
+    var vids = document.querySelectorAll('video');
+    for (var i = 0; i < vids.length; i++) {
+      try { vids[i].muted = true; quiet(vids[i].play()); } catch (e) { }
+    }
+    setTimeout(probePlayers, 800);
+  }
+
+  function pauseAll() {
+    try { if (typeof window.jwplayer === 'function' && window.jwplayer().pause) window.jwplayer().pause(true); } catch (e) { }
+    try {
+      if (window.videojs && window.videojs.getPlayers) {
+        var ps = window.videojs.getPlayers();
+        for (var id in ps) if (ps[id]) ps[id].pause();
+      }
+    } catch (e) { }
+    var vids = document.querySelectorAll('video, audio');
+    for (var i = 0; i < vids.length; i++) { try { vids[i].pause(); } catch (e) { } }
+  }
   post({ t: 'hello', url: location.href });
 })();

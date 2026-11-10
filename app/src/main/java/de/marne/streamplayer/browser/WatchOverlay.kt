@@ -1,0 +1,133 @@
+package de.marne.streamplayer.browser
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.LoadingIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import de.marne.streamplayer.ui.Format
+import de.marne.streamplayer.ui.design.Ic
+import de.marne.streamplayer.ui.design.Palette
+import de.marne.streamplayer.ui.design.PrimaryButton
+import de.marne.streamplayer.ui.design.QuietButton
+import de.marne.streamplayer.ui.design.SecondaryButton
+import de.marne.streamplayer.ui.design.StatusLine
+import de.marne.streamplayer.ui.design.Thumb
+import de.marne.streamplayer.ui.design.VSpace
+
+/** Deckt die WebView ab, solange „Nur ansehen“ läuft. Fängt alle Berührungen ab. */
+@Composable
+fun WatchOverlay(
+    state: WatchController.State,
+    onPlay: () -> Unit,
+    onDownload: () -> Unit,
+    onShowPage: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Palette.bg)
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { },
+        contentAlignment = Alignment.Center,
+    ) {
+        // Die Spezifikation wird im Composable gelesen; transitionSpec selbst ist kein Composable.
+        val fade = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+        AnimatedContent(
+            targetState = state,
+            contentKey = { it::class },
+            transitionSpec = { fadeIn(fade) togetherWith fadeOut(fade) },
+            label = "watch",
+        ) { s ->
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                when (s) {
+                    is WatchController.State.Searching -> {
+                        LoadingIndicator(color = Palette.ink, modifier = Modifier.size(56.dp))
+                        VSpace(28.dp)
+                        Eyebrow(s.host)
+                        Text("Suche das Video …", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                        VSpace(6.dp)
+                        Text(s.step, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, textAlign = TextAlign.Center)
+                        VSpace(32.dp)
+                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                    }
+                    is WatchController.State.Ready -> {
+                        Thumb(s.thumbnail, Modifier.fillMaxWidth(0.72f).aspectRatio(16f / 9f), radius = 22.dp)
+                        VSpace(24.dp)
+                        Eyebrow(Format.candidateMeta(s.candidate))
+                        Text(
+                            s.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        )
+                        if (s.candidate.live) {
+                            VSpace(10.dp)
+                            StatusLine(Ic.info, "Livestream. Ansehen geht, Laden nicht.", Palette.muted)
+                        }
+                        VSpace(32.dp)
+                        PrimaryButton("Nochmal ansehen", icon = Ic.play, onClick = onPlay)
+                        if (s.candidate.downloadable) {
+                            VSpace(12.dp)
+                            SecondaryButton("Laden", icon = Ic.download, onClick = onDownload)
+                        }
+                        VSpace(4.dp)
+                        QuietButton("Seite anzeigen", color = Palette.muted, onClick = onShowPage)
+                    }
+                    is WatchController.State.NotFound -> {
+                        Eyebrow(s.host)
+                        Text("Kein Video gefunden.", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+                        VSpace(6.dp)
+                        Text(
+                            "Manche Seiten zeigen es erst nach einem Tipp. Öffne die Seite und starte es selbst.",
+                            style = MaterialTheme.typography.bodyMedium, color = Palette.muted, textAlign = TextAlign.Center,
+                        )
+                        VSpace(32.dp)
+                        PrimaryButton("Seite anzeigen", icon = Ic.browser, onClick = onShowPage)
+                        VSpace(4.dp)
+                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                    }
+                    is WatchController.State.Protected -> {
+                        Eyebrow("Geschützt")
+                        Text(s.title, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        VSpace(10.dp)
+                        StatusLine(Ic.shieldLock, "Kopierschutz (DRM). Geht nur auf der Seite selbst.", Palette.wine)
+                        VSpace(32.dp)
+                        PrimaryButton("Seite anzeigen", icon = Ic.browser, onClick = onShowPage)
+                        VSpace(4.dp)
+                        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+                    }
+                    WatchController.State.Idle -> Unit
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Eyebrow(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted, textAlign = TextAlign.Center, maxLines = 1)
+    VSpace(8.dp)
+}

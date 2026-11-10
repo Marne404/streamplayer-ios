@@ -63,6 +63,24 @@ class BrowserController(
     private val _canGoBack = MutableStateFlow(false)
     val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
 
+    /** Rückkanäle in alle Frames der aktuellen Seite (auch iframes fremder Hosts). */
+    private val frames = java.util.concurrent.CopyOnWriteArrayList<androidx.webkit.JavaScriptReplyProxy>()
+
+    /** Videos auf der Seite stumm starten: Manche Player verraten ihre Adresse erst beim Abspielen. */
+    fun nudgePlayback() = postToFrames("{\"t\":\"nudge\"}")
+
+    /** Alles auf der Seite anhalten, bevor der eigene Player übernimmt. */
+    fun pausePage() = postToFrames("{\"t\":\"pause\"}")
+
+    private fun postToFrames(msg: String) {
+        frames.forEach { runCatching { it.postMessage(msg) } }
+    }
+
+    /** Für die Suche im Modus „Nur ansehen“: Wiedergabe ohne Fingertipp erlauben. */
+    fun setAutoplay(allowed: Boolean) {
+        webView.settings.mediaPlaybackRequiresUserGesture = !allowed
+    }
+
     /** Blockierte Anfragen, Popups und Umleitungen auf der aktuellen Seite. */
     private val blockedCounter = AtomicInteger(0)
     private val _blocked = MutableStateFlow(0)
@@ -117,6 +135,8 @@ class BrowserController(
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
             WebViewCompat.addWebMessageListener(webView, BRIDGE, setOf("*")) { _, message, _, isMainFrame, reply ->
                 val data = message.data ?: return@addWebMessageListener
+                // Jeder Frame meldet sich mit „hello“; über seinen Rückkanal können wir ihn später ansprechen.
+                if (data.contains("\"hello\"")) frames += reply
                 val answer = onBridgeMessage(data, isMainFrame)
                 if (answer != null) reply.postMessage(answer)
             }
@@ -243,6 +263,7 @@ class BrowserController(
             if (scheme == "http" || scheme == "https") {
                 val url = u.toString()
                 if (request.isForMainFrame) {
+                    frames.clear()
                     // Neue Hauptseite: Zähler, Funde und Seitenkontext hier zurücksetzen – im selben
                     // Thread und vor allen Unter-Anfragen. onPageStarted kommt erst später im
                     // Hauptthread an; bis dahin wären frühe Anfragen schon der alten Seite zugerechnet.
@@ -399,6 +420,13 @@ class BrowserController(
 
     companion object {
         private const val BRIDGE = "streamplayerBridge"
+
+        /** Adresse statt Suchbegriff? */
+        fun looksLikeUrl(input: String): Boolean {
+            val s = input.trim()
+            return s.startsWith("http://", true) || s.startsWith("https://", true) ||
+                (!s.contains(' ') && s.contains('.') && !s.endsWith('.'))
+        }
 
         /** Adresse oder Suchbegriff → ladbare URL. */
         fun toUrl(input: String): String? {

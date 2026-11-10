@@ -101,6 +101,24 @@ HTML
 </script>
 </body></html>
 HTML
+  cat > playonly.html <<'HTML'
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Erst nach Play</title><style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}video{width:100%;background:#000}</style></head>
+<body><h1>Video erst nach Play</h1><video id="v" controls></video>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+<script>
+  // Die Quelle wird erst beim Start zusammengesetzt – vorher steht sie nirgends auf der Seite.
+  var v = document.getElementById('v'), started = false;
+  v.addEventListener('play', function () {
+    if (started) return; started = true;
+    var src = ['hls', 'master'].join('/') + '.m3u8';
+    var h = new Hls(); h.loadSource(src); h.attachMedia(v);
+  });
+</script></body></html>
+HTML
+  cat > novideo.html <<'HTML'
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Ohne Video</title></head><body><h1>Hier gibt es kein Video.</h1></body></html>
+HTML
 fi
 
 echo "Testseite in $DIR – im Emulator: http://10.0.2.2:$PORT/"

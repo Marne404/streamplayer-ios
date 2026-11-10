@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import de.marne.streamplayer.browser.BrowserController
 import de.marne.streamplayer.browser.BrowserScreen
+import de.marne.streamplayer.browser.WatchController
 import de.marne.streamplayer.detect.Candidate
 import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.MediaKind
@@ -84,6 +85,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var hub: DetectionHub
     private lateinit var browser: BrowserController
+    private lateinit var watch: WatchController
     private val tab = mutableIntStateOf(TAB_BROWSER)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,6 +94,7 @@ class MainActivity : ComponentActivity() {
         val app = App.instance
         hub = DetectionHub(lifecycleScope, Prober(app.http) { browser.userAgent })
         browser = BrowserController(this, hub, app.settings, app.adblock)
+        watch = WatchController(browser, hub, lifecycleScope)
         if (savedInstanceState == null) handleIntent(intent)
 
         setContent {
@@ -103,7 +106,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             IvoryInkTheme(dark) {
-                AppRoot(browser, hub, tab)
+                AppRoot(browser, hub, watch, tab)
             }
         }
     }
@@ -115,18 +118,18 @@ class MainActivity : ComponentActivity() {
 
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
-            Intent.ACTION_VIEW -> intent.dataString?.takeIf { it.startsWith("http") }?.let {
-                tab.intValue = TAB_BROWSER
-                browser.load(it)
-            }
+            Intent.ACTION_VIEW -> intent.dataString?.takeIf { it.startsWith("http") }?.let(::openLink)
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
                 ?.let { Regex("""https?://\S+""").find(it)?.value }
-                ?.let {
-                    tab.intValue = TAB_BROWSER
-                    browser.load(it)
-                }
+                ?.let(::openLink)
             ACTION_SHOW_DOWNLOADS -> tab.intValue = TAB_DOWNLOADS
         }
+    }
+
+    /** Geteilter oder geöffneter Link: im Modus „Nur ansehen“ direkt abspielen. */
+    private fun openLink(url: String) {
+        tab.intValue = TAB_BROWSER
+        if (App.instance.settings.watchMode.value) watch.start(url) else browser.load(url)
     }
 
     override fun onPause() {
@@ -161,7 +164,7 @@ private val tabs = listOf(
 )
 
 @Composable
-private fun AppRoot(browser: BrowserController, hub: DetectionHub, tab: MutableIntState) {
+private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchController, tab: MutableIntState) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = App.instance
     val scope = rememberCoroutineScope()
@@ -227,6 +230,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, tab: MutableI
                         MainActivity.TAB_BROWSER -> BrowserScreen(
                             browser = browser,
                             hub = hub,
+                            watch = watch,
                             history = history,
                             onClearHistory = app.settings::clearHistory,
                             onDownload = startDownload,
