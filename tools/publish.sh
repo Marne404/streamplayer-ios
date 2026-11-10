@@ -13,6 +13,9 @@
 # Muss von diesem Rechner laufen: Android nimmt ein Update nur an, wenn es mit demselben
 # Schlüssel signiert ist (~/.android/streamplayer-release.jks über keystore.properties).
 set -euo pipefail
+# Aus einem Hook gestartet, setzt Git GIT_DIR, GIT_INDEX_FILE & Co. – die gälten sonst auch im
+# Hilfs-Abzug weiter unten, und `git worktree add` griffe auf den falschen Index.
+unset $(git rev-parse --local-env-vars)
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
 BASE=https://streamplayer-update.marne-gamingx.workers.dev
