@@ -65,7 +65,10 @@ Beschreibung, Jahr und Laufzeit, seit 1.7.0 auch Genres, Bewertung, Tagline, Bes
 (eine Abfrage mit `append_to_response=credits`). Titel, die vorher ergänzt wurden, lädt die App
 einmal nach (`Enricher.upgradeOld`). Fehlen einer Serie die Staffeln, liefert TMDB sie samt
 Folgenzahl, und je Folge kommen Name, Standbild und Inhalt dazu. Katalog-Angaben gewinnen immer,
-TMDB füllt nur Lücken. Die Bildreihenfolge ist: eigenes Cover › Katalog › TMDB › Seitenbild.
+TMDB füllt nur Lücken. Die Bildreihenfolge ist: eigenes Cover › Katalog › TMDB › Seitenbild. Gibt es bei
+TMDB kein Poster bzw. keinen Hintergrund in der eingestellten Sprache, nimmt die App das englische,
+dann das ohne Sprache, dann irgendeines (`Tmdb.pickImage`, Bilder kommen in derselben Abfrage mit).
+Titel ohne Cover lädt sie dafür einmal nach.
 
 ### Creator
 
@@ -335,6 +338,36 @@ die uBlock standardmäßig nutzt: **EasyList, EasyPrivacy, Peter Lowe** (rund 12
 
 Lizenzen: EasyList und EasyPrivacy stehen unter GPLv3 / CC BY-SA 3.0. Die Liste von Peter Lowe
 ist für die private Nutzung frei.
+
+## Sprache
+
+Der Player spricht Deutsch und Englisch, der Creator immer Englisch.
+
+- Texte stehen zweisprachig direkt im Code: `tr("Abspielen", "Play")` aus `core/…/ui/Lang.kt`.
+  Bei zwei Sprachen gibt es so keinen Text ohne Gegenstück. Es funktioniert auch außerhalb von
+  Compose (Meldungen, Benachrichtigungen). `Lang.current` ist Compose-Zustand: Umschalten wirkt
+  sofort, ohne Neustart.
+- Der Willkommens-Ablauf beginnt auf Englisch. Sein erster Schritt fragt nach der Sprache und
+  stellt die Gerätesprache nach oben. Später lässt sie sich unter Einstellungen → Sprache ändern.
+- Wer den Ablauf schon vor 1.8 hatte, bekommt die Gerätesprache, im Zweifel Deutsch, wie bisher.
+- TMDB-Sprache im Player: die der Oberfläche (de-DE bzw. en-US/en-GB …). Im Creator ist es die
+  Gerätesprache, änderbar in seinen Einstellungen.
+
+## Profilsperre
+
+Profile lassen sich wie bei Netflix mit einer vierstelligen PIN sperren: Profile verwalten →
+Profil → „Mit PIN sperren“. Die PIN fragt die App ab, wenn jemand das Profil öffnet, bearbeitet
+oder löscht. Ist das zuletzt genutzte Profil gesperrt, kommt beim Start immer „Wer schaut?“,
+auch wenn „Beim Start fragen“ aus ist.
+
+- Gespeichert wird nur ein gesalzener PBKDF2-Hash (`PinHash`), nie die PIN. Er steht im Profil und
+  gilt damit auf allen Geräten des Kontos.
+- Nach je fünf Fehlversuchen gibt es 30 Sekunden Pause.
+- „PIN vergessen?“ bestätigt den Kontoinhaber: per Passwort beim E-Mail-Konto, über die
+  Kontoauswahl bei Google (`Cloud.confirmOwner`). Danach ist die Sperre weg.
+- Ohne Konto lässt sie sich nur aufheben, indem man die App-Daten löscht. Das steht in der App so da.
+- Eine PIN ist eine Kindersicherung, kein Tresor: Wer das Gerät entsperrt in der Hand hat und die
+  App-Daten löscht, kommt an die Bibliothek.
 
 ## Selbst-Update
 

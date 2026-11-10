@@ -114,7 +114,7 @@ private fun ago(at: Long): String {
         s < 60 -> tr("gerade eben", "just now")
         s < 3600 -> tr("vor ${s / 60} Min.", "${s / 60} min ago")
         s < 86_400 -> tr("vor ${s / 3600} Std.", "${s / 3600} h ago")
-        s < 2 * 86_400 -> tr("vor ${s / 86_400} Tagen", "1 day ago")
+        s < 2 * 86_400 -> tr("vor 1 Tag", "1 day ago")
         else -> tr("vor ${s / 86_400} Tagen", "${s / 86_400} days ago")
     }
 }

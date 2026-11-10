@@ -44,8 +44,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.7.1"
+        versionCode = 18
+        versionName = "1.8.0"
     }
 
     buildTypes {

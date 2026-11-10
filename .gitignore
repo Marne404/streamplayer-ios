@@ -27,3 +27,6 @@ update/public/
 update/.wrangler/
 update/.lock
 update/publish.log
+
+# Arbeitsordner paralleler Agenten
+.claude/worktrees/
