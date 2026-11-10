@@ -5,11 +5,13 @@
   "scripts": {
     "test": "firebase emulators:exec --only firestore --project demo-streamplayer \"node --test tests/\"",
     "emulators": "firebase emulators:start --only auth,firestore --project demo-streamplayer",
-    "deploy:rules": "firebase deploy --only firestore:rules"
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "deploy:rules:sa": "node tools/deploy-rules.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "6.0.0",
     "firebase": "13.2.0",
-    "firebase-tools": "15.35.0"
+    "firebase-tools": "15.35.0",
+    "google-auth-library": "11.3.4"
   }
 }

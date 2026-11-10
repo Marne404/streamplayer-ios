@@ -223,6 +223,8 @@ cd firebase && npm install
 npm test                       # Regeltests gegen den Emulator
 npx firebase login             # einmalig
 npm run deploy:rules           # Regeln ins Projekt streamplayer-eba4c
+# oder mit Dienstkonto statt Login (Schlüssel bleibt in ~/Downloads, nie ins Repo):
+GOOGLE_APPLICATION_CREDENTIALS=~/Downloads/<…adminsdk…>.json npm run deploy:rules:sa
 ```
 
 **Testen ohne echtes Projekt:** `npm run emulators` startet Auth und Firestore lokal;
