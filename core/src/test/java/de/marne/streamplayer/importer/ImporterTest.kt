@@ -3,11 +3,13 @@ package de.marne.streamplayer.importer
 import de.marne.streamplayer.catalog.CatalogType
 import de.marne.streamplayer.catalog.Episodes
 import de.marne.streamplayer.catalog.SeasonSpec
+import de.marne.streamplayer.ui.Lang
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -16,6 +18,9 @@ import org.junit.Test
  * halten fest, welche Formen das allgemeine Verfahren erkennen muss.
  */
 class ImporterTest {
+
+    // Die Meldungen werden hier auf Deutsch geprüft.
+    @Before fun deutsch() { Lang.current = Lang.Code.DE }
 
     private class FakeWeb(private val pages: Map<String, String>) : Fetcher {
         val calls = mutableListOf<String>()

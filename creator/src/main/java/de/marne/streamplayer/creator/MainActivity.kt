@@ -181,13 +181,13 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().first.toByteArray()) }
-        }.onSuccess { toast("Gespeichert.") }.onFailure { toast("Speichern fehlgeschlagen.") }
+        }.onSuccess { toast("Saved.") }.onFailure { toast("Couldn’t save.") }
     }
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
             store.merge(CatalogJson.parse(text))
-        }.onSuccess { toast("$it Titel übernommen.") }.onFailure { toast(it.message ?: "Datei lässt sich nicht lesen.") }
+        }.onSuccess { toast(if (it == 1) "1 title imported." else "$it titles imported.") }.onFailure { toast(it.message ?: "Can’t read the file.") }
     }
 
     fun create(type: CatalogType) {
@@ -202,7 +202,7 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
     ) {
         item {
             ScreenHeader(
-                title = when (catalog.titles.size) { 0 -> "Was planst du?"; 1 -> "Ein Titel."; else -> "${catalog.titles.size} Titel." },
+                title = when (catalog.titles.size) { 0 -> "What are you planning?"; 1 -> "One title."; else -> "${catalog.titles.size} titles." },
                 eyebrow = "Creator",
                 subtitle = catalog.name,
                 trailing = { IconButton(onClick = onSettings) { GIcon(Ic.settings, tint = Palette.text) } },
@@ -210,12 +210,12 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
         }
         item {
             VSpace(28.dp)
-            SecondaryButton("Aus Link übernehmen", icon = Ic.browser, onClick = onImport)
+            SecondaryButton("Import from link", icon = Ic.browser, onClick = onImport)
             VSpace(12.dp)
             Row {
-                Box(Modifier.weight(1f)) { SecondaryButton("Serie", icon = Ic.tv) { create(CatalogType.SERIES) } }
+                Box(Modifier.weight(1f)) { SecondaryButton("Show", icon = Ic.tv) { create(CatalogType.SERIES) } }
                 HSpace(12.dp)
-                Box(Modifier.weight(1f)) { SecondaryButton("Film", icon = Ic.movie) { create(CatalogType.MOVIE) } }
+                Box(Modifier.weight(1f)) { SecondaryButton("Movie", icon = Ic.movie) { create(CatalogType.MOVIE) } }
             }
         }
         if (catalog.titles.isEmpty()) {
@@ -223,33 +223,33 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
                 VSpace(28.dp)
                 NoticeCard(
                     icon = Ic.importFile,
-                    title = "Schon einen Katalog?",
-                    text = "JSON-Datei öffnen und weiterbearbeiten.",
-                    action = "Öffnen",
+                    title = "Already have a catalog?",
+                    text = "Open a JSON file and keep editing.",
+                    action = "Open",
                     onAction = { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
                 )
             }
         }
         if (series.isNotEmpty()) {
-            item { SectionTitle("Serien") }
+            item { SectionTitle("Shows") }
             item { TitleList(series, onEdit) }
         }
         if (movies.isNotEmpty()) {
-            item { SectionTitle("Filme") }
+            item { SectionTitle("Movies") }
             item { TitleList(movies, onEdit) }
         }
         if (catalog.titles.isNotEmpty()) {
             item {
-                SectionTitle("Weitergeben")
-                PrimaryButton(if (playerThere) "An Streamplayer senden" else "Katalog teilen", icon = Ic.share) {
+                SectionTitle("Share")
+                PrimaryButton(if (playerThere) "Send to Streamplayer" else "Share catalog", icon = Ic.share) {
                     val (json, left) = store.exportJson()
-                    if (left > 0) toast(if (left == 1) "1 Titel ohne Namen bleibt hier." else "$left Titel ohne Namen bleiben hier.")
+                    if (left > 0) toast(if (left == 1) "1 title without a name stays here." else "$left titles without a name stay here.")
                     Share.sendToPlayer(context, json, catalog.name ?: "katalog")
                 }
                 VSpace(8.dp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
-                    QuietButton("Als Datei speichern", color = Palette.text) { save.launch(CatalogJson.slug(catalog.name ?: "katalog") + ".json") }
-                    QuietButton("Datei öffnen", color = Palette.muted) { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
+                    QuietButton("Save as file", color = Palette.text) { save.launch(CatalogJson.slug(catalog.name ?: "katalog") + ".json") }
+                    QuietButton("Open file", color = Palette.muted) { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
                 }
             }
         }
@@ -267,7 +267,7 @@ private fun TitleList(list: List<CatalogTitle>, onEdit: (String) -> Unit) {
             ) {
                 Thumb(t.poster, Modifier.size(width = 48.dp, height = 72.dp), radius = 8.dp)
                 Box(Modifier.weight(1f)) {
-                    ListRow(title = t.title.ifBlank { "Ohne Namen" }, subtitle = summary(t).ifBlank { null }, titleMaxLines = 2, onClick = { onEdit(t.id) })
+                    ListRow(title = t.title.ifBlank { "Untitled" }, subtitle = summary(t).ifBlank { null }, titleMaxLines = 2, onClick = { onEdit(t.id) })
                 }
             }
         }
@@ -289,43 +289,47 @@ private fun SettingsScreen(onBack: () -> Unit, toast: (String) -> Unit) {
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
         item {
             IconButton(onClick = onBack) { GIcon(Ic.back) }
-            ScreenHeader(title = "Einstellungen", eyebrow = "Creator")
+            ScreenHeader(title = "Settings", eyebrow = "Creator")
         }
-        item { SectionTitle("Katalog") }
-        item { IvoryField(catalog.name.orEmpty(), { app.store.rename(it) }, "Mein Katalog", label = "Name") }
+        item { SectionTitle("Catalog") }
+        item { IvoryField(catalog.name.orEmpty(), { app.store.rename(it) }, "My catalog", label = "Name") }
         item { SectionTitle("TMDB") }
         item {
             Text(
-                "Für die Suche nach Titeln, Postern und Staffeln. Kostenlos unter themoviedb.org → Einstellungen → API. Der Schlüssel bleibt auf dem Gerät und landet nie im Katalog.",
+                "For finding titles, posters and seasons. Free at themoviedb.org → Settings → API. The key stays on this device and never ends up in the catalog.",
                 style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
             )
             VSpace(12.dp)
-            IvoryField(draft, { draft = it; state = null }, "API-Schlüssel oder Lese-Token", label = "Schlüssel")
+            IvoryField(draft, { draft = it; state = null }, "API key or read access token", label = "Key")
             Row(verticalAlignment = Alignment.CenterVertically) {
-                QuietButton("Speichern und prüfen", color = Palette.text) {
+                QuietButton("Save and check", color = Palette.text) {
                     app.prefs.setTmdbKey(draft)
-                    state = "Prüfe …"
-                    scope.launch { state = if (draft.isBlank()) "TMDB ist aus." else if (app.tmdb.check()) "Schlüssel funktioniert." else "TMDB lehnt den Schlüssel ab." }
+                    state = "Checking …"
+                    scope.launch { state = if (draft.isBlank()) "TMDB is off." else if (app.tmdb.check()) "Key works." else "TMDB rejected the key." }
                 }
-                state?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.contains("lehnt")) Palette.wine else Palette.muted) }
+                state?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.contains("rejected")) Palette.wine else Palette.muted) }
             }
             VSpace(8.dp)
-            IvoryField(lang, { app.prefs.setLanguage(it) }, "de-DE", label = "Sprache für TMDB")
+            IvoryField(lang, { app.prefs.setLanguage(it) }, java.util.Locale.getDefault().toLanguageTag(), label = "TMDB language")
+            Text(
+                "Language for titles, descriptions and posters from TMDB, e.g. en-US or de-DE. Defaults to your device language.",
+                style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+            )
         }
-        item { SectionTitle("Darstellung") }
-        item { Segmented(listOf("system" to "System", "light" to "Hell", "dark" to "Dunkel"), theme, app.prefs::setTheme) }
-        item { SectionTitle("Über") }
+        item { SectionTitle("Appearance") }
+        item { Segmented(listOf("system" to "System", "light" to "Light", "dark" to "Dark"), theme, app.prefs::setTheme) }
+        item { SectionTitle("About") }
         item { de.marne.streamplayer.ui.design.ListGroup { de.marne.streamplayer.update.UpdateRow() } }
         item {
             SectionTitle("Format")
             Text(
-                "Kataloge sind JSON im Format „streamplayer-catalog“, Version 1. Sie lassen sich auch von Hand schreiben; der Player erklärt Fehler mit Position.",
+                "Catalogs are JSON in the “streamplayer-catalog” format, version 1. You can also write them by hand; the Player points out errors with their position.",
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
-            QuietButton("Beispiel in die Zwischenablage", color = Palette.text) {
+            QuietButton("Copy example to clipboard", color = Palette.text) {
                 val cm = app.getSystemService(android.content.ClipboardManager::class.java)
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("Katalog", EXAMPLE))
-                toast("Beispiel kopiert.")
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Catalog", EXAMPLE))
+                toast("Example copied.")
             }
         }
     }
@@ -335,12 +339,12 @@ private val EXAMPLE = """
 {
   "format": "streamplayer-catalog",
   "version": 1,
-  "name": "Mein Katalog",
+  "name": "My catalog",
   "titles": [
     {
       "type": "series",
       "id": "beispiel-serie",
-      "title": "Beispielserie",
+      "title": "Example Show",
       "year": 2020,
       "tmdb": { "id": 1396 },
       "template": "https://example.org/serie/beispiel/staffel-{s}/episode-{e}",
@@ -354,9 +358,9 @@ private val EXAMPLE = """
     {
       "type": "movie",
       "id": "beispiel-film",
-      "title": "Beispielfilm",
+      "title": "Example Movie",
       "year": 2010,
-      "tmdb": { "query": "Beispielfilm" },
+      "tmdb": { "query": "Example Movie" },
       "url": "https://example.org/film/beispiel"
     }
   ]

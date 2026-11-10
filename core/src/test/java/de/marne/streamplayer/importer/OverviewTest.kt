@@ -1,11 +1,13 @@
 package de.marne.streamplayer.importer
 
+import de.marne.streamplayer.ui.Lang
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -13,6 +15,9 @@ import org.junit.Test
  * Festgehalten wird, welche Verweise als Titel zählen und welche Navigation sind.
  */
 class OverviewTest {
+
+    // Die Meldungen werden hier auf Deutsch geprüft.
+    @Before fun deutsch() { Lang.current = Lang.Code.DE }
 
     private class FakeWeb(private val pages: Map<String, String>, private val status: Map<String, Int> = emptyMap()) : Fetcher {
         val calls = mutableListOf<String>()

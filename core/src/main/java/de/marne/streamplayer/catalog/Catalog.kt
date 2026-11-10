@@ -1,5 +1,6 @@
 package de.marne.streamplayer.catalog
 
+import de.marne.streamplayer.ui.tr
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -107,20 +108,21 @@ object CatalogJson {
             val trimmed = text.trimStart('﻿', ' ', '\n', '\r', '\t')
             if (trimmed.startsWith("[")) JSONObject().put("titles", JSONArray(trimmed)) else JSONObject(trimmed)
         } catch (e: Exception) {
-            throw CatalogException("Keine gültige JSON-Datei: ${e.message}")
+            throw CatalogException(tr("Keine gültige JSON-Datei: ${e.message}", "Not a valid JSON file: ${e.message}"))
         }
         val format = root.optString("format", FORMAT)
-        if (format != FORMAT) throw CatalogException("Unbekanntes Format „$format“.")
+        if (format != FORMAT) throw CatalogException(tr("Unbekanntes Format „$format“.", "Unknown format “$format”."))
         val version = root.optInt("version", VERSION)
-        if (version > VERSION) throw CatalogException("Katalog-Version $version ist neuer als diese App. Bitte aktualisieren.")
-        val arr = root.optJSONArray("titles") ?: throw CatalogException("Kein Feld „titles“ gefunden.")
+        if (version > VERSION) throw CatalogException(tr("Katalog-Version $version ist neuer als diese App. Bitte aktualisieren.", "Catalog version $version is newer than this app. Please update."))
+        val arr = root.optJSONArray("titles") ?: throw CatalogException(tr("Kein Feld „titles“ gefunden.", "No “titles” field found."))
         val problems = mutableListOf<String>()
         val titles = (0 until arr.length()).mapNotNull { i ->
             try {
-                val o = arr.optJSONObject(i) ?: throw CatalogException("kein Objekt.")
+                val o = arr.optJSONObject(i) ?: throw CatalogException(tr("kein Objekt.", "not an object."))
                 parseTitle(o, strict)
             } catch (e: Exception) {
-                val msg = "Eintrag ${i + 1}: ${(e as? CatalogException)?.message ?: e.message}"
+                val reason = (e as? CatalogException)?.message ?: e.message
+                val msg = tr("Eintrag ${i + 1}: $reason", "Entry ${i + 1}: $reason")
                 if (!skipBroken) throw CatalogException(msg)
                 problems += msg
                 null
@@ -134,9 +136,9 @@ object CatalogJson {
             "movie", "film" -> CatalogType.MOVIE
             "series", "serie", "tv", "show" -> CatalogType.SERIES
             "" -> if (o.has("template") || o.has("seasons")) CatalogType.SERIES else CatalogType.MOVIE
-            else -> throw CatalogException("Unbekannter Typ „${o.optString("type")}“ (movie oder series).")
+            else -> throw CatalogException(tr("Unbekannter Typ „${o.optString("type")}“ (movie oder series).", "Unknown type “${o.optString("type")}” (movie or series)."))
         }
-        val title = o.str("title") ?: o.optJSONObject("tmdb")?.str("query") ?: if (strict) throw CatalogException("„title“ fehlt.") else ""
+        val title = o.str("title") ?: o.optJSONObject("tmdb")?.str("query") ?: if (strict) throw CatalogException(tr("„title“ fehlt.", "“title” is missing.")) else ""
         val tmdb = when (val t = o.opt("tmdb")) {
             is JSONObject -> TmdbRef(t.optInt("id").takeIf { it > 0 }, t.str("query"))
             is Number -> TmdbRef(t.toInt())
@@ -149,12 +151,12 @@ object CatalogJson {
                     is Number -> SeasonSpec(i + 1, s.toInt())          // Kurzform: [12, 8, 10]
                     is JSONObject -> SeasonSpec(
                         number = s.optInt("number", i + 1),
-                        episodes = s.optInt("episodes", -1).takeIf { it >= 0 } ?: if (strict) throw CatalogException("Staffel ${i + 1}: „episodes“ fehlt.") else 0,
+                        episodes = s.optInt("episodes", -1).takeIf { it >= 0 } ?: if (strict) throw CatalogException(tr("Staffel ${i + 1}: „episodes“ fehlt.", "Season ${i + 1}: “episodes” is missing.")) else 0,
                         start = s.optInt("start", 1),
                         template = s.str("template"),
                         title = s.str("title"),
                     )
-                    else -> throw CatalogException("Staffel ${i + 1} ist weder Zahl noch Objekt.")
+                    else -> throw CatalogException(tr("Staffel ${i + 1} ist weder Zahl noch Objekt.", "Season ${i + 1} is neither a number nor an object."))
                 }
             }
         }.orEmpty()
@@ -167,7 +169,7 @@ object CatalogJson {
         val template = o.str("template")
         val url = o.str("url")
         if (strict && type == CatalogType.SERIES && template != null && !Pattern.hasEpisode(template) && seasons.any { it.template == null }) {
-            throw CatalogException("Muster ohne Folgennummer ({e} oder {a}).")
+            throw CatalogException(tr("Muster ohne Folgennummer ({e} oder {a}).", "Pattern without an episode number ({e} or {a})."))
         }
         return CatalogTitle(
             id = o.str("id") ?: slug(title, o.optInt("year")),

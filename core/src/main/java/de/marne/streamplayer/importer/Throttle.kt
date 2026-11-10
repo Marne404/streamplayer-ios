@@ -1,5 +1,6 @@
 package de.marne.streamplayer.importer
 
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
@@ -98,11 +99,11 @@ class Throttle(
 
     companion object {
         const val MAX_PAUSE = 30_000L
-        const val DISALLOWED = "Laut robots.txt der Seite nicht erlaubt."
+        val DISALLOWED: String get() = tr("Laut robots.txt der Seite nicht erlaubt.", "Not allowed by the site’s robots.txt.")
 
         fun message(stop: Stop) = when (stop) {
-            Stop.BUDGET -> "Abrufgrenze dieses Durchgangs erreicht."
-            Stop.SLOW_DOWN -> "Die Seite bremst (429, zu viele Anfragen)."
+            Stop.BUDGET -> tr("Abrufgrenze dieses Durchgangs erreicht.", "Fetch limit for this run reached.")
+            Stop.SLOW_DOWN -> tr("Die Seite bremst (429, zu viele Anfragen).", "The site is throttling requests (429, too many requests).")
         }
 
         private fun originOf(url: String): String? {

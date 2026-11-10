@@ -19,6 +19,7 @@ import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.QuietButton
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -35,17 +36,22 @@ fun UpdateOffer(appName: String) {
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = Updater::later,
-        title = { Text("$appName ${ready.version} ist da.") },
+        title = { Text(tr("$appName ${ready.version} ist da.", "$appName ${ready.version} is here.")) },
         text = {
             Text(
-                "Schon geladen. Tippe auf Installieren und bestätige. Beim ersten Mal fragt Android, ob " +
-                    "$appName Apps installieren darf – erlauben, zurückkommen, noch einmal tippen. " +
-                    "Deine Daten bleiben.",
+                tr(
+                    "Schon geladen. Tippe auf Installieren und bestätige. Beim ersten Mal fragt Android, ob " +
+                        "$appName Apps installieren darf – erlauben, zurückkommen, noch einmal tippen. " +
+                        "Deine Daten bleiben.",
+                    "Already downloaded. Tap Install and confirm. The first time, Android asks whether " +
+                        "$appName may install apps – allow it, come back, and tap again. " +
+                        "Your data stays.",
+                ),
                 color = Palette.muted,
             )
         },
-        confirmButton = { QuietButton("Installieren") { Updater.install(context) } },
-        dismissButton = { QuietButton("Später", color = Palette.muted, onClick = Updater::later) },
+        confirmButton = { QuietButton(tr("Installieren", "Install")) { Updater.install(context) } },
+        dismissButton = { QuietButton(tr("Später", "Later"), color = Palette.muted, onClick = Updater::later) },
         containerColor = Palette.bg,
         shape = RoundedCornerShape(28.dp),
     )
@@ -57,15 +63,23 @@ fun UpdateRow() {
     val context = LocalContext.current
     val update by Updater.state.collectAsStateWithLifecycle()
     var checking by remember { mutableStateOf(false) }
-    var note by remember { mutableStateOf<String?>(null) }
+    var note by remember { mutableStateOf<Updater.CheckResult?>(null) }
     val scope = rememberCoroutineScope()
     val version = remember { Updater.versionName(context) }
     ListRow(
-        title = "Nach Updates suchen",
+        title = tr("Nach Updates suchen", "Check for updates"),
         subtitle = when (val u = update) {
-            is UpdateState.Downloading -> "Lädt ${u.version} … ${(u.progress * 100).toInt().coerceIn(0, 100)} %"
-            is UpdateState.Ready -> "${u.version} ist bereit – tippen zum Installieren"
-            UpdateState.None -> note ?: if (Updater.enabled) "Version $version · prüft bei jedem Start" else "Version $version · Testversion, ohne Updates"
+            is UpdateState.Downloading -> {
+                val percent = (u.progress * 100).toInt().coerceIn(0, 100)
+                tr("Lädt ${u.version} … $percent %", "Downloading ${u.version} … $percent%")
+            }
+            is UpdateState.Ready -> tr("${u.version} ist bereit – tippen zum Installieren", "${u.version} is ready – tap to install")
+            UpdateState.None -> when (note) {
+                Updater.CheckResult.UpToDate -> tr("Version $version ist die neueste.", "Version $version is the latest.")
+                Updater.CheckResult.Failed -> tr("Keine Verbindung zum Update-Server.", "Can’t reach the update server.")
+                else -> if (Updater.enabled) tr("Version $version · prüft bei jedem Start", "Version $version · checks on every launch")
+                else tr("Version $version · Testversion, ohne Updates", "Version $version · test build, no updates")
+            }
         },
         icon = Ic.download,
         showChevron = false,
@@ -78,11 +92,7 @@ fun UpdateRow() {
                 val started = System.currentTimeMillis()
                 val result = Updater.checkNow(context)
                 delay((700 - (System.currentTimeMillis() - started)).coerceAtLeast(0))
-                note = when (result) {
-                    Updater.CheckResult.UpToDate -> "Version $version ist die neueste."
-                    Updater.CheckResult.Found -> null
-                    Updater.CheckResult.Failed -> "Keine Verbindung zum Update-Server."
-                }
+                note = result
                 checking = false
             }
         },

@@ -1,5 +1,6 @@
 package de.marne.streamplayer.catalog
 
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -86,7 +87,7 @@ class Tmdb(
     suspend fun season(tvId: Int, season: Int): List<EpisodeInfo> = parseSeason(get("tv/$tvId/season/$season"))
 
     private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject = withContext(Dispatchers.IO) {
-        val k = key()?.trim().takeIf { !it.isNullOrEmpty() } ?: throw TmdbException("Kein TMDB-Schlüssel eingetragen.")
+        val k = key()?.trim().takeIf { !it.isNullOrEmpty() } ?: throw TmdbException(tr("Kein TMDB-Schlüssel eingetragen.", "No TMDB key entered."))
         val bearer = k.startsWith("eyJ")
         val url = "$BASE/$path".toHttpUrl().newBuilder().apply {
             params.forEach { (n, v) -> addQueryParameter(n, v) }
@@ -99,9 +100,9 @@ class Tmdb(
         http.newCall(req).execute().use { r ->
             val body = r.body?.string().orEmpty()
             when {
-                r.code == 401 -> throw TmdbException("TMDB lehnt den Schlüssel ab.")
-                r.code == 404 -> throw TmdbException("Bei TMDB nicht gefunden.")
-                !r.isSuccessful -> throw TmdbException("TMDB antwortet mit ${r.code}.")
+                r.code == 401 -> throw TmdbException(tr("TMDB lehnt den Schlüssel ab.", "TMDB rejected the key."))
+                r.code == 404 -> throw TmdbException(tr("Bei TMDB nicht gefunden.", "Not found on TMDB."))
+                !r.isSuccessful -> throw TmdbException(tr("TMDB antwortet mit ${r.code}.", "TMDB responded with ${r.code}."))
             }
             JSONObject(body)
         }

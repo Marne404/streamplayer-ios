@@ -1,5 +1,6 @@
 package de.marne.streamplayer.importer
 
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CancellationException
 import java.net.URLDecoder
 
@@ -114,7 +115,7 @@ object Overview {
         maxTitles: Int,
         progress: (page: Int, found: Int) -> Unit = { _, _ -> },
     ): Scan {
-        val start = Importer.normalize(input) ?: throw FetchException("Das ist keine Adresse. Sie beginnt mit http:// oder https://.")
+        val start = Importer.normalize(input) ?: throw FetchException(tr("Das ist keine Adresse. Sie beginnt mit http:// oder https://.", "That’s not a web address. It starts with http:// or https://."))
         val found = LinkedHashMap<String, Found>()
         val seen = mutableSetOf<String>()
         var target: String? = start
@@ -133,9 +134,9 @@ object Overview {
             }
             if (r.status >= 400) {
                 lastError = when (r.status) {
-                    404, 410 -> "Die Seite gibt es nicht (${r.status})."
-                    401, 403, 429, 503 -> "Die Seite lässt den Creator nicht hinein (${r.status})."
-                    else -> "Die Seite antwortet mit ${r.status}."
+                    404, 410 -> tr("Die Seite gibt es nicht (${r.status}).", "The page doesn’t exist (${r.status}).")
+                    401, 403, 429, 503 -> tr("Die Seite lässt den Creator nicht hinein (${r.status}).", "The site won’t let the Creator in (${r.status}).")
+                    else -> tr("Die Seite antwortet mit ${r.status}.", "The site responded with ${r.status}.")
                 }
                 return null
             }
@@ -156,13 +157,13 @@ object Overview {
                 }
             }
             if (page == null) {
-                if (pages == 0) throw FetchException(lastError ?: "Die Übersicht lässt sich nicht laden.")
+                if (pages == 0) throw FetchException(lastError ?: tr("Die Übersicht lässt sich nicht laden.", "The overview can’t be loaded."))
                 break   // Folgeseite nicht lesbar (oder Abrufgrenze): mit dem Gefundenen weiter.
             }
             pages++
             seen += key(page.url)
             if (pages == 1 && t.isEmpty()) {
-                throw FetchException("Auf der Seite ist keine Liste von Serien oder Filmen zu erkennen. Für einen einzelnen Titel oben „Ein Titel“ wählen.")
+                throw FetchException(tr("Auf der Seite ist keine Liste von Serien oder Filmen zu erkennen. Für einen einzelnen Titel oben „Ein Titel“ wählen.", "No list of shows or movies found on this page. For a single title, choose “Single titles” above."))
             }
             // Seiten der Übersicht selbst („Zurück zur Liste“ auf Seite 2) sind keine Titel.
             t.forEach { if (found.size < maxTitles && key(it.url) !in seen) found.putIfAbsent(key(it.url), it) }

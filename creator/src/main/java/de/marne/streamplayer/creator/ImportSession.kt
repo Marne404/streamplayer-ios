@@ -125,12 +125,12 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             context.contentResolver.openInputStream(uri)?.use { it.readBytes().take(MAX_FILE).toByteArray().toString(Charsets.UTF_8) }
         }.getOrNull()
         when {
-            text == null -> fail("Die Datei lässt sich nicht lesen.")
+            text == null -> fail("Can’t read the file.")
             LinkList.isCatalog(text) -> notice.value = runCatching {
                 val n = app.store.merge(CatalogJson.parse(text, strict = false))
-                if (n == 1) "1 Titel aus dem Katalog übernommen." else "$n Titel aus dem Katalog übernommen."
-            }.getOrElse { it.message ?: "Der Katalog lässt sich nicht lesen." }
-            LinkList.parse(text).isEmpty() -> { fail("In der Datei steht kein Link."); _requests.value++ }
+                if (n == 1) "1 title imported from the catalog." else "$n titles imported from the catalog."
+            }.getOrElse { it.message ?: "Can’t read the catalog." }
+            LinkList.parse(text).isEmpty() -> { fail("There’s no link in the file."); _requests.value++ }
             else -> request(text)
         }
     }
@@ -161,14 +161,14 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         val url = links.firstOrNull()?.url ?: Importer.normalize(text)
         input.value = url ?: text
         if (url == null) {
-            _state.value = State.Failed("Das ist keine Adresse. Sie beginnt mit http:// oder https://.")
+            _state.value = State.Failed("That’s not a web address. It starts with http:// or https://.")
             return
         }
         stopJob()
         val run = gen
         nameOverride.value = links.firstOrNull()?.name
         val host = url.substringAfter("://").substringBefore('/').removePrefix("www.")
-        _state.value = State.Running("Lade die Seite …", host)
+        _state.value = State.Running("Loading the page …", host)
         val importer = importer()
         job = scope.launch {
             try {
@@ -178,7 +178,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = State.Failed(e.message ?: "Die Seite ließ sich nicht lesen.")
+                _state.value = State.Failed(e.message ?: "The page couldn’t be read.")
             } finally {
                 withContext(NonCancellable) { if (run == gen) browser.release() }
             }
@@ -199,7 +199,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             try {
                 links.forEachIndexed { i, link ->
                     if (i > 0) delay(BETWEEN_LINKS_MS)
-                    setItem(i, ItemStatus.Running("Lade die Seite …"))
+                    setItem(i, ItemStatus.Running("Loading the page …"))
                     val result = try {
                         val d = withContext(Dispatchers.Default) { importer.analyze(link.url) { step -> setItem(i, ItemStatus.Running(step)) } }
                         val named = link.name != null || d.title.title.isNotBlank()
@@ -207,7 +207,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        ItemStatus.Failed(e.message ?: "Die Seite ließ sich nicht lesen.")
+                        ItemStatus.Failed(e.message ?: "The page couldn’t be read.")
                     }
                     setItem(i, result)
                 }
@@ -255,7 +255,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         val url = Importer.normalize(text)
         input.value = url ?: text
         if (url == null) {
-            _state.value = State.Failed("Das ist keine Adresse. Sie beginnt mit http:// oder https://.")
+            _state.value = State.Failed("That’s not a web address. It starts with http:// or https://.")
             return
         }
         stopJob()
@@ -266,14 +266,14 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         throttle = t
         crawlHttp = plain
         val host = url.substringAfter("://").substringBefore('/').removePrefix("www.")
-        val crawl = Crawl(host = host, scanning = "Lade die Übersicht …", budget = t.budget)
+        val crawl = Crawl(host = host, scanning = "Loading the overview …", budget = t.budget)
         _state.value = State.Batch(emptyList(), running = true, crawl = crawl)
         job = scope.launch {
             try {
                 val scan = withContext(Dispatchers.Default) {
                     Overview.scan(url, t.wrap(plain), t.wrap(browser), MAX_LIST_PAGES, LinkList.MAX) { page, found ->
                         setCrawl {
-                            it.copy(scanning = if (page == 1) "Lade die Übersicht …" else "Übersicht, Seite $page · $found Titel", used = t.used)
+                            it.copy(scanning = if (page == 1) "Loading the overview …" else "Overview, page $page · " + if (found == 1) "1 title" else "$found titles", used = t.used)
                         }
                     }
                 }
@@ -286,7 +286,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (run == gen) _state.value = State.Failed(e.message ?: "Die Übersicht ließ sich nicht lesen.")
+                if (run == gen) _state.value = State.Failed(e.message ?: "The overview couldn’t be read.")
             } finally {
                 withContext(NonCancellable) {
                     if (run == gen) {
@@ -346,7 +346,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
                 setItem(i, ItemStatus.Failed(Throttle.DISALLOWED))
                 continue
             }
-            setItem(i, ItemStatus.Running("Lade die Seite …"))
+            setItem(i, ItemStatus.Running("Loading the page …"))
             val limit = minOf(PER_TITLE, t.remaining)
             val importer = Importer(http, br, app.tmdb, pauseMs = 0, maxPages = limit)
             val result: ItemStatus? = try {
@@ -361,7 +361,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (t.stop != null) null else ItemStatus.Failed(e.message ?: "Die Seite ließ sich nicht lesen.")
+                if (t.stop != null) null else ItemStatus.Failed(e.message ?: "The page couldn’t be read.")
             }
             if (result == null) {
                 setItem(i, ItemStatus.Waiting)
@@ -384,14 +384,14 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             when {
                 s.crawl != null && item.status is ItemStatus.Running -> item.copy(status = ItemStatus.Waiting)
                 s.crawl != null -> item
-                item.status is ItemStatus.Waiting || item.status is ItemStatus.Running -> item.copy(status = ItemStatus.Failed("Angehalten"))
+                item.status is ItemStatus.Waiting || item.status is ItemStatus.Running -> item.copy(status = ItemStatus.Failed("Stopped"))
                 else -> item
             }
         },
         // Von Hand angehalten (beim Lesen der Übersicht oder mitten in den Titeln): sagen, statt „Lese …“ stehen zu lassen.
         crawl = s.crawl?.let { c ->
             val open = c.scanning != null || s.items.any { it.status is ItemStatus.Waiting || it.status is ItemStatus.Running }
-            c.copy(scanning = null, halt = c.halt ?: "Angehalten.".takeIf { open })
+            c.copy(scanning = null, halt = c.halt ?: "Stopped.".takeIf { open })
         },
     )
 

@@ -153,11 +153,11 @@ class CatalogStore(private val context: Context) {
     }
 
     private fun load(): Catalog {
-        if (!file.exists()) return Catalog(emptyList(), "Mein Katalog")
+        if (!file.exists()) return Catalog(emptyList(), "My catalog")
         return runCatching { CatalogJson.parse(file.readText(), strict = false) }.getOrElse {
             // Nie still verwerfen: die unlesbare Datei beiseitelegen, statt sie beim nächsten Speichern zu überschreiben.
             file.copyTo(File(file.parentFile, "catalog.broken-${System.currentTimeMillis()}.json"), overwrite = true)
-            Catalog(emptyList(), "Mein Katalog")
+            Catalog(emptyList(), "My catalog")
         }
     }
 
@@ -186,7 +186,7 @@ object Share {
             context.grantUriPermission(installed, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             context.startActivity(send.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } else {
-            context.startActivity(Intent.createChooser(send, "Katalog senden").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(Intent.createChooser(send, "Send catalog").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 

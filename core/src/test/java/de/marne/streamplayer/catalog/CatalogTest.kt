@@ -1,13 +1,18 @@
 package de.marne.streamplayer.catalog
 
+import de.marne.streamplayer.ui.Lang
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Before
 import org.junit.Test
 
 class CatalogTest {
+
+    // Die Meldungen werden hier auf Deutsch geprüft.
+    @Before fun deutsch() { Lang.current = Lang.Code.DE }
 
     private val sample = """
         {

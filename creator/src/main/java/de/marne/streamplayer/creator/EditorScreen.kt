@@ -93,18 +93,18 @@ fun EditorScreen(id: String, onBack: () -> Unit, onIdChange: (String) -> Unit) {
             Row(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { GIcon(Ic.back) }
                 Box(Modifier.weight(1f))
-                RowMenu(listOf(MenuAction("Löschen", destructive = true) { confirmDelete = true }))
+                RowMenu(listOf(MenuAction("Delete", destructive = true) { confirmDelete = true }))
             }
-            Text(if (series) "SERIE" else "FILM", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            Text(if (series) "SHOW" else "MOVIE", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
             VSpace(6.dp)
-            Text(t.title.ifBlank { "Ohne Namen" }, style = MaterialTheme.typography.headlineLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(t.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.headlineLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
 
-        item { SectionTitle("Titel") }
+        item { SectionTitle("Title") }
         item {
-            IvoryField(t.title, { change(t.copy(title = it)) }, if (series) "Name der Serie" else "Name des Films", label = "Name")
+            IvoryField(t.title, { change(t.copy(title = it)) }, if (series) "Name of the show" else "Name of the movie", label = "Name")
             VSpace(12.dp)
-            IvoryField(t.year?.toString().orEmpty(), { v -> change(t.copy(year = v.filter(Char::isDigit).take(4).toIntOrNull())) }, "z. B. 2008", KeyboardType.Number, label = "Jahr")
+            IvoryField(t.year?.toString().orEmpty(), { v -> change(t.copy(year = v.filter(Char::isDigit).take(4).toIntOrNull())) }, "e.g. 2008", KeyboardType.Number, label = "Year")
         }
 
         item { SectionTitle("TMDB") }
@@ -114,28 +114,28 @@ fun EditorScreen(id: String, onBack: () -> Unit, onIdChange: (String) -> Unit) {
         item { if (series) LinkSeries(t, ::change) else LinkMovie(t, ::change) }
 
         if (series) {
-            item { SectionTitle("Staffeln") }
+            item { SectionTitle("Seasons") }
             item { SeasonsSection(t, ::change) }
-            item { SectionTitle("Vorschau") }
+            item { SectionTitle("Preview") }
             item { PreviewSection(t, ::change) }
         }
 
-        item { SectionTitle("Bilder") }
+        item { SectionTitle("Images") }
         item { ImagesSection(t, ::change) }
 
-        item { SectionTitle("Beschreibung") }
+        item { SectionTitle("Description") }
         item {
-            IvoryField(t.description.orEmpty(), { change(t.copy(description = it.ifBlank { null })) }, "Leer lassen: kommt von TMDB oder der Seite.", singleLine = false)
+            IvoryField(t.description.orEmpty(), { change(t.copy(description = it.ifBlank { null })) }, "Leave empty: comes from TMDB or the site.", singleLine = false)
             VSpace(16.dp)
             var idDraft by remember(t.id) { mutableStateOf(t.id) }
             val idTaken = idDraft != t.id && catalog.titles.any { it.id == idDraft }
             IvoryField(idDraft, { v ->
                 idDraft = v.lowercase().filter { it.isLetterOrDigit() || it == '-' }
                 if (idDraft.isNotBlank() && catalog.titles.none { it.id == idDraft && it.id != t.id }) change(t.copy(id = idDraft))
-            }, "id", label = "Katalog-ID")
-            if (idTaken) StatusLine(Ic.error, "Diese ID hat schon ein anderer Titel.")
+            }, "id", label = "Catalog ID")
+            if (idTaken) StatusLine(Ic.error, "Another title already has this ID.")
             Text(
-                "Bleibt sie gleich, aktualisiert ein erneuter Import den Titel im Player, statt ihn doppelt anzulegen.",
+                "If it stays the same, importing again updates the title in the Player instead of adding it twice.",
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(top = 4.dp, start = 4.dp),
             )
         }
@@ -144,10 +144,10 @@ fun EditorScreen(id: String, onBack: () -> Unit, onIdChange: (String) -> Unit) {
     if (confirmDelete) AlertDialog(
         onDismissRequest = { confirmDelete = false },
         containerColor = Palette.surface,
-        title = { Text("„${t.title}“ löschen?", style = MaterialTheme.typography.headlineSmall) },
-        text = { Text("Nur aus dem Katalog. Im Player bleibt der Titel, bis du ihn dort entfernst.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
-        confirmButton = { QuietButton("Löschen", color = Palette.wine) { confirmDelete = false; store.remove(t.id); onBack() } },
-        dismissButton = { QuietButton("Behalten", color = Palette.muted) { confirmDelete = false } },
+        title = { Text("Delete “${t.title}”?", style = MaterialTheme.typography.headlineSmall) },
+        text = { Text("Only from the catalog. The title stays in the Player until you remove it there.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
+        confirmButton = { QuietButton("Delete", color = Palette.wine) { confirmDelete = false; store.remove(t.id); onBack() } },
+        dismissButton = { QuietButton("Keep", color = Palette.muted) { confirmDelete = false } },
     )
 }
 
@@ -171,18 +171,18 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
 
     if (key.isBlank()) {
         Text(
-            "Ohne Schlüssel: TMDB-ID oder Suchbegriff von Hand. Der Player sucht dann selbst. Schlüssel unter Einstellungen.",
+            "Without a key: enter the TMDB ID or a search term by hand. The Player then searches on its own. Add a key in Settings.",
             style = MaterialTheme.typography.bodySmall, color = Palette.muted,
         )
         VSpace(10.dp)
         IvoryField(t.tmdb?.id?.toString().orEmpty(), { v ->
             val id = v.filter(Char::isDigit).toIntOrNull()
             change(t.copy(tmdb = if (id == null && t.tmdb?.query == null) null else TmdbRef(id, t.tmdb?.query)))
-        }, "z. B. 1396", KeyboardType.Number, label = "TMDB-ID")
+        }, "e.g. 1396", KeyboardType.Number, label = "TMDB ID")
         VSpace(12.dp)
         IvoryField(t.tmdb?.query.orEmpty(), { v ->
             change(t.copy(tmdb = if (v.isBlank() && t.tmdb?.id == null) null else TmdbRef(t.tmdb?.id, v.ifBlank { null })))
-        }, "Sonst sucht der Player nach dem Namen", label = "Suchbegriff")
+        }, "Otherwise the Player searches by name", label = "Search term")
         return
     }
 
@@ -201,13 +201,13 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
                         )
                         details?.takeIf { kind == Tmdb.Kind.TV }?.let { d ->
                             val real = d.seasons.filter { it.number > 0 }
-                            Text("${real.size} Staffeln · ${real.sumOf { it.episodeCount }} Folgen", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                            Text(seasonsLabel(real.size) + " · " + episodesLabel(real.sumOf { it.episodeCount }), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                         }
                     }
                 }
                 VSpace(8.dp)
                 Row {
-                    if (kind == Tmdb.Kind.TV) QuietButton("Staffeln übernehmen", color = Palette.text) {
+                    if (kind == Tmdb.Kind.TV) QuietButton("Use seasons", color = Palette.text) {
                         val d = details ?: return@QuietButton
                         val keep = t.seasons.associateBy { it.number }
                         val seasons = d.seasons.filter { it.number > 0 && it.episodeCount > 0 }.map { s ->
@@ -215,9 +215,9 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
                             keep[s.number]?.copy(episodes = s.episodeCount) ?: SeasonSpec(s.number, s.episodeCount)
                         }
                         change(t.copy(seasons = seasons))
-                        message = "${seasons.size} Staffeln übernommen."
+                        message = if (seasons.size == 1) "1 season added." else "${seasons.size} seasons added."
                     }
-                    QuietButton("Lösen", color = Palette.wine) { change(t.copy(tmdb = TmdbRef(query = query.ifBlank { null }))) }
+                    QuietButton("Unlink", color = Palette.wine) { change(t.copy(tmdb = TmdbRef(query = query.ifBlank { null }))) }
                 }
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted) }
             }
@@ -225,12 +225,12 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
         return
     }
 
-    IvoryField(query, { query = it }, "Name, gern mit Jahr", label = "Bei TMDB suchen")
-    QuietButton("Suchen", color = Palette.text) {
-        message = "Suche …"
+    IvoryField(query, { query = it }, "Name, ideally with year", label = "Search TMDB")
+    QuietButton("Search", color = Palette.text) {
+        message = "Searching …"
         scope.launch {
             runCatching { app.tmdb.search(query, kind, t.year) }
-                .onSuccess { results = it.take(8); message = if (it.isEmpty()) "Nichts gefunden. Anders schreiben oder ohne Jahr?" else null }
+                .onSuccess { results = it.take(8); message = if (it.isEmpty()) "Nothing found. Try a different spelling or leave out the year?" else null }
                 .onFailure { message = it.message }
         }
     }
@@ -264,31 +264,31 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
 @Composable
 private fun LinkMovie(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
     val context = LocalContext.current
-    IvoryField(t.url.orEmpty(), { change(t.copy(url = it.trim().ifBlank { null })) }, "https://…", KeyboardType.Uri, label = "Seite des Films")
-    t.url?.let { QuietButton("Im Browser prüfen", color = Palette.muted) { Share.openInBrowser(context, it) } }
+    IvoryField(t.url.orEmpty(), { change(t.copy(url = it.trim().ifBlank { null })) }, "https://…", KeyboardType.Uri, label = "Movie page")
+    t.url?.let { QuietButton("Check in browser", color = Palette.muted) { Share.openInBrowser(context, it) } }
 }
 
 @Composable
 private fun LinkSeries(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
     var sample by remember(t.id) { mutableStateOf("") }
     Text(
-        "Link einer beliebigen Folge einfügen – daraus wird das Muster. Oder das Muster direkt schreiben.",
+        "Paste the link of any episode – the pattern is derived from it. Or write the pattern directly.",
         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
     )
     VSpace(10.dp)
-    IvoryField(sample, { sample = it }, "https://…/staffel-2/episode-5", KeyboardType.Uri, label = "Link einer Folge")
-    QuietButton("Muster ableiten", color = if (sample.isNotBlank()) Palette.text else Palette.faint) {
+    IvoryField(sample, { sample = it }, "https://…/staffel-2/episode-5", KeyboardType.Uri, label = "Episode link")
+    QuietButton("Derive pattern", color = if (sample.isNotBlank()) Palette.text else Palette.faint) {
         Pattern.derive(sample.trim())?.let { change(t.copy(template = it)) }
     }
-    IvoryField(t.template.orEmpty(), { change(t.copy(template = it.trim().ifBlank { null })) }, "https://…/staffel-{s}/episode-{e}", KeyboardType.Uri, label = "Muster", singleLine = false)
+    IvoryField(t.template.orEmpty(), { change(t.copy(template = it.trim().ifBlank { null })) }, "https://…/staffel-{s}/episode-{e}", KeyboardType.Uri, label = "Pattern", singleLine = false)
     Text(
-        "{s} Staffel · {e} Folge · {a} absolute Folge über alle Staffeln. Doppelt/dreifach = mit Nullen: {ss}, {ee}, {eee}, {aaa}.",
+        "{s} season · {e} episode · {a} absolute episode across all seasons. Doubled/tripled = zero-padded: {ss}, {ee}, {eee}, {aaa}.",
         style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(top = 4.dp, start = 4.dp),
     )
     val tpl = t.template
     if (tpl != null && !Pattern.hasEpisode(tpl) && t.seasons.any { it.template == null }) {
         VSpace(8.dp)
-        StatusLine(Ic.error, "Im Muster fehlt die Folge ({e} oder {a}).")
+        StatusLine(Ic.error, "The pattern is missing the episode ({e} or {a}).")
     }
 }
 
@@ -301,15 +301,15 @@ private fun SeasonsSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
     val seasons = t.seasons.sortedBy { it.number }
     fun update(old: SeasonSpec, new: SeasonSpec) = change(t.copy(seasons = t.seasons.map { if (it == old) new else it }))
 
-    IvoryField(quick, { quick = it }, "12, 8, 10", label = "Schnell: Folgen je Staffel")
-    QuietButton("Übernehmen", color = if (quick.isNotBlank()) Palette.text else Palette.faint) {
+    IvoryField(quick, { quick = it }, "12, 8, 10", label = "Quick: episodes per season")
+    QuietButton("Apply", color = if (quick.isNotBlank()) Palette.text else Palette.faint) {
         val counts = Pattern.parseSeasons(quick)
         if (counts.isNotEmpty()) change(t.copy(seasons = counts.mapIndexed { i, n -> SeasonSpec(i + 1, n) }))
         quick = ""
     }
     VSpace(4.dp)
     if (seasons.isEmpty()) {
-        Text("Noch keine Staffeln. Ohne Staffeln holt der Player sie von TMDB, sofern dort ein Schlüssel eingetragen ist.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+        Text("No seasons yet. Without seasons, the Player fetches them from TMDB if a key is entered there.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         VSpace(8.dp)
     } else ListGroup {
         seasons.forEachIndexed { i, s ->
@@ -317,10 +317,10 @@ private fun SeasonsSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
             Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 6.dp, bottom = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f).clickable { open = if (open == s.number) null else s.number }) {
-                        Text(s.title ?: if (s.number == 0) "Specials" else "Staffel ${s.number}", style = MaterialTheme.typography.bodyLarge)
+                        Text(s.title ?: if (s.number == 0) "Specials" else "Season ${s.number}", style = MaterialTheme.typography.bodyLarge)
                         val extra = listOfNotNull(
-                            "ab Folge ${s.start}".takeIf { s.start != 1 },
-                            "eigenes Muster".takeIf { s.template != null },
+                            "from episode ${s.start}".takeIf { s.start != 1 },
+                            "own pattern".takeIf { s.template != null },
                         ).joinToString(" · ")
                         if (extra.isNotEmpty()) Text(extra, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                     }
@@ -335,22 +335,22 @@ private fun SeasonsSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
                     Column(Modifier.padding(end = 12.dp, bottom = 10.dp)) {
                         Row {
                             Box(Modifier.weight(1f)) {
-                                IvoryField(s.number.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { n -> if (seasons.none { it.number == n && it != s }) { update(s, s.copy(number = n)); open = n } } }, "1", KeyboardType.Number, label = "Nummer")
+                                IvoryField(s.number.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { n -> if (seasons.none { it.number == n && it != s }) { update(s, s.copy(number = n)); open = n } } }, "1", KeyboardType.Number, label = "Number")
                             }
                             HSpace(10.dp)
                             Box(Modifier.weight(1f)) {
-                                IvoryField(s.episodes.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { update(s, s.copy(episodes = it.coerceIn(0, 9999))) } }, "10", KeyboardType.Number, label = "Folgen")
+                                IvoryField(s.episodes.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { update(s, s.copy(episodes = it.coerceIn(0, 9999))) } }, "10", KeyboardType.Number, label = "Episodes")
                             }
                             HSpace(10.dp)
                             Box(Modifier.weight(1f)) {
-                                IvoryField(s.start.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { update(s, s.copy(start = it.coerceAtLeast(0))) } }, "1", KeyboardType.Number, label = "Erste")
+                                IvoryField(s.start.toString(), { v -> v.filter(Char::isDigit).toIntOrNull()?.let { update(s, s.copy(start = it.coerceAtLeast(0))) } }, "1", KeyboardType.Number, label = "First")
                             }
                         }
                         VSpace(10.dp)
-                        IvoryField(s.template.orEmpty(), { update(s, s.copy(template = it.trim().ifBlank { null })) }, "leer = Muster der Serie", KeyboardType.Uri, label = "Eigenes Muster", singleLine = false)
+                        IvoryField(s.template.orEmpty(), { update(s, s.copy(template = it.trim().ifBlank { null })) }, "empty = the show’s pattern", KeyboardType.Uri, label = "Own pattern", singleLine = false)
                         VSpace(10.dp)
-                        IvoryField(s.title.orEmpty(), { update(s, s.copy(title = it.ifBlank { null })) }, if (s.number == 0) "Specials" else "Staffel ${s.number}", label = "Titel")
-                        QuietButton("Staffel entfernen", color = Palette.wine) {
+                        IvoryField(s.title.orEmpty(), { update(s, s.copy(title = it.ifBlank { null })) }, if (s.number == 0) "Specials" else "Season ${s.number}", label = "Title")
+                        QuietButton("Remove season", color = Palette.wine) {
                             change(t.copy(seasons = t.seasons - s, episodes = t.episodes.filterNot { it.season == s.number }))
                             open = null
                         }
@@ -360,7 +360,7 @@ private fun SeasonsSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
         }
     }
     Row {
-        QuietButton("+ Staffel", color = Palette.text) {
+        QuietButton("+ Season", color = Palette.text) {
             val last = seasons.lastOrNull()
             change(t.copy(seasons = t.seasons + SeasonSpec((seasons.maxOfOrNull { it.number } ?: 0) + 1, last?.episodes ?: 10)))
         }
@@ -380,43 +380,43 @@ private fun PreviewSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
     var editing by remember { mutableStateOf<GeneratedEpisode?>(null) }
 
     if (eps.isEmpty()) {
-        Text("Hier erscheinen die Adressen aller Folgen, sobald Muster und Staffeln da sind.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+        Text("The addresses of all episodes appear here once the pattern and seasons are set.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         return
     }
     val missing = eps.count { it.url.isBlank() }
-    Text("${eps.size} Folgen in ${t.seasons.size} ${if (t.seasons.size == 1) "Staffel" else "Staffeln"}", style = MaterialTheme.typography.titleSmall)
+    Text(episodesLabel(eps.size) + " in " + seasonsLabel(t.seasons.size), style = MaterialTheme.typography.titleSmall)
     if (missing > 0) {
         VSpace(6.dp)
-        StatusLine(Ic.error, "$missing Folgen ohne Adresse – Muster fehlt.")
+        StatusLine(Ic.error, (if (missing == 1) "1 episode" else "$missing episodes") + " without an address – pattern missing.")
     }
-    Text("Tippen öffnet die Adresse im Browser, lange Liste: eine Folge einzeln ändern.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+    Text("Tap to open the address in the browser. In the full list, you can change a single episode.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
     VSpace(10.dp)
     ListGroup {
         eps.groupBy { it.season }.entries.forEachIndexed { i, (season, list) ->
             if (i > 0) RowDivider(inset = 18.dp)
             Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (season == 0) "Specials" else "Staffel $season", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    Text("${list.size} Folgen", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                    Text(if (season == 0) "Specials" else "Season $season", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text(episodesLabel(list.size), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
                 val shown = if (expanded == season) list else listOfNotNull(list.firstOrNull(), list.lastOrNull().takeIf { list.size > 1 })
                 shown.forEach { e ->
                     val overridden = t.episodes.any { it.season == e.season && it.episode == e.number && it.url != null }
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "F${e.number}" + (if (e.absolute != e.number) " (${e.absolute})" else ""),
+                            "E${e.number}" + (if (e.absolute != e.number) " (${e.absolute})" else ""),
                             style = MaterialTheme.typography.labelMedium, color = if (overridden) Palette.brass else Palette.muted,
                             modifier = Modifier.width(64.dp),
                         )
                         Text(
-                            e.url.ifBlank { "– keine Adresse –" },
+                            e.url.ifBlank { "– no address –" },
                             style = MaterialTheme.typography.bodySmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f).clickable(enabled = e.url.isNotBlank()) { Share.openInBrowser(context, e.url) },
                         )
                         if (expanded == season) IconButton(onClick = { editing = e }) { GIcon(Ic.edit, tint = Palette.muted, size = 18.dp) }
                     }
                 }
-                QuietButton(if (expanded == season) "Weniger" else "Alle Folgen", color = Palette.muted) {
+                QuietButton(if (expanded == season) "Less" else "All episodes", color = Palette.muted) {
                     expanded = if (expanded == season) null else season
                 }
             }
@@ -429,16 +429,16 @@ private fun PreviewSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
         AlertDialog(
             onDismissRequest = { editing = null },
             containerColor = Palette.surface,
-            title = { Text("S${e.season} · F${e.number}", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text("S${e.season} · E${e.number}", style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Column {
-                    Text("Eigene Adresse nur für diese Folge – wenn die Seite hier vom Muster abweicht.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                    Text("Own address just for this episode – if the site differs from the pattern here.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                     VSpace(10.dp)
-                    IvoryField(url, { url = it }, "https://…", KeyboardType.Uri, label = "Adresse", singleLine = false)
+                    IvoryField(url, { url = it }, "https://…", KeyboardType.Uri, label = "Address", singleLine = false)
                 }
             },
             confirmButton = {
-                QuietButton("Speichern", color = Palette.text) {
+                QuietButton("Save", color = Palette.text) {
                     val rest = t.episodes.filterNot { it.season == e.season && it.episode == e.number }
                     change(t.copy(episodes = rest + EpisodeOverride(e.season, e.number, url.trim().ifBlank { null }, existing?.title)))
                     editing = null
@@ -446,11 +446,11 @@ private fun PreviewSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
             },
             dismissButton = {
                 Row {
-                    if (existing != null) QuietButton("Zurücksetzen", color = Palette.wine) {
+                    if (existing != null) QuietButton("Reset", color = Palette.wine) {
                         change(t.copy(episodes = t.episodes - existing))
                         editing = null
                     }
-                    QuietButton("Abbrechen", color = Palette.muted) { editing = null }
+                    QuietButton("Cancel", color = Palette.muted) { editing = null }
                 }
             },
         )
@@ -470,7 +470,7 @@ private fun ImagesSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
         }
     }
     Text(
-        "Leer lassen, und der Player nimmt die Bilder von TMDB. Eigene Bilder aus der Galerie werden in den Katalog eingebettet.",
+        "Leave empty and the Player uses the images from TMDB. Your own images from the gallery are embedded in the catalog.",
         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
     )
     VSpace(12.dp)
@@ -480,13 +480,13 @@ private fun ImagesSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
             onClear = { change(t.copy(poster = null)) })
         HSpace(16.dp)
         Box(Modifier.weight(1f)) {
-            ImageSlot("Hintergrund", t.backdrop, Modifier.fillMaxWidth().aspectRatio(16f / 9f),
+            ImageSlot("Background", t.backdrop, Modifier.fillMaxWidth().aspectRatio(16f / 9f),
                 onPick = { target = "backdrop"; picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                 onClear = { change(t.copy(backdrop = null)) })
         }
     }
     VSpace(12.dp)
-    IvoryField(t.poster?.takeIf { !it.startsWith("data:") }.orEmpty(), { change(t.copy(poster = it.trim().ifBlank { null })) }, "https://…/poster.jpg", KeyboardType.Uri, label = "Cover als Adresse")
+    IvoryField(t.poster?.takeIf { !it.startsWith("data:") }.orEmpty(), { change(t.copy(poster = it.trim().ifBlank { null })) }, "https://…/poster.jpg", KeyboardType.Uri, label = "Cover as address")
 }
 
 @Composable
@@ -498,8 +498,8 @@ private fun ImageSlot(label: String, image: String?, modifier: Modifier, onPick:
             Thumb(image, Modifier.fillMaxSize(), radius = 14.dp)
             if (image == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { GIcon(Ic.image, tint = Palette.faint) }
         }
-        if (image != null) QuietButton("Entfernen", color = Palette.wine, onClick = onClear)
-        else QuietButton("Aus Galerie", color = Palette.text, onClick = onPick)
+        if (image != null) QuietButton("Remove", color = Palette.wine, onClick = onClear)
+        else QuietButton("From gallery", color = Palette.text, onClick = onPick)
     }
 }
 
@@ -515,12 +515,18 @@ fun summary(t: CatalogTitle): String = buildList {
     t.year?.let { add(it.toString()) }
     if (t.type == CatalogType.SERIES) {
         val real = t.seasons.count { it.number > 0 }
-        if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
+        if (real > 0) add(seasonsLabel(real))
         // Nur reguläre Folgen, wie die Staffelzahl davor – Specials zählen nicht mit.
         val n = t.seasons.filter { it.number > 0 }.sumOf { it.episodes }
-        if (n > 0) add("$n Folgen")
-        if (t.template == null && t.seasons.any { it.template == null }) add("Muster fehlt")
-    } else if (t.url == null) add("Link fehlt")
+        if (n > 0) add(episodesLabel(n))
+        if (t.template == null && t.seasons.any { it.template == null }) add("Pattern missing")
+    } else if (t.url == null) add("Link missing")
     t.tmdb?.id?.let { add("TMDB $it") }
 }.joinToString(" · ")
+
+/** Staffelzahl für die Anzeige: „1 season“, „3 seasons“. */
+fun seasonsLabel(n: Int): String = if (n == 1) "1 season" else "$n seasons"
+
+/** Folgenzahl für die Anzeige: „1 episode“, „30 episodes“. */
+fun episodesLabel(n: Int): String = if (n == 1) "1 episode" else "$n episodes"
 

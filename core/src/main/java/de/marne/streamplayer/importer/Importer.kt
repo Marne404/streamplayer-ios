@@ -7,6 +7,7 @@ import de.marne.streamplayer.catalog.Pattern
 import de.marne.streamplayer.catalog.SeasonSpec
 import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.catalog.TmdbRef
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.io.IOException
@@ -58,7 +59,7 @@ class Importer(
     private val maxPages: Int = 40,
 ) {
     suspend fun analyze(input: String, progress: (String) -> Unit = {}): Draft {
-        val url = normalize(input) ?: throw FetchException("Das ist keine Adresse. Sie beginnt mit http:// oder https://.")
+        val url = normalize(input) ?: throw FetchException(tr("Das ist keine Adresse. Sie beginnt mit http:// oder https://.", "That’s not a web address. It starts with http:// or https://."))
         val loaded = mutableListOf<Loaded>()
         val tried = mutableSetOf<String>()
         var count = 0
@@ -73,9 +74,9 @@ class Importer(
         }
 
         // 1. Startseite – erst schlicht, bei Bedarf im Browser.
-        var res = runCatching { get(url, "Lade die Seite …", http) }.getOrElse { e ->
+        var res = runCatching { get(url, tr("Lade die Seite …", "Loading the page …"), http) }.getOrElse { e ->
             if (e is CancellationException) throw e
-            if (browser == null) throw FetchException(e.message ?: "Die Seite lässt sich nicht laden.")
+            if (browser == null) throw FetchException(e.message ?: tr("Die Seite lässt sich nicht laden.", "The page can’t be loaded."))
             null
         }
         var page = res?.takeIf { it.status < 400 }?.let { Page.parse(it.html, it.url) }
@@ -86,7 +87,7 @@ class Importer(
             (!movie && (page.links.size < 8 || st?.found != true))
         val br = browser
         if (br != null && needsBrowser) {
-            val b = runCatching { get(url, "Lade die Seite im Browser …", br) }.getOrElse { e ->
+            val b = runCatching { get(url, tr("Lade die Seite im Browser …", "Loading the page in the browser …"), br) }.getOrElse { e ->
                 if (e is CancellationException) throw e
                 null
             }
@@ -103,10 +104,10 @@ class Importer(
             val status = res?.status
             throw FetchException(
                 when (status) {
-                    null -> "Die Seite lässt sich nicht laden."
-                    404, 410 -> "Die Seite gibt es nicht ($status)."
-                    in BLOCKED -> "Die Seite lässt den Creator nicht hinein ($status)."
-                    else -> "Die Seite antwortet mit $status."
+                    null -> tr("Die Seite lässt sich nicht laden.", "The page can’t be loaded.")
+                    404, 410 -> tr("Die Seite gibt es nicht ($status).", "The page doesn’t exist ($status).")
+                    in BLOCKED -> tr("Die Seite lässt den Creator nicht hinein ($status).", "The site won’t let the Creator in ($status).")
+                    else -> tr("Die Seite antwortet mit $status.", "The site responded with $status.")
                 },
             )
         }
@@ -119,7 +120,7 @@ class Importer(
         // 2. Übersicht der Serie, wenn die Startseite eine Folge oder Staffel war.
         val root = st.root
         if (root != null && !same(root, url) && !same(root, page.url) && count < maxPages) {
-            val r = runCatching { get(root, "Lade die Übersicht der Serie …", fetcher) }.getOrElse { e ->
+            val r = runCatching { get(root, tr("Lade die Übersicht der Serie …", "Loading the show’s overview …"), fetcher) }.getOrElse { e ->
                 if (e is CancellationException) throw e
                 null
             }
@@ -136,7 +137,7 @@ class Importer(
             val next = st!!.toLoad(loaded, tried)
             val (season, target) = next.firstOrNull() ?: break
             val total = (st!!.seasonPages.keys + st!!.regularSeasons.map { it.number }).count { it > 0 }
-            val r = runCatching { get(target, "Lade Staffel $season von $total …", fetcher) }.getOrElse { e ->
+            val r = runCatching { get(target, tr("Lade Staffel $season von $total …", "Loading season $season of $total …"), fetcher) }.getOrElse { e ->
                 if (e is CancellationException) throw e
                 null
             } ?: continue
@@ -168,7 +169,7 @@ class Importer(
         // 4. TMDB: eindeutiger Treffer wird verknüpft, sonst Kandidaten zur Wahl.
         val t = tmdb
         if (t == null || !t.configured || info.name.isNullOrBlank()) return build(base, null, null)
-        progress("Suche bei TMDB …")
+        progress(tr("Suche bei TMDB …", "Searching TMDB …"))
         return try {
             val (best, candidates) = match(t, info.name, info.year, kind)
             val details = best?.let { b ->
@@ -178,7 +179,7 @@ class Importer(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            build(base, null, null, extra = Note("TMDB nicht erreichbar: ${e.message}"))
+            build(base, null, null, extra = Note(tr("TMDB nicht erreichbar: ${e.message}", "Can’t reach TMDB: ${e.message}")))
         }
     }
 
@@ -198,7 +199,7 @@ class Importer(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            build(base, null, null, extra = Note("TMDB nicht erreichbar: ${e.message}"))
+            build(base, null, null, extra = Note(tr("TMDB nicht erreichbar: ${e.message}", "Can’t reach TMDB: ${e.message}")))
         }
     }
 
@@ -278,14 +279,15 @@ class Importer(
                     ?.takeIf { it.isNotEmpty() }
                 val (tpl, sea, n) = reconcile(
                     draft.structure, ref ?: info.ldSeasons.filter { it.key > 0 }.toList().takeIf { it.isNotEmpty() },
-                    if (ref != null) "TMDB" else "die Seite", draft.source,
+                    if (ref != null) "TMDB" else tr("die Seite", "the site"), draft.source,
                 )
                 template = tpl; seasons = sea; notes += n
             }
             if (draft.unread.isNotEmpty()) {
                 val u = draft.unread
                 notes += Note(
-                    if (u.size == 1) "Abrufgrenze erreicht: Staffel ${u[0]} nicht gelesen." else "Abrufgrenze erreicht: Staffeln ${u.joinToString(", ")} nicht gelesen.",
+                    if (u.size == 1) tr("Abrufgrenze erreicht: Staffel ${u[0]} nicht gelesen.", "Fetch limit reached: season ${u[0]} not read.")
+                    else tr("Abrufgrenze erreicht: Staffeln ${u.joinToString(", ")} nicht gelesen.", "Fetch limit reached: seasons ${u.joinToString(", ")} not read."),
                     warning = true,
                 )
             }
@@ -321,17 +323,20 @@ class Importer(
             if (st == null || !st.found) {
                 val guess = Pattern.derive(source)?.takeIf { looksLikeEpisode(source) }
                 val seasons = ref?.map { (n, c) -> SeasonSpec(n, c) }.orEmpty()
-                notes += if (guess != null) Note("Kein Muster auf der Seite, nur aus der Adresse geraten. Vorschau im Editor prüfen.", warning = true)
-                else Note("Kein Folgen-Muster gefunden. Im Editor den Link einer Folge eintragen.", warning = true)
+                notes += if (guess != null) Note(tr("Kein Muster auf der Seite, nur aus der Adresse geraten. Vorschau im Editor prüfen.", "No pattern on the page, only guessed from the address. Check the preview in the editor."), warning = true)
+                else Note(tr("Kein Folgen-Muster gefunden. Im Editor den Link einer Folge eintragen.", "No episode pattern found. Enter the link of an episode in the editor."), warning = true)
                 return Triple(guess, seasons, notes)
             }
             var template = st.template
             var seasons = st.seasons
             st.gaps.forEach { (s, missing) ->
-                val where = if (s == 0) "Specials" else "Staffel $s"
+                val where = if (s == 0) "Specials" else tr("Staffel $s", "Season $s")
                 notes += Note(
-                    if (missing.size == 1) "$where: Folge ${missing[0]} fehlt auf der Seite."
-                    else "$where: ${missing.size} Folgen fehlen auf der Seite (${missing.take(5).joinToString(", ")}${if (missing.size > 5) " …" else ""}).",
+                    if (missing.size == 1) tr("$where: Folge ${missing[0]} fehlt auf der Seite.", "$where: episode ${missing[0]} is missing on the site.")
+                    else {
+                        val list = missing.take(5).joinToString(", ") + if (missing.size > 5) " …" else ""
+                        tr("$where: ${missing.size} Folgen fehlen auf der Seite ($list).", "$where: ${missing.size} episodes are missing on the site ($list).")
+                    },
                     warning = true,
                 )
             }
@@ -344,20 +349,20 @@ class Importer(
                     if (only.start == 1 && only.episodes == sum && st.specials == null && template != null) {
                         template = template.replace("{eee}", "{aaa}").replace("{ee}", "{aa}").replace("{e}", "{a}")
                         seasons = ref.sortedBy { it.first }.map { (n, c) -> SeasonSpec(n, c) }
-                        notes += Note("Die Seite zählt durch. Staffeln von $refName übernommen.")
+                        notes += Note(tr("Die Seite zählt durch. Staffeln von $refName übernommen.", "The site numbers episodes straight through. Seasons taken from $refName."))
                     } else {
-                        notes += Note("Die Seite zählt durch (${only.episodes} Folgen), $refName kennt ${ref.size} Staffeln mit $sum.")
+                        notes += Note(tr("Die Seite zählt durch (${only.episodes} Folgen), $refName kennt ${ref.size} Staffeln mit $sum.", "The site numbers episodes straight through (${only.episodes} episodes); $refName lists ${ref.size} seasons with $sum."))
                     }
                 } else {
                     regular.forEach { s ->
                         val c = refMap[s.number] ?: return@forEach
-                        if (c != s.episodes) notes += Note("Staffel ${s.number}: ${s.episodes} Folgen auf der Seite, $c bei $refName.")
+                        if (c != s.episodes) notes += Note(tr("Staffel ${s.number}: ${s.episodes} Folgen auf der Seite, $c bei $refName.", "Season ${s.number}: ${s.episodes} episodes on the site, $c on $refName."))
                     }
                     val missing = ref.map { it.first }.filter { n -> regular.none { it.number == n } }
                     if (missing.isNotEmpty() && !st.absolute) {
                         notes += Note(
-                            if (missing.size == 1) "Staffel ${missing[0]} gibt es bei $refName, auf der Seite nicht."
-                            else "Staffeln ${missing.joinToString(", ")} gibt es bei $refName, auf der Seite nicht.",
+                            if (missing.size == 1) tr("Staffel ${missing[0]} gibt es bei $refName, auf der Seite nicht.", "Season ${missing[0]} is listed on $refName but not on the site.")
+                            else tr("Staffeln ${missing.joinToString(", ")} gibt es bei $refName, auf der Seite nicht.", "Seasons ${missing.joinToString(", ")} are listed on $refName but not on the site."),
                         )
                     }
                 }

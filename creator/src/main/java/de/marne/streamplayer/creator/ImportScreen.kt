@@ -132,12 +132,12 @@ private fun Input(error: String?, onBack: () -> Unit) {
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
         item {
             IconButton(onClick = onBack) { GIcon(Ic.back) }
-            ScreenHeader(title = "Welche Seite?", eyebrow = "Aus Link")
+            ScreenHeader(title = "Which page?", eyebrow = "From link")
         }
         item {
             VSpace(28.dp)
             Segmented(
-                listOf("titles" to "Einzelne Titel", "overview" to "Ganze Übersicht"),
+                listOf("titles" to "Single titles", "overview" to "Whole overview"),
                 if (overview) "overview" else "titles",
                 { session.overview.value = it == "overview" },
             )
@@ -145,9 +145,9 @@ private fun Input(error: String?, onBack: () -> Unit) {
             IvoryField(
                 input, { session.input.value = it }, "https://…", KeyboardType.Uri,
                 label = when {
-                    overview -> "Seite mit vielen Serien oder Filmen"
-                    count >= 2 -> "$count Links, einer pro Titel"
-                    else -> "Serie, Staffel, Folge oder Film"
+                    overview -> "Page with many shows or movies"
+                    count >= 2 -> "$count links, one per title"
+                    else -> "Show, season, episode or movie"
                 },
                 singleLine = overview, maxLines = if (overview) 1 else 6,
             )
@@ -156,33 +156,33 @@ private fun Input(error: String?, onBack: () -> Unit) {
                 StatusLine(Ic.error, error)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                QuietButton("Einfügen", color = Palette.text) {
+                QuietButton("Paste", color = Palette.text) {
                     val cm = context.getSystemService(ClipboardManager::class.java)
                     val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
                     if (!text.isNullOrBlank()) session.input.value = text.trim()
                 }
-                if (!overview) QuietButton("Aus Datei", color = Palette.text) { file.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
+                if (!overview) QuietButton("From file", color = Palette.text) { file.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
             }
             Text(
                 if (overview) {
-                    "Eine Seite, die viele Titel auflistet: Katalog, Genre, Neuheiten. Der Creator findet die Titel darauf, " +
-                        "auch auf den Folgeseiten, und liest dann jeden mit Staffeln und Folgen."
+                    "A page that lists many titles: catalog, genre, new releases. The Creator finds the titles on it, " +
+                        "including on the following pages, and then reads each one with its seasons and episodes."
                 } else {
-                    "Der Creator liest die Seite und findet Staffeln, Folgen und Muster selbst. Mehrere Links gehen auch, einer pro Titel: " +
-                        "eingefügt, aus dem Browser geteilt oder als Text- oder JSON-Datei."
+                    "The Creator reads the page and finds seasons, episodes and the pattern on its own. Several links work too, one per title: " +
+                        "pasted, shared from the browser or as a text or JSON file."
                 },
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
         }
         if (overview) {
-            item { SectionTitle("Grenzen") }
+            item { SectionTitle("Limits") }
             item { CrawlLimits() }
         }
         item {
             VSpace(28.dp)
             when {
-                overview -> PrimaryButton("Übersicht lesen", enabled = input.isNotBlank(), icon = Ic.search) { session.startOverview(input) }
-                else -> PrimaryButton(if (count >= 2) "$count Links analysieren" else "Seite analysieren", enabled = input.isNotBlank(), icon = Ic.search) { session.start(input) }
+                overview -> PrimaryButton("Read overview", enabled = input.isNotBlank(), icon = Ic.search) { session.startOverview(input) }
+                else -> PrimaryButton(if (count >= 2) "Analyze $count links" else "Analyze page", enabled = input.isNotBlank(), icon = Ic.search) { session.start(input) }
             }
         }
     }
@@ -194,14 +194,14 @@ private fun CrawlLimits() {
     val prefs = CreatorApp.instance.prefs
     val pause by prefs.crawlPause.collectAsState()
     val budget by prefs.crawlBudget.collectAsState()
-    Text("Pause zwischen zwei Abrufen", style = MaterialTheme.typography.bodyMedium)
+    Text("Pause between two requests", style = MaterialTheme.typography.bodyMedium)
     VSpace(10.dp)
     Segmented(
-        listOf("500" to "0,5 s", "1000" to "1 s", "2000" to "2 s", "5000" to "5 s"),
+        listOf("500" to "0.5 s", "1000" to "1 s", "2000" to "2 s", "5000" to "5 s"),
         pause.toString(), { prefs.setCrawlPause(it.toLong()) },
     )
     VSpace(20.dp)
-    Text("Abrufe pro Durchgang", style = MaterialTheme.typography.bodyMedium)
+    Text("Requests per run", style = MaterialTheme.typography.bodyMedium)
     VSpace(10.dp)
     Segmented(
         listOf("100" to "100", "300" to "300", "1000" to "1000"),
@@ -209,9 +209,9 @@ private fun CrawlLimits() {
     )
     VSpace(12.dp)
     Text(
-        "Ein Titel braucht meist 1 bis 5 Abrufe, je nach Zahl der Staffeln. Ist die Grenze erreicht, hält der Creator an, " +
-            "und „Weiterlesen“ startet den nächsten Durchgang. Er hält sich an die robots.txt der Seite. Meldet sie " +
-            "„zu viele Anfragen“, wird er langsamer, und beim zweiten Mal hält er an.",
+        "A title usually takes 1 to 5 requests, depending on the number of seasons. When the limit is reached, the Creator pauses, " +
+            "and “Continue reading” starts the next run. It respects the site’s robots.txt. If the site reports " +
+            "“too many requests”, it slows down, and the second time it stops.",
         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
     )
 }
@@ -230,22 +230,22 @@ private fun Working(s: ImportSession.State.Running, onCancel: () -> Unit) {
         VSpace(28.dp)
         Text(s.host.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
         VSpace(6.dp)
-        Text("Lese die Seite …", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
+        Text("Reading the page …", style = MaterialTheme.typography.headlineMedium, textAlign = TextAlign.Center)
         VSpace(6.dp)
         Crossfade(s.step, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "step") { step ->
             Text(step, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         }
         VSpace(32.dp)
-        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+        QuietButton("Cancel", color = Palette.muted, onClick = onCancel)
     }
 }
 
 @Composable
 private fun ChallengeHeader() {
     Column(Modifier.fillMaxWidth().background(Palette.bg).windowInsetsPadding(WindowInsets.statusBars).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 12.dp)) {
-        Text("BESTÄTIGUNG", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+        Text("VERIFICATION", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
         VSpace(6.dp)
-        Text("Die Seite will wissen, ob du ein Mensch bist. Bestätige es unten, dann tippe auf Weiter.", style = MaterialTheme.typography.bodyMedium)
+        Text("The site wants to know whether you’re human. Confirm it below, then tap Continue.", style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -255,8 +255,8 @@ private fun ChallengeFooter(onContinue: () -> Unit, onCancel: () -> Unit) {
         Modifier.fillMaxWidth().background(Palette.bg).windowInsetsPadding(WindowInsets.navigationBars).padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PrimaryButton("Weiter", onClick = onContinue)
-        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+        PrimaryButton("Continue", onClick = onContinue)
+        QuietButton("Cancel", color = Palette.muted, onClick = onCancel)
     }
 }
 
@@ -275,14 +275,14 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
 
     fun commit(edit: Boolean) {
         val saved = session.commit() ?: return
-        toast(if (existing != null) "„${saved.title}“ aktualisiert." else "„${saved.title}“ ist im Katalog.")
+        toast(if (existing != null) "“${saved.title}” updated." else "“${saved.title}” is in the catalog.")
         if (edit) onEdit(saved.id) else onBack()
     }
 
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
         item {
             IconButton(onClick = session::cancel) { GIcon(Ic.back) }
-            ScreenHeader(title = name.ifBlank { "Ohne Namen" }, eyebrow = if (series) "Serie erkannt" else "Film erkannt")
+            ScreenHeader(title = name.ifBlank { "Untitled" }, eyebrow = if (series) "Show detected" else "Movie detected")
         }
         item {
             VSpace(32.dp)
@@ -295,7 +295,7 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
                     val host = d.source.substringAfter("://").substringBefore('/').removePrefix("www.")
                     Text(listOfNotNull(t.year?.toString(), host).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                     Text(
-                        (if (d.pages == 1) "1 Seite gelesen" else "${d.pages} Seiten gelesen") + if (d.usedBrowser) " · im Browser" else "",
+                        (if (d.pages == 1) "1 page read" else "${d.pages} pages read") + if (d.usedBrowser) " · in the browser" else "",
                         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                     )
                 }
@@ -303,19 +303,19 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
         }
         item {
             VSpace(28.dp)
-            Segmented(listOf("series" to "Serie", "movie" to "Film"), if (series) "series" else "movie", { v ->
+            Segmented(listOf("series" to "Show", "movie" to "Movie"), if (series) "series" else "movie", { v ->
                 val type = if (v == "series") CatalogType.SERIES else CatalogType.MOVIE
                 if (type != t.type) session.retype(type)
             })
             VSpace(14.dp)
-            IvoryField(name, { session.nameOverride.value = it }, if (series) "Name der Serie" else "Name des Films", label = "Name")
+            IvoryField(name, { session.nameOverride.value = it }, if (series) "Name of the show" else "Name of the movie", label = "Name")
         }
 
         item { SectionTitle("TMDB") }
         item { TmdbPart(s) }
 
         if (series) {
-            item { SectionTitle("Staffeln") }
+            item { SectionTitle("Seasons") }
             item { SeasonsPart(d) { Share.openInBrowser(context, it) } }
         } else {
             item { SectionTitle("Link") }
@@ -328,7 +328,7 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
         }
 
         if (d.notes.isNotEmpty()) {
-            item { SectionTitle("Hinweise") }
+            item { SectionTitle("Notes") }
             item {
                 Column(Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     d.notes.forEach { n ->
@@ -342,14 +342,14 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
             VSpace(36.dp)
             if (existing != null) {
                 Text(
-                    "Schon im Katalog. Aktualisieren übernimmt Staffeln und neue Folgen, eigene Angaben bleiben.",
+                    "Already in the catalog. Updating takes over seasons and new episodes; your own details stay.",
                     style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                 )
                 VSpace(12.dp)
             }
-            PrimaryButton(if (existing != null) "Im Katalog aktualisieren" else "In den Katalog", enabled = name.isNotBlank() && !s.busy, icon = if (existing != null) Ic.refresh else Ic.add) { commit(edit = false) }
+            PrimaryButton(if (existing != null) "Update in catalog" else "Add to catalog", enabled = name.isNotBlank() && !s.busy, icon = if (existing != null) Ic.refresh else Ic.add) { commit(edit = false) }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                QuietButton("Übernehmen und bearbeiten", color = Palette.muted) { commit(edit = true) }
+                QuietButton("Add and edit", color = Palette.muted) { commit(edit = true) }
             }
         }
     }
@@ -373,19 +373,19 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
     val scanning = crawl?.scanning
 
     val title = when {
-        scanning != null -> "Lese die Übersicht …"
-        s.running -> "Lese ${minOf(s.finished + 1, n)} von $n …"
-        crawl != null && s.items.isEmpty() -> "Angehalten."
-        crawl != null && s.waiting > 0 -> "${s.finished} von $n gelesen."
-        crawl != null -> if (n == 1) "Ein Titel gelesen." else "$n Titel gelesen."
-        n == 1 -> "Ein Link gelesen."
-        else -> "$n Links gelesen."
+        scanning != null -> "Reading the overview …"
+        s.running -> "Reading ${minOf(s.finished + 1, n)} of $n …"
+        crawl != null && s.items.isEmpty() -> "Stopped."
+        crawl != null && s.waiting > 0 -> "${s.finished} of $n read."
+        crawl != null -> if (n == 1) "One title read." else "$n titles read."
+        n == 1 -> "One link read."
+        else -> "$n links read."
     }
     val subtitle = listOfNotNull(
-        "${s.items.size} Titel gefunden".takeIf { crawl != null && scanning == null },
-        "${s.finished - failed} erkannt".takeIf { s.finished > 0 },
-        "$failed ohne Ergebnis".takeIf { failed > 0 },
-        "nur die ersten ${LinkList.MAX} Links".takeIf { s.skipped > 0 },
+        (if (s.items.size == 1) "1 title found" else "${s.items.size} titles found").takeIf { crawl != null && scanning == null },
+        "${s.finished - failed} recognized".takeIf { s.finished > 0 },
+        "$failed without result".takeIf { failed > 0 },
+        "only the first ${LinkList.MAX} links".takeIf { s.skipped > 0 },
     ).joinToString(" · ").ifEmpty { null }
 
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
@@ -393,7 +393,7 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
             IconButton(onClick = session::stop) { GIcon(Ic.back) }
             ScreenHeader(
                 title = title,
-                eyebrow = if (crawl != null) "Übersicht · ${crawl.host}" else "Aus Links",
+                eyebrow = if (crawl != null) "Overview · ${crawl.host}" else "From links",
                 subtitle = subtitle,
             )
         }
@@ -411,8 +411,8 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
                 VSpace(10.dp)
                 Text(
                     listOfNotNull(
-                        "${crawl.used} von ${crawl.budget} Abrufen",
-                        (if (crawl.listPages == 1) "1 Seite Übersicht" else "${crawl.listPages} Seiten Übersicht").takeIf { crawl.listPages > 0 },
+                        "${crawl.used} of ${crawl.budget} requests",
+                        (if (crawl.listPages == 1) "1 overview page" else "${crawl.listPages} overview pages").takeIf { crawl.listPages > 0 },
                     ).joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                 )
@@ -420,7 +420,7 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
                     VSpace(8.dp)
                     StatusLine(
                         Ic.info,
-                        "Die Übersicht geht weiter. Gelesen sind höchstens ${ImportSession.MAX_LIST_PAGES} Seiten und ${LinkList.MAX} Titel.",
+                        "The overview continues. At most ${ImportSession.MAX_LIST_PAGES} pages and ${LinkList.MAX} titles are read.",
                         Palette.muted,
                     )
                 }
@@ -442,19 +442,19 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
         item {
             VSpace(36.dp)
             PrimaryButton(
-                when (chosen) { 0 -> "Nichts gewählt"; 1 -> "1 Titel übernehmen"; else -> "$chosen Titel übernehmen" },
+                when (chosen) { 0 -> "Nothing selected"; 1 -> "Add 1 title"; else -> "Add $chosen titles" },
                 enabled = !s.running && chosen > 0, icon = Ic.add,
             ) {
                 val (added, updated) = session.commitBatch()
-                toast(listOfNotNull("$added neu".takeIf { added > 0 }, "$updated aktualisiert".takeIf { updated > 0 }).joinToString(", ") + " im Katalog.")
+                toast(listOfNotNull("$added added".takeIf { added > 0 }, "$updated updated".takeIf { updated > 0 }).joinToString(", ") + " in the catalog.")
                 onBack()
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 if (crawl != null && !s.running && s.waiting > 0) {
                     val budget by CreatorApp.instance.prefs.crawlBudget.collectAsState()
-                    QuietButton("Weiterlesen ($budget Abrufe)", color = Palette.text, onClick = session::more)
+                    QuietButton("Continue reading ($budget requests)", color = Palette.text, onClick = session::more)
                 }
-                QuietButton(if (s.running) "Anhalten" else "Verwerfen", color = Palette.muted, onClick = session::stop)
+                QuietButton(if (s.running) "Stop" else "Discard", color = Palette.muted, onClick = session::stop)
             }
         }
     }
@@ -474,11 +474,11 @@ private fun BatchRow(item: ImportSession.BatchItem, crawl: Boolean, running: Boo
     }
     val title = item.name.ifBlank { path }
     val subtitle = when (st) {
-        is ImportSession.ItemStatus.Ready -> if (st.include) readySummary(st.draft) else "Wird nicht übernommen"
+        is ImportSession.ItemStatus.Ready -> if (st.include) readySummary(st.draft) else "Won’t be added"
         is ImportSession.ItemStatus.Failed -> st.message
-        is ImportSession.ItemStatus.Running -> "Wird gelesen …"
-        ImportSession.ItemStatus.Waiting -> if (crawl) (if (running) path else "Noch nicht gelesen · $path") else host
-        ImportSession.ItemStatus.Skipped -> "Wird übersprungen"
+        is ImportSession.ItemStatus.Running -> "Reading …"
+        ImportSession.ItemStatus.Waiting -> if (crawl) (if (running) path else "Not read yet · $path") else host
+        ImportSession.ItemStatus.Skipped -> "Will be skipped"
     }
     val tappable = st is ImportSession.ItemStatus.Ready ||
         (crawl && (st is ImportSession.ItemStatus.Waiting || st is ImportSession.ItemStatus.Skipped))
@@ -505,30 +505,29 @@ private fun BatchRow(item: ImportSession.BatchItem, crawl: Boolean, running: Boo
 
 /** „Serie · 3 Staffeln · 37 Folgen · TMDB“, bei Problemen der erste Hinweis statt TMDB. */
 private fun readySummary(d: Draft): String {
-    val parts = mutableListOf(if (d.title.type == CatalogType.SERIES) "Serie" else "Film")
+    val parts = mutableListOf(if (d.title.type == CatalogType.SERIES) "Show" else "Movie")
     if (d.title.type == CatalogType.SERIES) {
         val regular = d.title.seasons.filter { it.number > 0 }
-        if (regular.isEmpty()) parts += "kein Muster"
+        if (regular.isEmpty()) parts += "no pattern"
         else {
-            parts += if (regular.size == 1) "1 Staffel" else "${regular.size} Staffeln"
-            parts += "${regular.sumOf { it.episodes }} Folgen"
+            parts += seasonsLabel(regular.size)
+            parts += episodesLabel(regular.sumOf { it.episodes })
         }
     }
     when {
         d.linked != null -> parts += "TMDB"
-        d.candidates.isNotEmpty() -> parts += "TMDB unklar"
+        d.candidates.isNotEmpty() -> parts += "TMDB unclear"
     }
     return parts.joinToString(" · ")
 }
 
 private fun headline(d: Draft): String {
     val t = d.title
-    if (t.type == CatalogType.MOVIE) return "Film"
+    if (t.type == CatalogType.MOVIE) return "Movie"
     val regular = t.seasons.filter { it.number > 0 }
-    if (regular.isEmpty()) return "Keine Staffeln erkannt"
-    val parts = mutableListOf(if (regular.size == 1) "1 Staffel" else "${regular.size} Staffeln")
-    val n = regular.sumOf { it.episodes }
-    parts += if (n == 1) "1 Folge" else "$n Folgen"
+    if (regular.isEmpty()) return "No seasons detected"
+    val parts = mutableListOf(seasonsLabel(regular.size))
+    parts += episodesLabel(regular.sumOf { it.episodes })
     if (t.seasons.any { it.number == 0 }) parts += "Specials"
     return parts.joinToString(" · ")
 }
@@ -543,12 +542,12 @@ private fun TmdbPart(s: ImportSession.State.Done) {
 
     Column(Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
         when {
-            s.busy -> Text("Gleiche mit TMDB ab …", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+            s.busy -> Text("Matching with TMDB …", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
             linked != null -> ListGroup {
-                TmdbRow(linked, trailing = { QuietButton("Lösen", color = Palette.wine) { session.link(null) } })
+                TmdbRow(linked, trailing = { QuietButton("Unlink", color = Palette.wine) { session.link(null) } })
             }
             d.candidates.isNotEmpty() -> {
-                Text("Nicht eindeutig. Welcher ist es?", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                Text("Not clear. Which one is it?", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 VSpace(10.dp)
                 ListGroup {
                     d.candidates.forEachIndexed { i, r ->
@@ -556,15 +555,15 @@ private fun TmdbPart(s: ImportSession.State.Done) {
                         TmdbRow(r, onClick = { session.link(r) })
                     }
                     RowDivider(inset = 18.dp)
-                    ListRow("Keiner davon", titleColor = Palette.muted, showChevron = false, onClick = { session.link(null) })
+                    ListRow("None of these", titleColor = Palette.muted, showChevron = false, onClick = { session.link(null) })
                 }
             }
             key.isBlank() -> Text(
-                "Ohne TMDB-Schlüssel sucht der Player später selbst nach dem Namen.",
+                "Without a TMDB key, the Player searches by name on its own later.",
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
             else -> Text(
-                "Bei TMDB nichts Eindeutiges gefunden. Der Player sucht später selbst.",
+                "No clear match found on TMDB. The Player searches on its own later.",
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
         }
@@ -595,7 +594,7 @@ private fun SeasonsPart(d: Draft, open: (String) -> Unit) {
     val t = d.title
     val seasons = t.seasons.sortedBy { it.number }
     if (seasons.isEmpty()) {
-        Text("Keine Staffeln erkannt. Im Editor lassen sie sich von Hand oder über TMDB eintragen.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+        Text("No seasons detected. You can add them in the editor by hand or via TMDB.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
         return
     }
     ListGroup {
@@ -603,8 +602,8 @@ private fun SeasonsPart(d: Draft, open: (String) -> Unit) {
             if (i > 0) RowDivider(inset = 18.dp)
             ListRow(
                 title = s.title ?: seasonName(s),
-                subtitle = "ab Folge ${s.start}".takeIf { s.start != 1 },
-                value = if (s.episodes == 1) "1 Folge" else "${s.episodes} Folgen",
+                subtitle = "from episode ${s.start}".takeIf { s.start != 1 },
+                value = episodesLabel(s.episodes),
                 showChevron = false,
             )
         }
@@ -614,7 +613,7 @@ private fun SeasonsPart(d: Draft, open: (String) -> Unit) {
         VSpace(12.dp)
         listOfNotNull(eps.first(), eps.last().takeIf { eps.size > 1 }).forEach { e ->
             Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("S${e.season} F${e.number}", style = MaterialTheme.typography.labelMedium, color = Palette.muted, modifier = Modifier.padding(end = 10.dp))
+                Text("S${e.season} E${e.number}", style = MaterialTheme.typography.labelMedium, color = Palette.muted, modifier = Modifier.padding(end = 10.dp))
                 // Ohne Schema und Host (steht schon oben): sonst schneidet die Zeile genau den Teil ab, der sich ändert.
                 val path = e.url.substringAfter("://").let { r -> r.indexOf('/').takeIf { it >= 0 }?.let { r.substring(it) } ?: r }
                 Text(
@@ -626,4 +625,4 @@ private fun SeasonsPart(d: Draft, open: (String) -> Unit) {
     }
 }
 
-private fun seasonName(s: SeasonSpec) = if (s.number == 0) "Specials" else "Staffel ${s.number}"
+private fun seasonName(s: SeasonSpec) = if (s.number == 0) "Specials" else "Season ${s.number}"

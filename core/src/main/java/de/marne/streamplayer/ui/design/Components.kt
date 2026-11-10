@@ -48,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.marne.streamplayer.ui.tr
 
 // ---------- Grundbausteine ----------
 
@@ -237,7 +238,7 @@ fun ExpandableText(text: String, collapsedLines: Int = 3, style: androidx.compos
         )
         if (overflow || open) {
             VSpace(4.dp)
-            Text(if (open) "Weniger" else "Mehr", style = MaterialTheme.typography.labelLarge, color = Palette.text, modifier = Modifier.clickable { open = !open })
+            Text(if (open) tr("Weniger", "Less") else tr("Mehr", "More"), style = MaterialTheme.typography.labelLarge, color = Palette.text, modifier = Modifier.clickable { open = !open })
         }
     }
 }

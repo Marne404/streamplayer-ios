@@ -52,7 +52,7 @@ class HttpFetcher(base: OkHttpClient, private val userAgent: String) : Fetcher {
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "de-DE,de;q=0.9,en;q=0.7")
                 .build()
-        }.getOrElse { throw FetchException("Die Adresse ist ungültig.") }
+        }.getOrElse { throw FetchException("The address is invalid.") }
         try {
             http.newCall(req).execute().use { r ->
                 val final = r.request.url.toString()
@@ -67,11 +67,11 @@ class HttpFetcher(base: OkHttpClient, private val userAgent: String) : Fetcher {
                 Fetched(final, r.code, String(bytes, charset))
             }
         } catch (e: UnknownHostException) {
-            throw FetchException("Den Server gibt es nicht, oder das Netz fehlt.")
+            throw FetchException("The server doesn’t exist, or there’s no network.")
         } catch (e: SocketTimeoutException) {
-            throw FetchException("Die Seite antwortet nicht.")
+            throw FetchException("The site isn’t responding.")
         } catch (e: SSLException) {
-            throw FetchException("Die Verbindung ist nicht sicher (Zertifikat).")
+            throw FetchException("The connection isn’t secure (certificate).")
         }
     }
 
@@ -168,7 +168,7 @@ class BrowserFetcher(private val context: Context) : Fetcher {
     }
 
     private suspend fun outerHtml(wv: WebView): String =
-        eval(wv, "document.documentElement.outerHTML") ?: throw FetchException("Die Seite ließ sich im Browser nicht lesen.")
+        eval(wv, "document.documentElement.outerHTML") ?: throw FetchException("The page couldn’t be read in the browser.")
 
     private suspend fun eval(wv: WebView, js: String): String? = withContext(Dispatchers.Main) {
         val result = CompletableDeferred<String?>()
