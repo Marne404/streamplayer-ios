@@ -2,10 +2,12 @@ package de.marne.streamplayer.player
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -16,13 +18,19 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.PlayerView
 import de.marne.streamplayer.App
+import de.marne.streamplayer.library.Episode
+import de.marne.streamplayer.library.Keys
+import de.marne.streamplayer.library.LibTitle
 import de.marne.streamplayer.net.Http
+import de.marne.streamplayer.ui.design.IvoryInkTheme
 
 /**
  * Spielt eine fertige Datei aus der Mediathek oder – als Vorschau – einen gefundenen Stream
  * mit denselben Kopfzeilen, mit denen auch die Seite ihn abruft.
+ *
+ * Die Oberfläche ist eigene Compose-Steuerung ([PlayerScreen]) über einer nackten PlayerView:
+ * Die Standard-Controls von media3 sehen nach Android aus, nicht nach der Mediathek davor.
  */
 class PlayerActivity : ComponentActivity() {
 
@@ -53,6 +61,11 @@ class PlayerActivity : ComponentActivity() {
         val userAgent = intent.getStringExtra(EXTRA_UA) ?: Http.defaultUserAgent(this)
         key = intent.getStringExtra(EXTRA_KEY)
         val startMs = intent.getLongExtra(EXTRA_START, 0)
+        val info = PlaybackInfo.of(key, intent.getStringExtra(EXTRA_TITLE).orEmpty())
+
+        // Aus der Bibliothek ist es ein Film oder eine Folge: quer, wie im Kino. Eine Vorschau aus dem
+        // Browser kann alles sein (Hochkant-Clip, Audio) – die darf sich frei drehen.
+        if (key != null) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         val http = OkHttpDataSource.Factory(App.instance.http)
             .setUserAgent(userAgent)
@@ -81,20 +94,36 @@ class PlayerActivity : ComponentActivity() {
         p.playWhenReady = true
         player = p
 
-        val view = PlayerView(this).apply {
-            this.player = p
-            setBackgroundColor(Color.BLACK)
-            keepScreenOn = true
-            setShowNextButton(false)
-            setShowPreviousButton(false)
+        // Notch und Kamera-Loch: das Bild darf bis an den Rand, die Steuerung hält Abstand (Insets im Screen).
+        window.attributes = window.attributes.apply {
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-        setContentView(view)
-
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowCompat.getInsetsController(window, view).apply {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+
+        setContent {
+            IvoryInkTheme(dark = true) {
+                PlayerScreen(
+                    player = p,
+                    info = info,
+                    onBack = ::finish,
+                    onPlayEpisode = ::playEpisode,
+                )
+            }
+        }
+    }
+
+    /**
+     * Andere Folge: Diese Activity kann die Seite nicht auflösen (das kann nur MainActivity mit ihrer
+     * WebView). Fortschritt sichern, den Wunsch an die Bibliothek geben, schließen.
+     */
+    private fun playEpisode(t: LibTitle, e: Episode) {
+        saveProgress()
+        PlayerBridge.playEpisode(t.id, e.season, e.number)
+        finish()
     }
 
     override fun onStart() {
@@ -113,7 +142,7 @@ class PlayerActivity : ComponentActivity() {
         val k = key ?: return
         val p = player ?: return
         val duration = p.duration.takeIf { it > 0 && it != androidx.media3.common.C.TIME_UNSET } ?: return
-        de.marne.streamplayer.App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended)
+        App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended)
     }
 
     override fun onDestroy() {
@@ -144,5 +173,31 @@ class PlayerActivity : ComponentActivity() {
                 .putExtra(EXTRA_MIME, mime)
                 .putExtra(EXTRA_REFERER, referer)
                 .putExtra(EXTRA_UA, userAgent)
+    }
+}
+
+/**
+ * Was gerade läuft, so weit die Bibliothek es weiß. Ohne Schlüssel (Vorschau aus dem Browser) nur
+ * der Titel – dann gibt es keine Folgen und keine „Nächste Folge“.
+ */
+data class PlaybackInfo(
+    val title: String,
+    val subtitle: String?,
+    val libTitle: LibTitle?,
+    val episode: Episode?,
+    val next: Episode?,
+) {
+    companion object {
+        fun of(key: String?, fallbackTitle: String): PlaybackInfo {
+            val parsed = key?.let(Keys::parse)
+            val t = parsed?.let { App.instance.library.get(it.first) }
+            val ep = if (t != null && parsed.second != null && parsed.third != null) t.episode(parsed.second!!, parsed.third!!) else null
+            if (t == null) return PlaybackInfo(fallbackTitle, null, null, null, null)
+            val subtitle = when {
+                ep != null -> listOfNotNull(ep.label, ep.title).joinToString(" · ")
+                else -> t.shownYear?.toString()
+            }
+            return PlaybackInfo(t.title, subtitle, t, ep, ep?.let(t::next))
+        }
     }
 }

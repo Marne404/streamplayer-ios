@@ -65,4 +65,16 @@ object Ic {
     val cloudOff = R.drawable.ic_cloud_off
     val group = R.drawable.ic_group
     val mail = R.drawable.ic_mail
+    // Player
+    val replay10 = R.drawable.ic_replay_10
+    val forward10 = R.drawable.ic_forward_10
+    val skipNext = R.drawable.ic_skip_next
+    val lockOpen = R.drawable.ic_lock_open
+    val fitScreen = R.drawable.ic_fit_screen
+    val cropFree = R.drawable.ic_crop_free
+    val subtitles = R.drawable.ic_subtitles
+    val speed = R.drawable.ic_speed
+    val brightness = R.drawable.ic_brightness_6
+    val volume = R.drawable.ic_volume_up
+    val episodes = R.drawable.ic_playlist_play
 }
