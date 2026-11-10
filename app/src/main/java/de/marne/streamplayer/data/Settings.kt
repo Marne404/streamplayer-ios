@@ -71,6 +71,15 @@ class Settings(context: Context) {
         prefs.edit().putBoolean("onboarded", value).apply()
     }
 
+    /** Wie bei Netflix: bei jedem Start „Wer schaut?“ – sofern es mehr als ein Profil gibt. */
+    private val _askProfile = MutableStateFlow(prefs.getBoolean("ask_profile", true))
+    val askProfile: StateFlow<Boolean> = _askProfile.asStateFlow()
+
+    fun setAskProfile(value: Boolean) {
+        _askProfile.value = value
+        prefs.edit().putBoolean("ask_profile", value).apply()
+    }
+
     fun setTheme(value: String) {
         _theme.value = value
         prefs.edit().putString(KEY_THEME, value).apply()

@@ -42,13 +42,12 @@ import de.marne.streamplayer.ui.design.StatusLine
 import de.marne.streamplayer.ui.design.VSpace
 import kotlinx.coroutines.launch
 
-/** Abschnitt „Konto“ in den Einstellungen. */
+/** Gruppe „Konto“ in den Einstellungen. Abgemeldet eine Zeile statt Absatz und großem Knopf. */
 @Composable
-fun AccountSection(onProfiles: () -> Unit, onToast: (String) -> Unit) {
+fun AccountSection(onToast: (String) -> Unit) {
     val app = App.instance
     val user by app.cloud.user.collectAsStateWithLifecycle()
     val status by app.sync.status.collectAsStateWithLifecycle()
-    val profiles by app.profiles.profiles.collectAsStateWithLifecycle()
     var sheet by remember { mutableStateOf(false) }
     var confirmOut by remember { mutableStateOf(false) }
 
@@ -58,13 +57,13 @@ fun AccountSection(onProfiles: () -> Unit, onToast: (String) -> Unit) {
             !app.cloud.available -> ListGroup {
                 ListRow("Konto", icon = Ic.cloudOff, subtitle = "In dieser Version nicht eingerichtet.")
             }
-            u == null -> {
-                Text(
-                    "Mit einem Konto sind Bibliothek, Profile und Fortschritt auf allen deinen Geräten gleich – und nach einer Neuinstallation wieder da.",
-                    style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+            u == null -> ListGroup {
+                ListRow(
+                    title = "Anmelden",
+                    subtitle = "Bibliothek, Profile und Fortschritt auf allen Geräten gleich.",
+                    icon = Ic.account,
+                    onClick = { sheet = true },
                 )
-                VSpace(14.dp)
-                PrimaryButton("Anmelden", icon = Ic.account) { sheet = true }
             }
             else -> ListGroup {
                 ListRow(
@@ -89,18 +88,8 @@ fun AccountSection(onProfiles: () -> Unit, onToast: (String) -> Unit) {
                     onClick = { app.sync.syncNow() },
                 )
                 RowDivider()
-                ListRow("Abmelden", icon = Ic.logout, showChevron = false, onClick = { confirmOut = true })
+                ListRow("Abmelden", icon = Ic.logout, titleColor = Palette.wine, showChevron = false, onClick = { confirmOut = true })
             }
-        }
-        VSpace(12.dp)
-        ListGroup {
-            ListRow(
-                title = "Profile",
-                subtitle = "Jedes Profil hat seinen eigenen Fortschritt.",
-                icon = Ic.group,
-                value = profiles.size.toString(),
-                onClick = onProfiles,
-            )
         }
     }
 

@@ -1,6 +1,10 @@
 package de.marne.streamplayer.account
 
 import android.content.Context
+import android.os.SystemClock
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -44,19 +48,39 @@ class ProfileStore(context: Context) {
     private val _activeId = MutableStateFlow(prefs.getString("active", null) ?: _profiles.value.first().id)
     val activeId: StateFlow<String> = _activeId.asStateFlow()
 
-    /** In dieser Sitzung schon gewählt? Sonst fragt die App bei mehreren Profilen „Wer schaut?“. */
-    var chosenThisSession = false
+    /**
+     * Steht ein neuer Start an, bei dem „Wer schaut?“ fragen darf? Neu ist ein kalter Start oder die
+     * Rückkehr nach [RESTART_AFTER] im Hintergrund. Nur der Prozess zählt nicht: Android hält ihn oft
+     * stundenlang am Leben, dann käme die Frage beim Öffnen am nächsten Abend nie. Und jedes kurze
+     * Wegwechseln (Player, Benachrichtigung, Datei wählen) darf sie nicht auslösen.
+     */
+    private val _needsChoice = MutableStateFlow(true)
+    val needsChoice: StateFlow<Boolean> = _needsChoice.asStateFlow()
+    private var backgroundSince = 0L
 
     init {
         scope.launch { _profiles.drop(1).debounce(300).collect { save(it) } }
+        // Muss auf dem Hauptthread registriert werden – der Store entsteht in App.onCreate.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_STOP -> backgroundSince = SystemClock.elapsedRealtime()
+                Lifecycle.Event.ON_START -> if (backgroundSince > 0 && SystemClock.elapsedRealtime() - backgroundSince >= RESTART_AFTER) {
+                    _needsChoice.value = true
+                }
+                else -> Unit
+            }
+        })
     }
+
+    /** Für diesen Start ist entschieden – gewählt, weggetippt oder im Willkommens-Ablauf. */
+    fun chosen() { _needsChoice.value = false }
 
     val active: Profile get() = _profiles.value.firstOrNull { it.id == _activeId.value } ?: _profiles.value.first()
 
     fun select(id: String) {
         if (_profiles.value.none { it.id == id }) return
         _activeId.value = id
-        chosenThisSession = true
+        chosen()
         prefs.edit().putString("active", id).apply()
     }
 
@@ -111,5 +135,7 @@ class ProfileStore(context: Context) {
 
     companion object {
         const val COLORS = 6
+        /** So lange im Hintergrund, und die App gilt beim Zurückkommen als neu gestartet. */
+        const val RESTART_AFTER = 30 * 60 * 1000L
     }
 }

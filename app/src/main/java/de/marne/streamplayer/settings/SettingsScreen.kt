@@ -1,64 +1,86 @@
 package de.marne.streamplayer.settings
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import de.marne.streamplayer.ui.design.VSpace
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.marne.streamplayer.App
+import de.marne.streamplayer.account.AccountSection
 import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.ui.design.Disclosure
 import de.marne.streamplayer.ui.design.Ic
+import de.marne.streamplayer.ui.design.IvoryField
 import de.marne.streamplayer.ui.design.IvorySwitch
 import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette
+import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.ScreenHeader
 import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Segmented
+import de.marne.streamplayer.ui.design.SheetHandle
+import de.marne.streamplayer.ui.design.StatusLine
+import de.marne.streamplayer.ui.design.VSpace
+import kotlinx.coroutines.launch
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
+/**
+ * Einstellungen: jede Gruppe eine Karte aus Zeilen, nichts Längeres auf der obersten Ebene.
+ * Was Erklärung oder Eingabe braucht (Anmelden, TMDB-Schlüssel), öffnet ein Blatt.
+ * Zeilen mit Schalter schalten auf der ganzen Fläche – den kleinen Schalter allein trifft man schlecht.
+ */
 @Composable
 fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast: (String) -> Unit, onProfiles: () -> Unit) {
+    val app = App.instance
     val theme by settings.theme.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
     val parallel by settings.parallel.collectAsStateWithLifecycle()
     val adblockOn by settings.adblock.collectAsStateWithLifecycle()
     val allowlist by settings.allowlist.collectAsStateWithLifecycle()
-    val adblock = de.marne.streamplayer.App.instance.adblock
-    val filter by adblock.status.collectAsStateWithLifecycle()
+    val filter by app.adblock.status.collectAsStateWithLifecycle()
     val tmdbKey by settings.tmdbKey.collectAsStateWithLifecycle()
     val tmdbAuto by settings.tmdbAuto.collectAsStateWithLifecycle()
-    var keyDraft by remember(tmdbKey) { mutableStateOf(tmdbKey) }
-    var keyState by remember { mutableStateOf<String?>(null) }
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    val app = de.marne.streamplayer.App.instance
+    val askProfile by settings.askProfile.collectAsStateWithLifecycle()
+    val profiles by app.profiles.profiles.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "–"
     }
     var confirmClear by remember { mutableStateOf(false) }
+    var tmdbSheet by remember { mutableStateOf(false) }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     LazyColumn(
@@ -68,7 +90,29 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         item { ScreenHeader(title = "Wie soll es laufen?", eyebrow = "Einstellungen") }
 
         item { SectionTitle("Konto") }
-        item { de.marne.streamplayer.account.AccountSection(onProfiles = onProfiles, onToast = onToast) }
+        item { AccountSection(onToast = onToast) }
+
+        item { SectionTitle("Profile") }
+        item {
+            ListGroup {
+                ListRow(
+                    title = "Profile verwalten",
+                    subtitle = "Jedes Profil hat seinen eigenen Fortschritt.",
+                    icon = Ic.group,
+                    value = profiles.size.toString(),
+                    onClick = onProfiles,
+                )
+                RowDivider()
+                ListRow(
+                    title = "Beim Start fragen, wer schaut",
+                    subtitle = if (profiles.size > 1) "Sonst öffnet das zuletzt gewählte Profil." else "Ab zwei Profilen.",
+                    icon = Ic.account,
+                    showChevron = false,
+                    onClick = { settings.setAskProfile(!askProfile) },
+                    trailing = { IvorySwitch(askProfile, settings::setAskProfile) },
+                )
+            }
+        }
 
         item { SectionTitle("Darstellung") }
         item {
@@ -79,61 +123,38 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             )
         }
 
-        item { SectionTitle("Mediathek · TMDB") }
+        item { SectionTitle("Mediathek") }
         item {
-            Column {
-                Text(
-                    "Mit einem TMDB-Schlüssel erkennt die App Titel und holt Cover, Hintergründe, Beschreibungen, Staffeln und Folgennamen. Kostenlos unter themoviedb.org → Einstellungen → API.",
-                    style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+            ListGroup {
+                ListRow(
+                    title = "TMDB",
+                    subtitle = "Cover, Beschreibungen, Folgen.",
+                    icon = Ic.movie,
+                    value = if (tmdbKey.isBlank()) "Aus" else "Aktiv",
+                    onClick = { tmdbSheet = true },
                 )
-                VSpace(14.dp)
-                androidx.compose.material3.OutlinedTextField(
-                    value = keyDraft,
-                    onValueChange = { keyDraft = it; keyState = null },
-                    singleLine = true,
-                    label = { Text("API-Schlüssel oder Lese-Token") },
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Palette.text, unfocusedBorderColor = Palette.line, focusedLabelColor = Palette.text,
-                        unfocusedLabelColor = Palette.muted, cursorColor = Palette.text,
-                        focusedContainerColor = Palette.surface, unfocusedContainerColor = Palette.surface,
-                    ),
-                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                RowDivider()
+                ListRow(
+                    title = "Titel automatisch erkennen",
+                    subtitle = "Ohne TMDB-ID im Katalog nach Namen suchen.",
+                    icon = Ic.sparkle,
+                    showChevron = false,
+                    onClick = { settings.setTmdbAuto(!tmdbAuto) },
+                    trailing = { IvorySwitch(tmdbAuto, settings::setTmdbAuto) },
                 )
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    QuietButton("Speichern und prüfen", color = Palette.text) {
-                        settings.setTmdbKey(keyDraft)
-                        keyState = "Prüfe …"
-                        scope.launch {
-                            keyState = if (keyDraft.isBlank()) "Kein Schlüssel – TMDB ist aus."
-                            else if (app.tmdb.check()) "Schlüssel funktioniert." else "TMDB lehnt den Schlüssel ab."
+                RowDivider()
+                ListRow(
+                    title = "Alle Titel neu laden",
+                    icon = Ic.refresh,
+                    showChevron = false,
+                    onClick = {
+                        if (!app.enricher.available) onToast("Erst einen TMDB-Schlüssel eintragen.")
+                        else {
+                            app.enricher.enqueue(app.library.titles.value.map { it.id }, force = true)
+                            onToast("TMDB lädt alle Titel neu.")
                         }
-                    }
-                    keyState?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = if (it.contains("lehnt")) Palette.wine else Palette.muted) }
-                }
-                VSpace(8.dp)
-                ListGroup {
-                    ListRow(
-                        title = "Titel automatisch erkennen",
-                        subtitle = "Ohne TMDB-ID im Katalog nach Namen suchen.",
-                        icon = Ic.sparkle,
-                        trailing = { IvorySwitch(tmdbAuto, settings::setTmdbAuto) },
-                    )
-                    RowDivider()
-                    ListRow(
-                        title = "Alle Titel neu laden",
-                        icon = Ic.refresh,
-                        showChevron = false,
-                        onClick = {
-                            if (!app.enricher.available) onToast("Erst einen Schlüssel eintragen.")
-                            else {
-                                app.enricher.enqueue(app.library.titles.value.map { it.id }, force = true)
-                                onToast("TMDB lädt alle Titel neu.")
-                            }
-                        },
-                    )
-                }
+                    },
+                )
             }
         }
 
@@ -144,6 +165,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                     title = "Nur über WLAN",
                     subtitle = "Mobile Daten bleiben unberührt.",
                     icon = Ic.wifi,
+                    showChevron = false,
+                    onClick = { settings.setWifiOnly(!wifiOnly) },
                     trailing = { IvorySwitch(wifiOnly, settings::setWifiOnly) },
                 )
                 RowDivider()
@@ -165,38 +188,35 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             }
         }
 
-        item { SectionTitle("Werbeblocker") }
+        // Werbeblocker und Browserdaten gehören zusammen: beides betrifft nur Seiten im Browser.
+        item { SectionTitle("Browser") }
         item {
             ListGroup {
                 ListRow(
                     title = "Werbung blockieren",
                     subtitle = "Mit Trackern und Popups.",
                     icon = Ic.shield,
+                    showChevron = false,
+                    onClick = { settings.setAdblock(!adblockOn) },
                     trailing = { IvorySwitch(adblockOn, settings::setAdblock) },
                 )
                 RowDivider()
                 ListRow(
-                    title = "Filterlisten",
-                    subtitle = "EasyList, EasyPrivacy, Peter Lowe",
-                    icon = Ic.library,
-                )
-                RowDivider()
-                ListRow(
-                    title = if (filter.updating) "Wird aktualisiert …" else "Jetzt aktualisieren",
+                    // Welche Listen es sind, steht nicht mehr hier: die Zeile hat nur eine Untertitelzeile.
+                    title = if (filter.updating) "Filterlisten werden aktualisiert …" else "Filterlisten aktualisieren",
                     subtitle = filter.error ?: listOfNotNull(
                         filter.updatedAt?.let {
-                            "Stand " + java.time.format.DateTimeFormatter.ofPattern("d. MMMM", java.util.Locale.GERMAN)
-                                .format(it.atZone(java.time.ZoneId.systemDefault()))
+                            "Stand " + DateTimeFormatter.ofPattern("d. MMMM", Locale.GERMAN).format(it.atZone(ZoneId.systemDefault()))
                         },
-                        if (filter.ready) "%,d Regeln".format(java.util.Locale.GERMANY, filter.rules) else null,
+                        if (filter.ready) "%,d Regeln".format(Locale.GERMANY, filter.rules) else null,
                     ).joinToString(" · "),
                     icon = Ic.refresh,
                     showChevron = false,
-                    onClick = if (filter.updating) null else ({ adblock.updateNow() }),
+                    onClick = if (filter.updating) null else ({ app.adblock.updateNow() }),
                 )
                 if (allowlist.isNotEmpty()) {
                     RowDivider()
-                    Disclosure(title = "Erlaubte Seiten", icon = Ic.browser, value = "${allowlist.size}") {
+                    Disclosure(title = "Seiten ohne Werbeblocker", icon = Ic.browser, value = "${allowlist.size}") {
                         Column {
                             allowlist.sorted().forEach { host ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -207,12 +227,7 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                         }
                     }
                 }
-            }
-        }
-
-        item { SectionTitle("Browser") }
-        item {
-            ListGroup {
+                RowDivider()
                 ListRow(
                     title = "Verlauf löschen",
                     icon = Ic.schedule,
@@ -237,8 +252,6 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         item { SectionTitle("Über") }
         item {
             ListGroup {
-                ListRow(title = "Version", icon = Ic.info, value = version)
-                RowDivider()
                 ListRow(title = "Einführung noch einmal zeigen", icon = Ic.sparkle, onClick = { settings.setOnboarded(false) })
                 RowDivider()
                 Disclosure(title = "So findet die App Videos", icon = Ic.search) {
@@ -253,8 +266,18 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 }
             }
         }
+        item {
+            Text(
+                "Streamplayer $version",
+                style = MaterialTheme.typography.bodySmall,
+                color = Palette.faint,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+            )
+        }
     }
 
+    if (tmdbSheet) TmdbSheet(settings, onDone = { tmdbSheet = false; it?.let(onToast) })
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
@@ -276,5 +299,61 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             },
             dismissButton = { QuietButton("Behalten", color = Palette.muted) { confirmClear = false } },
         )
+    }
+}
+
+/** TMDB-Schlüssel eintragen und prüfen. Schließt von selbst, sobald TMDB ihn annimmt. */
+@Composable
+private fun TmdbSheet(settings: Settings, onDone: (String?) -> Unit) {
+    val app = App.instance
+    val scope = rememberCoroutineScope()
+    val saved by settings.tmdbKey.collectAsStateWithLifecycle()
+    var draft by remember { mutableStateOf(saved) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    ModalBottomSheet(
+        onDismissRequest = { onDone(null) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Palette.bg,
+        contentColor = Palette.text,
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
+        tonalElevation = 0.dp,
+        dragHandle = { SheetHandle() },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding().imePadding().animateContentSize(),
+        ) {
+            Text("MEDIATHEK", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            VSpace(6.dp)
+            Text("TMDB verbinden.", style = MaterialTheme.typography.headlineSmall)
+            VSpace(10.dp)
+            Text(
+                "Mit einem Schlüssel erkennt die App Titel und holt Cover, Hintergründe, Beschreibungen, Staffeln und Folgennamen. " +
+                    "Kostenlos unter themoviedb.org → Einstellungen → API. Der Schlüssel bleibt auf diesem Gerät.",
+                style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+            )
+            VSpace(18.dp)
+            IvoryField(draft, { draft = it; error = null }, placeholder = "API-Schlüssel oder Lese-Token", password = true)
+            error?.let { VSpace(10.dp); StatusLine(Ic.error, it) }
+            VSpace(18.dp)
+            PrimaryButton(if (busy) "Prüfe …" else "Speichern", enabled = !busy && draft.isNotBlank()) {
+                busy = true; error = null
+                settings.setTmdbKey(draft)
+                scope.launch {
+                    // Gespeichert bleibt er auch bei einem Fehler: check() unterscheidet „abgelehnt“ nicht von
+                    // „kein Netz“, und offline soll niemand seinen Schlüssel neu tippen müssen.
+                    val ok = app.tmdb.check()
+                    busy = false
+                    if (ok) onDone("TMDB ist verbunden.") else error = "Gespeichert, aber TMDB antwortet nicht – Schlüssel falsch oder keine Verbindung."
+                }
+            }
+            if (saved.isNotBlank()) {
+                QuietButton("Schlüssel entfernen", color = Palette.wine, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    settings.setTmdbKey("")
+                    onDone("TMDB ist aus.")
+                }
+            }
+        }
     }
 }

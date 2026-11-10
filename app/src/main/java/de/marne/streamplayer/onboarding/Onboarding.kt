@@ -127,7 +127,7 @@ fun OnboardingScreen(onFinished: () -> Unit) {
 
     fun finish() {
         app.profiles.update(active.id, name, color)
-        app.profiles.chosenThisSession = true
+        app.profiles.chosen()
         app.settings.setOnboarded(true)
         onFinished()
     }

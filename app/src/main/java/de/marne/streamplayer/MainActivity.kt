@@ -256,12 +256,15 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val profileList by app.profiles.profiles.collectAsStateWithLifecycle()
     val activeId by app.profiles.activeId.collectAsStateWithLifecycle()
     val activeProfile = profileList.firstOrNull { it.id == activeId } ?: profileList.first()
-    // Mehrere Profile: beim Start fragen, wer schaut. Einmal pro Sitzung.
-    LaunchedEffect(Unit) {
-        if (app.profiles.profiles.value.size > 1 && !app.profiles.chosenThisSession) {
+    // Mehrere Profile: bei jedem Start fragen, wer schaut – wenn eingestellt. Sonst bleibt das letzte.
+    val needsChoice by app.profiles.needsChoice.collectAsStateWithLifecycle()
+    val askProfile by app.settings.askProfile.collectAsStateWithLifecycle()
+    LaunchedEffect(needsChoice) {
+        if (!needsChoice) return@LaunchedEffect
+        if (askProfile && profileList.size > 1) {
             nav.profileManage = false
             nav.profilePicker = true
-        }
+        } else app.profiles.chosen()
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -603,7 +606,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             visible = nav.profilePicker,
             startManaging = nav.profileManage,
             canDismiss = true,
-            onDone = { nav.profilePicker = false },
+            onDone = { nav.profilePicker = false; app.profiles.chosen() },
         )
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }

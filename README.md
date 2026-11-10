@@ -257,6 +257,10 @@ Profile wie bei Netflix: eine gemeinsame Bibliothek, jedes Profil mit eigenem Fo
 Profile gibt es auch ohne Konto. Mit Konto (Google oder E-Mail) werden Bibliothek, Profile,
 Fortschritt und eigene Cover zwischen Geräten abgeglichen.
 
+Bei mehreren Profilen fragt die App beim Start „Wer schaut?“ – abschaltbar unter Einstellungen →
+Profile, dann öffnet das zuletzt gewählte. Als Start zählt ein kalter Start oder die Rückkehr nach
+30 Minuten im Hintergrund (`ProfileStore.RESTART_AFTER`).
+
 - **Das Gerät bleibt die Quelle.** Die App liest immer aus ihren lokalen Dateien; Firestore ist
   nur der Weg zwischen Geräten. Offline geht alles, Änderungen werden nachgeliefert.
 - **Kosten:** gelesen wird nur, was seit dem letzten Abgleich neu ist (`updatedAt > since`), und
