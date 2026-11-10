@@ -20,6 +20,7 @@ import de.marne.streamplayer.library.LibTitle
 import de.marne.streamplayer.library.LibraryStore
 import de.marne.streamplayer.library.ProgressMerge
 import de.marne.streamplayer.library.ProgressStore
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -113,10 +114,10 @@ class CloudSync(
         Log.w(TAG, "sync", e)
         _status.value = Status.Error(
             when ((e as? FirebaseFirestoreException)?.code) {
-                FirebaseFirestoreException.Code.PERMISSION_DENIED -> "Keine Berechtigung. Sind die Firestore-Regeln eingespielt?"
-                FirebaseFirestoreException.Code.UNAVAILABLE -> "Keine Verbindung – wird nachgeholt."
-                FirebaseFirestoreException.Code.FAILED_PRECONDITION -> "Firestore ist im Projekt noch nicht angelegt."
-                else -> e.message ?: "Abgleich fehlgeschlagen."
+                FirebaseFirestoreException.Code.PERMISSION_DENIED -> tr("Keine Berechtigung. Sind die Firestore-Regeln eingespielt?", "Permission denied. Are the Firestore rules deployed?")
+                FirebaseFirestoreException.Code.UNAVAILABLE -> tr("Keine Verbindung – wird nachgeholt.", "No connection – will retry.")
+                FirebaseFirestoreException.Code.FAILED_PRECONDITION -> tr("Firestore ist im Projekt noch nicht angelegt.", "Firestore isn't set up in the project yet.")
+                else -> e.message ?: tr("Abgleich fehlgeschlagen.", "Sync failed.")
             }
         )
     }

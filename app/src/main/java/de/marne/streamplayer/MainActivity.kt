@@ -74,6 +74,7 @@ import de.marne.streamplayer.browser.WatchController
 import de.marne.streamplayer.library.ResolveInfo
 import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.ui.Format
+import de.marne.streamplayer.ui.tr
 import de.marne.streamplayer.library.ResolveScreen
 import android.app.ActivityOptions
 import androidx.compose.animation.togetherWith
@@ -291,13 +292,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class TabSpec(val label: String, val icon: Int, val iconSelected: Int)
+/** [label] ist eine Funktion, damit der Name beim Sprachwechsel mit umschaltet. */
+private data class TabSpec(val label: () -> String, val icon: Int, val iconSelected: Int)
 
 private val tabs = listOf(
-    TabSpec("Start", Ic.library, Ic.libraryFilled),
-    TabSpec("Entdecken", Ic.search, Ic.search),
-    TabSpec("Meins", Ic.bookmark, Ic.bookmarkFilled),
-    TabSpec("Einstellungen", Ic.settings, Ic.settingsFilled),
+    TabSpec({ tr("Start", "Home") }, Ic.library, Ic.libraryFilled),
+    TabSpec({ tr("Entdecken", "Discover") }, Ic.search, Ic.search),
+    TabSpec({ tr("Meins", "My Stuff") }, Ic.bookmark, Ic.bookmarkFilled),
+    TabSpec({ tr("Einstellungen", "Settings") }, Ic.settings, Ic.settingsFilled),
 )
 
 @Composable
@@ -345,10 +347,10 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         scope.launch {
             runCatching { app.importer.import(uri) }
                 .onSuccess { r ->
-                    val hint = if (!app.enricher.available) " Für Cover und Beschreibungen: TMDB-Schlüssel in den Einstellungen." else ""
-                    toast("Katalog importiert: ${r.summary}.$hint")
+                    val hint = if (!app.enricher.available) tr(" Für Cover und Beschreibungen: TMDB-Schlüssel in den Einstellungen.", " For covers and descriptions: add a TMDB key in Settings.") else ""
+                    toast(tr("Katalog importiert: ${r.summary}.$hint", "Catalog imported: ${r.summary}.$hint"))
                 }
-                .onFailure { toast(it.message ?: "Import fehlgeschlagen.") }
+                .onFailure { toast(it.message ?: tr("Import fehlgeschlagen.", "Import failed.")) }
         }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> uri?.let(::doImport) }
@@ -364,7 +366,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         val id = coverFor ?: return@rememberLauncherForActivityResult
         coverFor = null
         if (uri != null) scope.launch {
-            app.importer.saveCustomPoster(uri, id)?.let { app.library.setCustomPoster(id, it) } ?: toast("Bild lässt sich nicht lesen.")
+            app.importer.saveCustomPoster(uri, id)?.let { app.library.setCustomPoster(id, it) } ?: toast(tr("Bild lässt sich nicht lesen.", "Couldn't read the image."))
         }
     }
 
@@ -376,7 +378,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         }
         app.downloads.enqueue(c, v, title, thumb, browser.userAgent, libraryKey)
         DownloadService.kick(context)
-        toast("Läuft. Du findest es unter Meins → Downloads.", "Ansehen") {
+        toast(tr("Läuft. Du findest es unter Meins → Downloads.", "Downloading. Find it under My Stuff → Downloads."), tr("Ansehen", "View")) {
             nav.browserOpen = false
             nav.selectTab(MainActivity.TAB_MINE)
             nav.push(Route.Downloads)
@@ -429,7 +431,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             // Läuft schon eine Suche (Download oder Abspielen): hinten anstellen, nicht abbrechen.
             if (nav.quiet != null || nav.resolving) {
                 nav.queue.add(job)
-                toast("Vorgemerkt: $label")
+                toast(tr("Vorgemerkt: $label", "Queued: $label"))
             } else startQuiet(job)
             return
         }
@@ -438,8 +440,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         nav.resolveInfo = ResolveInfo(
             title = t.title,
             eyebrow = listOfNotNull(
-                if (download) "Laden" else null,
-                ep?.label ?: listOfNotNull("Film", t.shownYear?.toString()).joinToString(" · "),
+                if (download) tr("Laden", "Download") else null,
+                ep?.label ?: listOfNotNull(tr("Film", "Movie"), t.shownYear?.toString()).joinToString(" · "),
             ).joinToString(" · "),
             subtitle = ep?.title,
             // Nur echte Bilder ihrer Art: ein Breitbild als „Poster“ gequetscht sah doppelt aus.
@@ -497,8 +499,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             // Im Hintergrund nichts gefunden: Bescheid geben, Seite zum Selbst-Starten anbieten.
             is WatchController.State.NotFound, is WatchController.State.Protected -> nav.quiet?.let { job ->
                 watch.cancel()
-                val why = if (watchState is WatchController.State.Protected) "geschützt (DRM)" else "kein Video gefunden"
-                toast("${job.label}: $why.", "Seite öffnen") {
+                val why = if (watchState is WatchController.State.Protected) tr("geschützt (DRM)", "protected (DRM)") else tr("kein Video gefunden", "no video found")
+                toast("${job.label}: $why.", tr("Seite öffnen", "Open page")) {
                     nav.browserOpen = true
                     browser.load(job.url)
                 }
@@ -558,7 +560,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             saveToLibrary = { d ->
                 d.fileUri?.let { uri ->
                     val t = app.library.addOfflineMovie(uri, d.title, d.pageUrl, d.thumbnail, d.durationMs)
-                    toast("In der Bibliothek.", "Ansehen") {
+                    toast(tr("In der Bibliothek.", "Added to your library."), tr("Ansehen", "View")) {
                         nav.selectTab(MainActivity.TAB_HOME)
                         nav.openDetail(t.id)
                     }
@@ -585,7 +587,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             toggleList = { t ->
                 val had = t.id in app.profiles.active.list
                 app.profiles.toggleList(t.id)
-                toast(if (had) "Aus Meiner Liste entfernt." else "Auf Meiner Liste.")
+                toast(if (had) tr("Aus Meiner Liste entfernt.", "Removed from My List.") else tr("Auf Meiner Liste.", "Added to My List."))
             },
             markWatched = { t, w -> markTitle(t, w) },
             setWatched = { key, watched -> app.progress.setWatched(key, watched) },
@@ -615,14 +617,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             refreshTmdb = { t ->
                 if (app.enricher.available) {
                     app.enricher.enqueue(listOf(t.id), force = true)
-                    toast("TMDB lädt neu …")
-                } else toast("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.")
+                    toast(tr("TMDB lädt neu …", "Reloading from TMDB …"))
+                } else toast(tr("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.", "Add a TMDB key in Settings first."))
             },
             remove = { t ->
                 app.library.remove(t.id)
                 app.progress.removeTitle(t.id)
                 nav.pop()
-                toast("Aus der Bibliothek entfernt.")
+                toast(tr("Aus der Bibliothek entfernt.", "Removed from your library."))
             },
         )
     }
@@ -688,7 +690,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                     dismiss = { nav.linkUrl = null },
                     watchNow = { u ->
                         nav.linkUrl = null
-                        nav.resolveInfo = ResolveInfo(title = Format.host(u), eyebrow = "Geteilter Link")
+                        nav.resolveInfo = ResolveInfo(title = Format.host(u), eyebrow = tr("Geteilter Link", "Shared link"))
                         nav.closeInstant = false
                         nav.resolving = true
                         nav.browserOpen = true
@@ -788,9 +790,9 @@ private fun QuietSearchBar(job: QuietJob?, queued: Int, onCancel: () -> Unit, mo
         ) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), color = Palette.onInk, strokeWidth = 2.dp)
             Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text("Download wird vorbereitet", style = MaterialTheme.typography.labelMedium, color = Palette.onInk.copy(alpha = 0.7f))
+                Text(tr("Download wird vorbereitet", "Preparing download"), style = MaterialTheme.typography.labelMedium, color = Palette.onInk.copy(alpha = 0.7f))
                 Text(
-                    j.label + if (queued > 0) "  ·  $queued weitere" else "",
+                    j.label + if (queued > 0) tr("  ·  $queued weitere", "  ·  $queued more") else "",
                     style = MaterialTheme.typography.bodyMedium, color = Palette.onInk, maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
@@ -873,7 +875,7 @@ private fun NavBar(selected: Int, activeCount: Int, onSelect: (Int) -> Unit) {
                             Icon(painterResource(if (isSel) t.iconSelected else t.icon), contentDescription = null)
                         }
                     },
-                    label = { Text(t.label) },
+                    label = { Text(t.label()) },
                     colors = ShortNavigationBarItemDefaults.colors(
                         selectedIconColor = Palette.text,
                         selectedTextColorTopIconPosition = Palette.text,

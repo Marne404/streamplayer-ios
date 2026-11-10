@@ -21,6 +21,7 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import de.marne.streamplayer.BuildConfig
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -98,13 +99,13 @@ class Cloud(private val app: Application) {
     }
 
     private suspend fun googleToken(activity: Activity): String {
-        val clientId = webClientId ?: throw IllegalStateException(de.marne.streamplayer.ui.tr("Google-Anmeldung ist im Firebase-Projekt nicht eingeschaltet.", "Google sign-in is not enabled in the Firebase project."))
+        val clientId = webClientId ?: throw IllegalStateException(tr("Google-Anmeldung ist im Firebase-Projekt nicht eingeschaltet.", "Google sign-in is not enabled in the Firebase project."))
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(GetSignInWithGoogleOption.Builder(clientId).build())
             .build()
         val credential = CredentialManager.create(activity).getCredential(activity, request).credential
         if (credential !is CustomCredential || credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-            throw IllegalStateException(de.marne.streamplayer.ui.tr("Unerwartete Antwort der Google-Anmeldung.", "Unexpected response from Google sign-in."))
+            throw IllegalStateException(tr("Unerwartete Antwort der Google-Anmeldung.", "Unexpected response from Google sign-in."))
         }
         return GoogleIdTokenCredential.createFrom(credential.data).idToken
     }
@@ -114,7 +115,7 @@ class Cloud(private val app: Application) {
      * Passwort, Google-Konten über die Kontoauswahl. Wirft, wenn es nicht passt.
      */
     suspend fun confirmOwner(activity: Activity, password: String?) {
-        val u = requireAuth().currentUser ?: throw IllegalStateException(de.marne.streamplayer.ui.tr("Nicht angemeldet.", "Not signed in."))
+        val u = requireAuth().currentUser ?: throw IllegalStateException(tr("Nicht angemeldet.", "Not signed in."))
         val credential = if (u.providerData.any { it.providerId == GoogleAuthProvider.PROVIDER_ID }) {
             GoogleAuthProvider.getCredential(googleToken(activity), null)
         } else {
@@ -127,21 +128,21 @@ class Cloud(private val app: Application) {
         auth?.signOut()
     }
 
-    private fun requireAuth() = auth ?: throw IllegalStateException("Konto ist in dieser Version nicht eingerichtet.")
+    private fun requireAuth() = auth ?: throw IllegalStateException(tr("Konto ist in dieser Version nicht eingerichtet.", "Accounts aren't set up in this version."))
 
     companion object {
         /** Fehler so, dass man weiß, was zu tun ist. null = still (z. B. selbst abgebrochen). */
         fun message(e: Throwable): String? = when (e) {
             is GetCredentialCancellationException -> null
-            is NoCredentialException -> "Kein Google-Konto auf diesem Gerät gefunden."
-            is FirebaseAuthWeakPasswordException -> "Das Passwort ist zu kurz – mindestens 6 Zeichen."
-            is FirebaseAuthUserCollisionException -> "Für diese E-Mail gibt es schon ein Konto. Melde dich an (oder mit Google, falls du es so angelegt hast)."
-            is FirebaseAuthInvalidUserException -> "Kein Konto mit dieser E-Mail."
+            is NoCredentialException -> tr("Kein Google-Konto auf diesem Gerät gefunden.", "No Google account found on this device.")
+            is FirebaseAuthWeakPasswordException -> tr("Das Passwort ist zu kurz – mindestens 6 Zeichen.", "That password is too short – at least 6 characters.")
+            is FirebaseAuthUserCollisionException -> tr("Für diese E-Mail gibt es schon ein Konto. Melde dich an (oder mit Google, falls du es so angelegt hast).", "There's already an account for this email. Sign in instead (or with Google, if that's how you created it).")
+            is FirebaseAuthInvalidUserException -> tr("Kein Konto mit dieser E-Mail.", "No account with this email.")
             is FirebaseAuthInvalidCredentialsException ->
-                if (e.errorCode == "ERROR_INVALID_EMAIL") "Das sieht nicht nach einer E-Mail-Adresse aus." else "E-Mail oder Passwort stimmt nicht."
-            is FirebaseTooManyRequestsException -> "Zu viele Versuche. Bitte kurz warten."
-            is FirebaseNetworkException -> "Keine Verbindung."
-            else -> e.message ?: "Anmeldung fehlgeschlagen."
+                if (e.errorCode == "ERROR_INVALID_EMAIL") tr("Das sieht nicht nach einer E-Mail-Adresse aus.", "That doesn't look like an email address.") else tr("E-Mail oder Passwort stimmt nicht.", "Email or password is incorrect.")
+            is FirebaseTooManyRequestsException -> tr("Zu viele Versuche. Bitte kurz warten.", "Too many attempts. Please wait a moment.")
+            is FirebaseNetworkException -> tr("Keine Verbindung.", "No connection.")
+            else -> e.message ?: tr("Anmeldung fehlgeschlagen.", "Sign-in failed.")
         }
     }
 }

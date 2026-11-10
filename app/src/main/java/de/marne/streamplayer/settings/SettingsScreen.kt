@@ -34,6 +34,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.marne.streamplayer.App
 import de.marne.streamplayer.account.AccountSection
 import de.marne.streamplayer.data.Settings
+import de.marne.streamplayer.ui.Lang
+import de.marne.streamplayer.ui.tr
 import de.marne.streamplayer.ui.design.Disclosure
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.IvoryField
@@ -54,7 +56,6 @@ import de.marne.streamplayer.update.UpdateRow
 import kotlinx.coroutines.launch
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * Einstellungen: jede Gruppe eine Karte aus Zeilen, nichts Längeres auf der obersten Ebene.
@@ -83,25 +84,25 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         Modifier.fillMaxSize().background(Palette.bg),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 40.dp),
     ) {
-        item { ScreenHeader(title = "Wie soll es laufen?", eyebrow = "Einstellungen") }
+        item { ScreenHeader(title = tr("Wie soll es laufen?", "How should it run?"), eyebrow = tr("Einstellungen", "Settings")) }
 
-        item { SectionTitle("Konto") }
+        item { SectionTitle(tr("Konto", "Account")) }
         item { AccountSection(onToast = onToast) }
 
-        item { SectionTitle("Profile") }
+        item { SectionTitle(tr("Profile", "Profiles")) }
         item {
             ListGroup {
                 ListRow(
-                    title = "Profile verwalten",
-                    subtitle = "Jedes Profil hat seinen eigenen Fortschritt.",
+                    title = tr("Profile verwalten", "Manage profiles"),
+                    subtitle = tr("Jedes Profil hat seinen eigenen Fortschritt.", "Each profile keeps its own progress."),
                     icon = Ic.group,
                     value = profiles.size.toString(),
                     onClick = onProfiles,
                 )
                 RowDivider()
                 ListRow(
-                    title = "Beim Start fragen, wer schaut",
-                    subtitle = if (profiles.size > 1) "Sonst öffnet das zuletzt gewählte Profil." else "Ab zwei Profilen.",
+                    title = tr("Beim Start fragen, wer schaut", "Ask who's watching on start"),
+                    subtitle = if (profiles.size > 1) tr("Sonst öffnet das zuletzt gewählte Profil.", "Otherwise the last profile opens.") else tr("Ab zwei Profilen.", "With two or more profiles."),
                     icon = Ic.account,
                     showChevron = false,
                     onClick = { settings.setAskProfile(!askProfile) },
@@ -110,38 +111,38 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             }
         }
 
-        item { SectionTitle("Darstellung") }
+        item { SectionTitle(tr("Darstellung", "Appearance")) }
         item {
             Segmented(
-                options = listOf("system" to "System", "light" to "Hell", "dark" to "Dunkel"),
+                options = listOf("system" to "System", "light" to tr("Hell", "Light"), "dark" to tr("Dunkel", "Dark")),
                 selected = theme,
                 onSelect = settings::setTheme,
             )
         }
         // Sprache: jede heißt in sich selbst. Gilt sofort, ohne Neustart (Lang ist Compose-Zustand).
-        item { SectionTitle(de.marne.streamplayer.ui.tr("Sprache", "Language")) }
+        item { SectionTitle(tr("Sprache", "Language")) }
         item {
             Segmented(
                 options = listOf("de" to "Deutsch", "en" to "English"),
                 selected = language.tag,
-                onSelect = { tag -> de.marne.streamplayer.ui.Lang.fromTag(tag)?.let(settings::setLanguage) },
+                onSelect = { tag -> Lang.fromTag(tag)?.let(settings::setLanguage) },
             )
         }
 
-        item { SectionTitle("Mediathek") }
+        item { SectionTitle(tr("Mediathek", "Library")) }
         item {
             ListGroup {
                 ListRow(
                     title = "TMDB",
-                    subtitle = "Cover, Beschreibungen, Folgen.",
+                    subtitle = tr("Cover, Beschreibungen, Folgen.", "Covers, descriptions, episodes."),
                     icon = Ic.movie,
-                    value = if (tmdbKey.isBlank()) "Aus" else "Aktiv",
+                    value = if (tmdbKey.isBlank()) tr("Aus", "Off") else tr("Aktiv", "On"),
                     onClick = { tmdbSheet = true },
                 )
                 RowDivider()
                 ListRow(
-                    title = "Titel automatisch erkennen",
-                    subtitle = "Ohne TMDB-ID im Katalog nach Namen suchen.",
+                    title = tr("Titel automatisch erkennen", "Recognize titles automatically"),
+                    subtitle = tr("Ohne TMDB-ID im Katalog nach Namen suchen.", "Search by name when the catalog has no TMDB ID."),
                     icon = Ic.sparkle,
                     showChevron = false,
                     onClick = { settings.setTmdbAuto(!tmdbAuto) },
@@ -149,26 +150,26 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 )
                 RowDivider()
                 ListRow(
-                    title = "Alle Titel neu laden",
+                    title = tr("Alle Titel neu laden", "Reload all titles"),
                     icon = Ic.refresh,
                     showChevron = false,
                     onClick = {
-                        if (!app.enricher.available) onToast("Erst einen TMDB-Schlüssel eintragen.")
+                        if (!app.enricher.available) onToast(tr("Erst einen TMDB-Schlüssel eintragen.", "Add a TMDB key first."))
                         else {
                             app.enricher.enqueue(app.library.titles.value.map { it.id }, force = true)
-                            onToast("TMDB lädt alle Titel neu.")
+                            onToast(tr("TMDB lädt alle Titel neu.", "Reloading all titles from TMDB."))
                         }
                     },
                 )
             }
         }
 
-        item { SectionTitle("Downloads") }
+        item { SectionTitle(tr("Downloads", "Downloads")) }
         item {
             ListGroup {
                 ListRow(
-                    title = "Nur über WLAN",
-                    subtitle = "Mobile Daten bleiben unberührt.",
+                    title = tr("Nur über WLAN", "Wi-Fi only"),
+                    subtitle = tr("Mobile Daten bleiben unberührt.", "Mobile data stays untouched."),
                     icon = Ic.wifi,
                     showChevron = false,
                     onClick = { settings.setWifiOnly(!wifiOnly) },
@@ -176,7 +177,7 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 )
                 RowDivider()
                 ListRow(
-                    title = "Gleichzeitig",
+                    title = tr("Gleichzeitig", "At once"),
                     icon = Ic.download,
                     trailing = {
                         Segmented(
@@ -189,17 +190,17 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                     },
                 )
                 RowDivider()
-                ListRow(title = "Speicherort", icon = Ic.folder, value = "Filme/Streamplayer")
+                ListRow(title = tr("Speicherort", "Location"), icon = Ic.folder, value = tr("Filme/Streamplayer", "Movies/Streamplayer"))
             }
         }
 
         // Werbeblocker und Browserdaten gehören zusammen: beides betrifft nur Seiten im Browser.
-        item { SectionTitle("Browser") }
+        item { SectionTitle(tr("Browser", "Browser")) }
         item {
             ListGroup {
                 ListRow(
-                    title = "Werbung blockieren",
-                    subtitle = "Mit Trackern und Popups.",
+                    title = tr("Werbung blockieren", "Block ads"),
+                    subtitle = tr("Mit Trackern und Popups.", "Including trackers and pop-ups."),
                     icon = Ic.shield,
                     showChevron = false,
                     onClick = { settings.setAdblock(!adblockOn) },
@@ -208,12 +209,12 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 RowDivider()
                 ListRow(
                     // Welche Listen es sind, steht nicht mehr hier: die Zeile hat nur eine Untertitelzeile.
-                    title = if (filter.updating) "Filterlisten werden aktualisiert …" else "Filterlisten aktualisieren",
+                    title = if (filter.updating) tr("Filterlisten werden aktualisiert …", "Updating filter lists …") else tr("Filterlisten aktualisieren", "Update filter lists"),
                     subtitle = filter.error ?: listOfNotNull(
                         filter.updatedAt?.let {
-                            "Stand " + DateTimeFormatter.ofPattern("d. MMMM", Locale.GERMAN).format(it.atZone(ZoneId.systemDefault()))
+                            tr("Stand ", "Updated ") + DateTimeFormatter.ofPattern(if (Lang.isGerman) "d. MMMM" else "MMMM d", Lang.locale).format(it.atZone(ZoneId.systemDefault()))
                         },
-                        if (filter.ready) "%,d Regeln".format(Locale.GERMANY, filter.rules) else null,
+                        if (filter.ready) tr("%,d Regeln", "%,d rules").format(Lang.locale, filter.rules) else null,
                     ).joinToString(" · "),
                     icon = Ic.refresh,
                     showChevron = false,
@@ -221,12 +222,12 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 )
                 if (allowlist.isNotEmpty()) {
                     RowDivider()
-                    Disclosure(title = "Seiten ohne Werbeblocker", icon = Ic.browser, value = "${allowlist.size}") {
+                    Disclosure(title = tr("Seiten ohne Werbeblocker", "Sites without ad blocker"), icon = Ic.browser, value = "${allowlist.size}") {
                         Column {
                             allowlist.sorted().forEach { host ->
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(host, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                    QuietButton("Entfernen", color = Palette.wine) { settings.setAllowed(host, false) }
+                                    QuietButton(tr("Entfernen", "Remove"), color = Palette.wine) { settings.setAllowed(host, false) }
                                 }
                             }
                         }
@@ -234,18 +235,18 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 }
                 RowDivider()
                 ListRow(
-                    title = "Verlauf löschen",
+                    title = tr("Verlauf löschen", "Clear history"),
                     icon = Ic.schedule,
                     titleColor = Palette.wine,
                     showChevron = false,
                     onClick = {
                         settings.clearHistory()
-                        onToast("Verlauf gelöscht.")
+                        onToast(tr("Verlauf gelöscht.", "History cleared."))
                     },
                 )
                 RowDivider()
                 ListRow(
-                    title = "Cookies und Website-Daten löschen",
+                    title = tr("Cookies und Website-Daten löschen", "Clear cookies and site data"),
                     icon = Ic.delete,
                     titleColor = Palette.wine,
                     showChevron = false,
@@ -254,19 +255,25 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
             }
         }
 
-        item { SectionTitle("Über") }
+        item { SectionTitle(tr("Über", "About")) }
         item {
             ListGroup {
                 UpdateRow()
                 RowDivider()
-                ListRow(title = "Einführung noch einmal zeigen", icon = Ic.sparkle, onClick = { settings.setOnboarded(false) })
+                ListRow(title = tr("Einführung noch einmal zeigen", "Show the introduction again"), icon = Ic.sparkle, onClick = { settings.setOnboarded(false) })
                 RowDivider()
-                Disclosure(title = "So findet die App Videos", icon = Ic.search) {
+                Disclosure(title = tr("So findet die App Videos", "How the app finds videos"), icon = Ic.search) {
                     Text(
-                        "Die App ist ein Browser. Sie sieht jede Anfrage einer Seite und liest zusätzlich " +
-                            "die Video-Elemente im Seiten-Code. Was nach Video aussieht, prüft sie kurz beim " +
-                            "Server, bevor es in der Liste erscheint. Geschützte Streams (DRM) und Livestreams " +
-                            "lädt sie nicht.",
+                        tr(
+                            "Die App ist ein Browser. Sie sieht jede Anfrage einer Seite und liest zusätzlich " +
+                                "die Video-Elemente im Seiten-Code. Was nach Video aussieht, prüft sie kurz beim " +
+                                "Server, bevor es in der Liste erscheint. Geschützte Streams (DRM) und Livestreams " +
+                                "lädt sie nicht.",
+                            "The app is a browser. It sees every request a page makes and also reads the video " +
+                                "elements in the page's code. Anything that looks like a video gets a quick check " +
+                                "with the server before it shows up in the list. Protected streams (DRM) and live " +
+                                "streams aren't downloaded.",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Palette.muted,
                     )
@@ -280,22 +287,22 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             containerColor = Palette.surface,
-            title = { Text("Alles vergessen?", style = MaterialTheme.typography.headlineSmall) },
+            title = { Text(tr("Alles vergessen?", "Forget everything?"), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Text(
-                    "Du wirst auf allen Seiten abgemeldet. Deine Downloads bleiben.",
+                    tr("Du wirst auf allen Seiten abgemeldet. Deine Downloads bleiben.", "You'll be signed out of every site. Your downloads stay."),
                     style = MaterialTheme.typography.bodyMedium,
                     color = Palette.muted,
                 )
             },
             confirmButton = {
-                QuietButton("Löschen", color = Palette.wine) {
+                QuietButton(tr("Löschen", "Delete"), color = Palette.wine) {
                     confirmClear = false
                     onClearBrowsingData()
-                    onToast("Cookies und Website-Daten gelöscht.")
+                    onToast(tr("Cookies und Website-Daten gelöscht.", "Cookies and site data cleared."))
                 }
             },
-            dismissButton = { QuietButton("Behalten", color = Palette.muted) { confirmClear = false } },
+            dismissButton = { QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirmClear = false } },
         )
     }
 }
@@ -322,20 +329,24 @@ private fun TmdbSheet(settings: Settings, onDone: (String?) -> Unit) {
         Column(
             Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding().imePadding().animateContentSize(),
         ) {
-            Text("MEDIATHEK", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            Text(tr("MEDIATHEK", "LIBRARY"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
             VSpace(6.dp)
-            Text("TMDB verbinden.", style = MaterialTheme.typography.headlineSmall)
+            Text(tr("TMDB verbinden.", "Connect TMDB."), style = MaterialTheme.typography.headlineSmall)
             VSpace(10.dp)
             Text(
-                "Mit einem Schlüssel erkennt die App Titel und holt Cover, Hintergründe, Beschreibungen, Staffeln und Folgennamen. " +
-                    "Kostenlos unter themoviedb.org → Einstellungen → API. Der Schlüssel bleibt auf diesem Gerät.",
+                tr(
+                    "Mit einem Schlüssel erkennt die App Titel und holt Cover, Hintergründe, Beschreibungen, Staffeln und Folgennamen. " +
+                        "Kostenlos unter themoviedb.org → Einstellungen → API. Der Schlüssel bleibt auf diesem Gerät.",
+                    "With a key, the app recognizes titles and fetches covers, backdrops, descriptions, seasons and episode names. " +
+                        "Free at themoviedb.org → Settings → API. The key stays on this device.",
+                ),
                 style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
             )
             VSpace(18.dp)
-            IvoryField(draft, { draft = it; error = null }, placeholder = "API-Schlüssel oder Lese-Token", password = true)
+            IvoryField(draft, { draft = it; error = null }, placeholder = tr("API-Schlüssel oder Lese-Token", "API key or read access token"), password = true)
             error?.let { VSpace(10.dp); StatusLine(Ic.error, it) }
             VSpace(18.dp)
-            PrimaryButton(if (busy) "Prüfe …" else "Speichern", enabled = !busy && draft.isNotBlank()) {
+            PrimaryButton(if (busy) tr("Prüfe …", "Checking …") else tr("Speichern", "Save"), enabled = !busy && draft.isNotBlank()) {
                 busy = true; error = null
                 settings.setTmdbKey(draft)
                 scope.launch {
@@ -343,13 +354,13 @@ private fun TmdbSheet(settings: Settings, onDone: (String?) -> Unit) {
                     // „kein Netz“, und offline soll niemand seinen Schlüssel neu tippen müssen.
                     val ok = app.tmdb.check()
                     busy = false
-                    if (ok) onDone("TMDB ist verbunden.") else error = "Gespeichert, aber TMDB antwortet nicht – Schlüssel falsch oder keine Verbindung."
+                    if (ok) onDone(tr("TMDB ist verbunden.", "TMDB is connected.")) else error = tr("Gespeichert, aber TMDB antwortet nicht – Schlüssel falsch oder keine Verbindung.", "Saved, but TMDB isn't responding – wrong key or no connection.")
                 }
             }
             if (saved.isNotBlank()) {
-                QuietButton("Schlüssel entfernen", color = Palette.wine, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                QuietButton(tr("Schlüssel entfernen", "Remove key"), color = Palette.wine, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     settings.setTmdbKey("")
-                    onDone("TMDB ist aus.")
+                    onDone(tr("TMDB ist aus.", "TMDB is off."))
                 }
             }
         }
