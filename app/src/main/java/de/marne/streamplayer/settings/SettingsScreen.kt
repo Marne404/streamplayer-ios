@@ -73,6 +73,7 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val tmdbKey by settings.tmdbKey.collectAsStateWithLifecycle()
     val tmdbAuto by settings.tmdbAuto.collectAsStateWithLifecycle()
     val askProfile by settings.askProfile.collectAsStateWithLifecycle()
+    val language by settings.language.collectAsStateWithLifecycle()
     val profiles by app.profiles.profiles.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
     var tmdbSheet by remember { mutableStateOf(false) }
@@ -115,6 +116,15 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 options = listOf("system" to "System", "light" to "Hell", "dark" to "Dunkel"),
                 selected = theme,
                 onSelect = settings::setTheme,
+            )
+        }
+        // Sprache: jede heißt in sich selbst. Gilt sofort, ohne Neustart (Lang ist Compose-Zustand).
+        item { SectionTitle(de.marne.streamplayer.ui.tr("Sprache", "Language")) }
+        item {
+            Segmented(
+                options = listOf("de" to "Deutsch", "en" to "English"),
+                selected = language.tag,
+                onSelect = { tag -> de.marne.streamplayer.ui.Lang.fromTag(tag)?.let(settings::setLanguage) },
             )
         }
 

@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import de.marne.streamplayer.ui.Lang
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -36,7 +37,32 @@ class Settings(context: Context) {
     val tmdbKey: StateFlow<String> = _tmdbKey.asStateFlow()
     private val _tmdbAuto = MutableStateFlow(prefs.getBoolean(KEY_TMDB_AUTO, true))
     val tmdbAuto: StateFlow<Boolean> = _tmdbAuto.asStateFlow()
-    val tmdbLanguage: String get() = prefs.getString(KEY_TMDB_LANG, "de-DE") ?: "de-DE"
+    /**
+     * TMDB-Sprache: von Hand gesetzt, sonst die der Oberfläche – Deutsch als de-DE, Englisch in der
+     * Variante des Geräts (en-GB, en-AU …), sonst en-US. Fehlt ein Bild in dieser Sprache, nimmt
+     * Tmdb das englische oder sprachlose (siehe Tmdb.pickImage).
+     */
+    val tmdbLanguage: String get() = prefs.getString(KEY_TMDB_LANG, null) ?: when (_language.value) {
+        Lang.Code.DE -> "de-DE"
+        Lang.Code.EN -> java.util.Locale.getDefault().takeIf { it.language == "en" && it.country.isNotEmpty() }?.toLanguageTag() ?: "en-US"
+    }
+
+    /**
+     * Sprache der Oberfläche. Fehlt sie, kommt es darauf an: Wer den Willkommens-Ablauf schon hatte
+     * (vor 1.8 war alles Deutsch), bekommt die Gerätesprache, im Zweifel Deutsch. Neu Installierte
+     * starten Englisch und wählen im ersten Schritt des Ablaufs.
+     */
+    private val _language = MutableStateFlow(
+        Lang.fromTag(prefs.getString(KEY_LANGUAGE, null))
+            ?: if (prefs.getBoolean("onboarded", false)) (Lang.system() ?: Lang.Code.DE) else Lang.Code.EN
+    )
+    val language: StateFlow<Lang.Code> = _language.asStateFlow()
+
+    fun setLanguage(code: Lang.Code) {
+        _language.value = code
+        Lang.current = code
+        prefs.edit().putString(KEY_LANGUAGE, code.tag).apply()
+    }
 
     fun setTmdbKey(value: String) {
         _tmdbKey.value = value.trim()
@@ -138,6 +164,7 @@ class Settings(context: Context) {
         const val KEY_TMDB = "tmdb_key"
         const val KEY_TMDB_AUTO = "tmdb_auto"
         const val KEY_TMDB_LANG = "tmdb_language"
+        const val KEY_LANGUAGE = "ui_language"
         const val KEY_ALLOWLIST = "adblock_allowlist"
         const val KEY_HISTORY = "history"
         const val KEY_LAST_URL = "last_url"

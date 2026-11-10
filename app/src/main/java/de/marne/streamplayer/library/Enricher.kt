@@ -43,9 +43,18 @@ class Enricher(
 
     val available: Boolean get() = tmdb.configured
 
-    /** Titel, denen Genres & Co. fehlen (vor 1.7.0 ergänzt), einmal nachladen. Beim Start aufgerufen. */
+    /**
+     * Was TMDB inzwischen mehr liefert: Genres & Co. (seit 1.7.0) und ein Ersatz-Cover auf Englisch
+     * oder ohne Sprache, wenn es in der Wunschsprache keins gab (seit 1.8.0).
+     */
+    private fun needsUpgrade(t: LibTitle): Boolean {
+        val tm = t.tmdb ?: return false
+        return tm.genres == null || (tm.poster == null && t.poster == null && t.customPoster == null)
+    }
+
+    /** Titel mit Lücken (siehe [needsUpgrade]) einmal nachladen. Beim Start aufgerufen. */
     fun upgradeOld() {
-        enqueue(store.titles.value.filter { it.tmdb != null && it.tmdb.genres == null }.map { it.id })
+        enqueue(store.titles.value.filter { needsUpgrade(it) }.map { it.id })
     }
 
     fun enqueue(ids: List<String>, force: Boolean = false) {
@@ -57,8 +66,8 @@ class Enricher(
 
     private suspend fun enrich(id: String, force: Boolean) {
         val t = store.get(id) ?: return
-        // Schon ergänzt – außer Genres & Co. fehlen noch (Stand vor 1.7.0): dann einmal nachholen.
-        if (t.tmdb != null && t.tmdb.genres != null && !force) return
+        // Schon ergänzt – außer es fehlt etwas, das TMDB inzwischen liefern kann: dann einmal nachholen.
+        if (t.tmdb != null && !needsUpgrade(t) && !force) return
         val kind = if (t.kind == TitleKind.SERIES) Tmdb.Kind.TV else Tmdb.Kind.MOVIE
         val tmdbId = t.tmdbId ?: run {
             if (!settings.tmdbAuto.value && t.tmdbQuery == null) return
@@ -68,7 +77,7 @@ class Enricher(
         val d = tmdb.details(kind, tmdbId)
         val r = d.result
         val seasons = d.seasons.filter { it.number > 0 && it.episodeCount > 0 }.map { SeasonSpec(it.number, it.episodeCount) }
-        val upgradeOnly = t.tmdb != null && t.tmdb.genres == null && !force
+        val upgradeOnly = t.tmdb != null && needsUpgrade(t) && !force
         store.applyTmdb(
             id,
             TmdbInfo(

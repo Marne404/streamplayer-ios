@@ -25,14 +25,25 @@ import java.util.UUID
  * Ein Profil wie bei Netflix: gemeinsame Bibliothek, eigener Fortschritt, eigene „Meine Liste“.
  * [list]: Titel-IDs, die neuesten vorn. Liegt im Profil, damit sie mit dem Profil abgeglichen wird.
  */
-data class Profile(val id: String, val name: String, val color: Int, val createdAt: Long, val list: List<String> = emptyList()) {
+data class Profile(
+    val id: String,
+    val name: String,
+    val color: Int,
+    val createdAt: Long,
+    val list: List<String> = emptyList(),
+    /** Profilsperre wie bei Netflix: Hash der vierstelligen PIN ([PinHash]), null = offen. */
+    val lock: String? = null,
+) {
+    val locked: Boolean get() = lock != null
+
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("color", color).put("createdAt", createdAt)
-        .put("list", JSONArray(list))
+        .put("list", JSONArray(list)).put("lock", lock)
 
     companion object {
         fun fromJson(o: JSONObject) = Profile(
             o.getString("id"), o.optString("name", "Profil"), o.optInt("color"), o.optLong("createdAt"),
             o.optJSONArray("list")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
+            if (o.isNull("lock")) null else o.optString("lock").takeIf { it.isNotEmpty() },
         )
         /** Das erste Profil übernimmt den Fortschritt aus der Zeit vor den Profilen. */
         const val DEFAULT_ID = "main"
@@ -94,7 +105,7 @@ class ProfileStore(context: Context) {
     fun add(name: String): Profile {
         val used = _profiles.value.map { it.color }.toSet()
         val color = (0 until COLORS).firstOrNull { it !in used } ?: (_profiles.value.size % COLORS)
-        val p = Profile(UUID.randomUUID().toString(), name.trim().ifEmpty { "Profil" }, color, System.currentTimeMillis())
+        val p = Profile(UUID.randomUUID().toString(), name.trim().ifEmpty { de.marne.streamplayer.ui.tr("Profil", "Profile") }, color, System.currentTimeMillis())
         _profiles.update { it + p }
         return p
     }
@@ -115,6 +126,26 @@ class ProfileStore(context: Context) {
             }
         }
     }
+
+    /** PIN setzen (4 Ziffern) oder mit null die Sperre aufheben. */
+    fun setLock(id: String, pin: String?) = _profiles.update { list ->
+        list.map { if (it.id == id) it.copy(lock = pin?.let(PinHash::make)) else it }
+    }
+
+    /**
+     * PIN prüfen. Nach je fünf Fehlversuchen 30 Sekunden Pause – vier Ziffern sind schnell
+     * durchprobiert, so dauert es wenigstens Stunden. [lockedUntil] sagt der Oberfläche, wie lange noch.
+     */
+    fun checkPin(id: String, pin: String): Boolean {
+        if (SystemClock.elapsedRealtime() < lockedUntil) return false
+        val ok = _profiles.value.firstOrNull { it.id == id }?.lock?.let { PinHash.matches(it, pin) } ?: true
+        if (ok) failures = 0 else if (++failures % 5 == 0) lockedUntil = SystemClock.elapsedRealtime() + 30_000
+        return ok
+    }
+
+    private var failures = 0
+    var lockedUntil = 0L
+        private set
 
     fun rename(id: String, name: String) = _profiles.update { list -> list.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it } }
 
@@ -143,7 +174,7 @@ class ProfileStore(context: Context) {
             val arr = JSONArray(file.readText())
             List(arr.length()) { Profile.fromJson(arr.getJSONObject(it)) }
         }.getOrDefault(emptyList())
-        return list.ifEmpty { listOf(Profile(Profile.DEFAULT_ID, "Ich", 0, 0)) }
+        return list.ifEmpty { listOf(Profile(Profile.DEFAULT_ID, de.marne.streamplayer.ui.tr("Ich", "Me"), 0, 0)) }
     }
 
     private fun save(list: List<Profile>) {
@@ -157,4 +188,33 @@ class ProfileStore(context: Context) {
         /** So lange im Hintergrund, und die App gilt beim Zurückkommen als neu gestartet. */
         const val RESTART_AFTER = 30 * 60 * 1000L
     }
+}
+
+/**
+ * Gesalzener PBKDF2-Hash der PIN. Die PIN selbst wird nirgends gespeichert, nur dieser Hash – er
+ * liegt im Profil und kommt so auf alle Geräte des Kontos. Form: „pbkdf2|Runden|Salz|Hash“ (Base64).
+ */
+object PinHash {
+    private const val ROUNDS = 20_000
+
+    fun make(pin: String): String {
+        val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+        return listOf("pbkdf2", ROUNDS.toString(), b64(salt), b64(derive(pin, salt, ROUNDS))).joinToString("|")
+    }
+
+    fun matches(stored: String, pin: String): Boolean {
+        val p = stored.split('|')
+        if (p.size != 4 || p[0] != "pbkdf2") return false
+        val rounds = p[1].toIntOrNull() ?: return false
+        val salt = runCatching { java.util.Base64.getDecoder().decode(p[2]) }.getOrNull() ?: return false
+        val want = runCatching { java.util.Base64.getDecoder().decode(p[3]) }.getOrNull() ?: return false
+        return java.security.MessageDigest.isEqual(want, derive(pin, salt, rounds))
+    }
+
+    private fun derive(pin: String, salt: ByteArray, rounds: Int): ByteArray {
+        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, rounds, 256)
+        return javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+    }
+
+    private fun b64(b: ByteArray) = java.util.Base64.getEncoder().withoutPadding().encodeToString(b)
 }

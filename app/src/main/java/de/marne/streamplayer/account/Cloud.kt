@@ -94,16 +94,33 @@ class Cloud(private val app: Application) {
 
     /** Über den Credential Manager: Kontoauswahl des Systems, kein eigenes Google-Fenster. */
     suspend fun signInWithGoogle(activity: Activity) {
-        val clientId = webClientId ?: throw IllegalStateException("Google-Anmeldung ist im Firebase-Projekt nicht eingeschaltet.")
+        requireAuth().signInWithCredential(GoogleAuthProvider.getCredential(googleToken(activity), null)).await()
+    }
+
+    private suspend fun googleToken(activity: Activity): String {
+        val clientId = webClientId ?: throw IllegalStateException(de.marne.streamplayer.ui.tr("Google-Anmeldung ist im Firebase-Projekt nicht eingeschaltet.", "Google sign-in is not enabled in the Firebase project."))
         val request = GetCredentialRequest.Builder()
             .addCredentialOption(GetSignInWithGoogleOption.Builder(clientId).build())
             .build()
         val credential = CredentialManager.create(activity).getCredential(activity, request).credential
         if (credential !is CustomCredential || credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-            throw IllegalStateException("Unerwartete Antwort der Google-Anmeldung.")
+            throw IllegalStateException(de.marne.streamplayer.ui.tr("Unerwartete Antwort der Google-Anmeldung.", "Unexpected response from Google sign-in."))
         }
-        val token = GoogleIdTokenCredential.createFrom(credential.data).idToken
-        requireAuth().signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+        return GoogleIdTokenCredential.createFrom(credential.data).idToken
+    }
+
+    /**
+     * Bestätigen, dass hier der Kontoinhaber sitzt – für „PIN vergessen?“. E-Mail-Konten mit dem
+     * Passwort, Google-Konten über die Kontoauswahl. Wirft, wenn es nicht passt.
+     */
+    suspend fun confirmOwner(activity: Activity, password: String?) {
+        val u = requireAuth().currentUser ?: throw IllegalStateException(de.marne.streamplayer.ui.tr("Nicht angemeldet.", "Not signed in."))
+        val credential = if (u.providerData.any { it.providerId == GoogleAuthProvider.PROVIDER_ID }) {
+            GoogleAuthProvider.getCredential(googleToken(activity), null)
+        } else {
+            com.google.firebase.auth.EmailAuthProvider.getCredential(u.email.orEmpty(), password.orEmpty())
+        }
+        u.reauthenticate(credential).await()
     }
 
     fun signOut() {

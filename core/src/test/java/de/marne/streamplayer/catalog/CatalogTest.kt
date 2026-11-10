@@ -121,4 +121,21 @@ class CatalogTest {
         assertEquals("file:///data/posters/x.jpg", Tmdb.large("file:///data/posters/x.jpg"))
         assertNull(Tmdb.large(null))
     }
+
+    /** Anlass: Ohne deutsches Poster stand der Titel ganz ohne Cover da (1.8.0). */
+    @Test
+    fun tmdbPosterRueckfallAufEnglischUndOhneSprache() {
+        val json = """{"id":7,"title":"X","poster_path":null,"backdrop_path":null,
+            "images":{"posters":[{"file_path":"/fr.jpg","iso_639_1":"fr","vote_average":9},
+                                 {"file_path":"/none.jpg","iso_639_1":null,"vote_average":8},
+                                 {"file_path":"/en.jpg","iso_639_1":"en","vote_average":5}],
+                      "backdrops":[{"file_path":"/b.jpg","iso_639_1":null,"vote_average":1}]}}"""
+        val d = Tmdb.parseDetails(org.json.JSONObject(json), Tmdb.Kind.MOVIE, "de")
+        assertEquals("https://image.tmdb.org/t/p/w780/en.jpg", d.result.poster)
+        assertEquals("https://image.tmdb.org/t/p/w1280/b.jpg", d.result.backdrop)
+        // Gibt es die Wunschsprache, gewinnt sie; ein gesetztes poster_path bleibt unangetastet.
+        assertEquals("https://image.tmdb.org/t/p/w780/fr.jpg", Tmdb.parseDetails(org.json.JSONObject(json), Tmdb.Kind.MOVIE, "fr").result.poster)
+        val with = Tmdb.parseDetails(org.json.JSONObject(json.replace("\"poster_path\":null", "\"poster_path\":\"/de.jpg\"")), Tmdb.Kind.MOVIE, "de")
+        assertEquals("https://image.tmdb.org/t/p/w780/de.jpg", with.result.poster)
+    }
 }

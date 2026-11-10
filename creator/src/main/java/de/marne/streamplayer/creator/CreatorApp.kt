@@ -41,6 +41,8 @@ class CreatorApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Der Creator spricht immer Englisch (auch die gemeinsamen Teile aus core, z. B. „Check for updates“).
+        de.marne.streamplayer.ui.Lang.current = de.marne.streamplayer.ui.Lang.Code.EN
         // Selbst-Update: liegt beim Worker unter /creator/, der Player unter /. Im Debug-Build leer.
         de.marne.streamplayer.update.Updater.configure(BuildConfig.UPDATE_URL.ifEmpty { null }?.let { "$it/creator/version.json" }.orEmpty())
         prefs = CreatorPrefs(this)
@@ -60,7 +62,8 @@ class CreatorPrefs(context: Context) {
     private val p = context.getSharedPreferences("creator", Context.MODE_PRIVATE)
     private val _tmdbKey = MutableStateFlow(p.getString("tmdb_key", "") ?: "")
     val tmdbKey: StateFlow<String> = _tmdbKey.asStateFlow()
-    private val _language = MutableStateFlow(p.getString("language", "de-DE") ?: "de-DE")
+    // TMDB-Sprache: von Hand gesetzt, sonst die des Geräts (de-DE, fr-FR …) – die Oberfläche ist Englisch.
+    private val _language = MutableStateFlow(p.getString("language", null) ?: java.util.Locale.getDefault().toLanguageTag())
     val language: StateFlow<String> = _language.asStateFlow()
     private val _theme = MutableStateFlow(p.getString("theme", "system") ?: "system")
     val theme: StateFlow<String> = _theme.asStateFlow()

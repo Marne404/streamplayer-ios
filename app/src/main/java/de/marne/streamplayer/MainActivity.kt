@@ -176,6 +176,8 @@ class AppNav {
     /** „Wer schaut?“: offen, und ob gleich im Verwalten-Modus (aus den Einstellungen). */
     var profilePicker by mutableStateOf(false)
     var profileManage by mutableStateOf(false)
+    /** Auswahl muss getroffen werden (gesperrtes Profil beim Start): nicht wegtippbar. */
+    var profileGate by mutableStateOf(false)
 }
 
 /** Ein Download, dessen Video noch gesucht wird: Titel, Folge (oder Film), Anzeige, Seite. */
@@ -320,8 +322,12 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val askProfile by app.settings.askProfile.collectAsStateWithLifecycle()
     LaunchedEffect(needsChoice) {
         if (!needsChoice) return@LaunchedEffect
-        if (askProfile && profileList.size > 1) {
+        // Gesperrtes Profil vom letzten Mal: immer fragen, auch wenn „Beim Start fragen“ aus ist –
+        // sonst säße, wer die App öffnet, ohne PIN im gesperrten Profil.
+        val gate = app.profiles.active.locked
+        if ((askProfile && profileList.size > 1) || gate) {
             nav.profileManage = false
+            nav.profileGate = gate
             nav.profilePicker = true
         } else app.profiles.chosen()
     }
@@ -748,8 +754,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         de.marne.streamplayer.account.ProfilePicker(
             visible = nav.profilePicker,
             startManaging = nav.profileManage,
-            canDismiss = true,
-            onDone = { nav.profilePicker = false; app.profiles.chosen() },
+            canDismiss = !nav.profileGate,
+            onDone = { nav.profilePicker = false; nav.profileGate = false; app.profiles.chosen() },
         )
 
         de.marne.streamplayer.update.UpdateOffer("Streamplayer")

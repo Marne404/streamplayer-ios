@@ -69,8 +69,19 @@ class Tmdb(
         return parseSearch(get("search/${kind.path}", params), kind)
     }
 
-    /** Mit Besetzung in derselben Anfrage (append_to_response) – eine Abfrage pro Titel statt zwei. */
-    suspend fun details(kind: Kind, id: Int): Details = parseDetails(get("${kind.path}/$id", mapOf("append_to_response" to "credits")), kind)
+    /**
+     * Mit Besetzung und Bildern in derselben Anfrage (append_to_response) – eine Abfrage pro Titel.
+     * Bilder in der eingestellten Sprache, auf Englisch und ohne Sprache („null“): fehlt das Poster
+     * in der Wunschsprache, nimmt [parseDetails] eines davon, statt ganz ohne Cover dazustehen.
+     */
+    suspend fun details(kind: Kind, id: Int): Details {
+        val lang = language().substringBefore('-').lowercase().ifBlank { "en" }
+        val params = mapOf(
+            "append_to_response" to "credits,images",
+            "include_image_language" to listOf(lang, "en", "null").distinct().joinToString(","),
+        )
+        return parseDetails(get("${kind.path}/$id", params), kind, lang)
+    }
 
     suspend fun season(tvId: Int, season: Int): List<EpisodeInfo> = parseSeason(get("tv/$tvId/season/$season"))
 
@@ -139,7 +150,24 @@ class Tmdb(
             return List(arr.length()) { parseResult(arr.getJSONObject(it), kind) }
         }
 
-        fun parseDetails(o: JSONObject, kind: Kind): Details {
+        /**
+         * Bestes Bild aus `images.posters`/`images.backdrops`: Wunschsprache, dann Englisch, dann
+         * ohne Sprache (meist textfreie Motive), dann irgendeins – innerhalb davon nach Bewertung.
+         */
+        fun pickImage(o: JSONObject, list: String, lang: String): String? {
+            val arr = o.optJSONObject("images")?.optJSONArray(list) ?: return null
+            val all = List(arr.length()) { arr.getJSONObject(it) }.filter { it.s("file_path") != null }
+            if (all.isEmpty()) return null
+            fun rank(i: JSONObject): Int = when (i.s("iso_639_1")) {
+                lang -> 0
+                "en" -> 1
+                null -> 2
+                else -> 3
+            }
+            return all.sortedWith(compareBy<JSONObject> { rank(it) }.thenByDescending { it.optDouble("vote_average", 0.0) }).first().s("file_path")
+        }
+
+        fun parseDetails(o: JSONObject, kind: Kind, lang: String = "de"): Details {
             val seasons = o.optJSONArray("seasons")?.let { arr ->
                 List(arr.length()) { i ->
                     val s = arr.getJSONObject(i)
@@ -160,8 +188,14 @@ class Tmdb(
                     List(arr.length()) { arr.getJSONObject(it) }.filter { it.s("job") == "Director" }.mapNotNull { it.s("name") }.distinct()
                 }.orEmpty()
             }
+            // Ohne Poster in der Wunschsprache: aus den mitgelieferten Bildern einen Ersatz wählen.
+            val base = parseResult(o, kind)
+            val result = base.copy(
+                poster = base.poster ?: poster(pickImage(o, "posters", lang)),
+                backdrop = base.backdrop ?: backdrop(pickImage(o, "backdrops", lang)),
+            )
             return Details(
-                parseResult(o, kind), seasons, runtime,
+                result, seasons, runtime,
                 genres = genres,
                 rating = o.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
                 votes = o.optInt("vote_count").takeIf { it > 0 },

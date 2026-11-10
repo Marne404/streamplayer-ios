@@ -55,6 +55,7 @@ class App : Application(), SingletonImageLoader.Factory {
         de.marne.streamplayer.update.Updater.configure(BuildConfig.UPDATE_URL.ifEmpty { null }?.let { "$it/version.json" }.orEmpty())
         instance = this
         settings = Settings(this)
+        de.marne.streamplayer.ui.Lang.current = settings.language.value
         http = Http.client(this)
         downloads = DownloadStore(this)
         library = LibraryStore(this)
