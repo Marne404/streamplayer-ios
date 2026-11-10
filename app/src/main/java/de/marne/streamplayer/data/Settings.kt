@@ -22,6 +22,13 @@ class Settings(context: Context) {
     private val _parallel = MutableStateFlow(prefs.getInt(KEY_PARALLEL, 2).coerceIn(1, 3))
     val parallel: StateFlow<Int> = _parallel.asStateFlow()
 
+    private val _adblock = MutableStateFlow(prefs.getBoolean(KEY_ADBLOCK, true))
+    val adblock: StateFlow<Boolean> = _adblock.asStateFlow()
+
+    /** Seiten, auf denen der Werbeblocker aus ist (Host, gilt auch für Subdomains). */
+    private val _allowlist = MutableStateFlow(prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet())
+    val allowlist: StateFlow<Set<String>> = _allowlist.asStateFlow()
+
     private val _history = MutableStateFlow(readHistory())
     val history: StateFlow<List<Visit>> = _history.asStateFlow()
 
@@ -37,6 +44,18 @@ class Settings(context: Context) {
     fun setWifiOnly(value: Boolean) {
         _wifiOnly.value = value
         prefs.edit().putBoolean(KEY_WIFI, value).apply()
+    }
+
+    fun setAdblock(value: Boolean) {
+        _adblock.value = value
+        prefs.edit().putBoolean(KEY_ADBLOCK, value).apply()
+    }
+
+    fun setAllowed(host: String, allowed: Boolean) {
+        val h = host.removePrefix("www.")
+        val next = if (allowed) _allowlist.value + h else _allowlist.value - h
+        _allowlist.value = next
+        prefs.edit().putStringSet(KEY_ALLOWLIST, next).apply()
     }
 
     fun setParallel(value: Int) {
@@ -70,6 +89,8 @@ class Settings(context: Context) {
         const val KEY_THEME = "theme"
         const val KEY_WIFI = "wifi_only"
         const val KEY_PARALLEL = "parallel"
+        const val KEY_ADBLOCK = "adblock"
+        const val KEY_ALLOWLIST = "adblock_allowlist"
         const val KEY_HISTORY = "history"
         const val KEY_LAST_URL = "last_url"
         const val MAX_HISTORY = 12

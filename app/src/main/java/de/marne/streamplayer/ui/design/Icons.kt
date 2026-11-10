@@ -36,7 +36,8 @@ object Ic {
     val wifi = R.drawable.ic_wifi
     val expandMore = R.drawable.ic_expand_more
     val expandLess = R.drawable.ic_expand_less
-    val shield = R.drawable.ic_shield_lock
+    val shield = R.drawable.ic_shield
+    val shieldLock = R.drawable.ic_shield_lock
     val schedule = R.drawable.ic_schedule
     val dark = R.drawable.ic_dark_mode
     val light = R.drawable.ic_light_mode

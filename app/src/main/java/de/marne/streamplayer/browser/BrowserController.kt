@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -18,6 +19,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import de.marne.streamplayer.adblock.AdBlocker
 import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.Source
@@ -25,6 +27,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Der Browser. Eine einzige WebView, die so lange lebt wie die Activity
@@ -39,6 +43,7 @@ class BrowserController(
     context: Context,
     private val hub: DetectionHub,
     private val settings: Settings,
+    private val adblock: AdBlocker,
 ) {
     private val script: String = context.assets.open("detect.js").bufferedReader().use { it.readText() }
     private val docStartScript = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
@@ -57,6 +62,11 @@ class BrowserController(
 
     private val _canGoBack = MutableStateFlow(false)
     val canGoBack: StateFlow<Boolean> = _canGoBack.asStateFlow()
+
+    /** Blockierte Anfragen, Popups und Umleitungen auf der aktuellen Seite. */
+    private val blockedCounter = AtomicInteger(0)
+    private val _blocked = MutableStateFlow(0)
+    val blocked: StateFlow<Int> = _blocked.asStateFlow()
 
     /** Startseite statt WebView zeigen (nichts geladen oder „Start“ gedrückt). */
     private val _showStart = MutableStateFlow(true)
@@ -82,8 +92,9 @@ class BrowserController(
             displayZoomControls = false
             mediaPlaybackRequiresUserGesture = true
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            // Pop-ups öffnen nicht in neuen Fenstern, sondern gar nicht – ruhiger und ohne Werbefenster.
-            setSupportMultipleWindows(false)
+            // Neue Fenster laufen über onCreateWindow: nur echte Link-Tipps öffnen etwas,
+            // und zwar im selben Fenster. Popunder-Werbung bleibt draußen.
+            setSupportMultipleWindows(true)
             javaScriptCanOpenWindowsAutomatically = false
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
@@ -104,8 +115,10 @@ class BrowserController(
 
     private fun installBridge() {
         if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
-            WebViewCompat.addWebMessageListener(webView, BRIDGE, setOf("*")) { _, message, _, isMainFrame, _ ->
-                onBridgeMessage(message.data ?: return@addWebMessageListener, isMainFrame)
+            WebViewCompat.addWebMessageListener(webView, BRIDGE, setOf("*")) { _, message, _, isMainFrame, reply ->
+                val data = message.data ?: return@addWebMessageListener
+                val answer = onBridgeMessage(data, isMainFrame)
+                if (answer != null) reply.postMessage(answer)
             }
         }
         if (docStartScript) {
@@ -114,9 +127,15 @@ class BrowserController(
         }
     }
 
-    private fun onBridgeMessage(data: String, isMainFrame: Boolean) {
-        val o = runCatching { JSONObject(data) }.getOrNull() ?: return
+    /** Verarbeitet eine Nachricht aus der Seite; Rückgabe geht als Antwort an genau diesen Frame. */
+    private fun onBridgeMessage(data: String, isMainFrame: Boolean): String? {
+        val o = runCatching { JSONObject(data) }.getOrNull() ?: return null
         when (o.optString("t")) {
+            "hello" -> {
+                // Ausblende-Regeln für diesen Frame (Werbeflächen verstecken).
+                val css = adblock.cssFor(o.optString("url"), isMainFrame, currentPage) ?: return null
+                return JSONObject().put("t", "css").put("css", css).toString()
+            }
             "media" -> {
                 val source = when (o.optString("src")) {
                     "play" -> Source.PLAY
@@ -135,6 +154,26 @@ class BrowserController(
             }
             "meta" -> if (isMainFrame) hub.updateMeta(o.optString("title"), o.optString("image").ifBlank { null })
         }
+        return null
+    }
+
+    private fun countBlocked() {
+        _blocked.value = blockedCounter.incrementAndGet()
+    }
+
+    /** Host der aktuellen Seite ohne www., für die Ausnahmeliste. */
+    val pageHost: String? get() = de.marne.streamplayer.adblock.RuleSet.hostOf(currentPage)?.removePrefix("www.")
+
+    /** Werbeblocker auf dieser Seite an/aus, dann neu laden. */
+    fun toggleAllowCurrentPage() {
+        val host = pageHost ?: return
+        val allowed = settings.allowlist.value.any { host == it || host.endsWith(".$it") }
+        if (allowed) {
+            settings.allowlist.value.filter { host == it || host.endsWith(".$it") }.forEach { settings.setAllowed(it, false) }
+        } else {
+            settings.setAllowed(host, true)
+        }
+        webView.reload()
     }
 
     // ---------- Steuerung ----------
@@ -202,8 +241,25 @@ class BrowserController(
             val u = request.url
             val scheme = u.scheme
             if (scheme == "http" || scheme == "https") {
+                val url = u.toString()
+                if (request.isForMainFrame) {
+                    // Neue Hauptseite: Zähler, Funde und Seitenkontext hier zurücksetzen – im selben
+                    // Thread und vor allen Unter-Anfragen. onPageStarted kommt erst später im
+                    // Hauptthread an; bis dahin wären frühe Anfragen schon der alten Seite zugerechnet.
+                    if (UrlKey.of(url) != UrlKey.of(currentPage)) {
+                        blockedCounter.set(0)
+                        _blocked.value = 0
+                    }
+                    currentPage = url
+                    hub.reset(url)
+                }
+                // Werbung zuerst: was blockiert ist, taucht auch nicht als „gefundenes Video“ auf.
+                if (!request.isForMainFrame && adblock.shouldBlock(url, currentPage)) {
+                    countBlocked()
+                    return blockedResponse()
+                }
                 val referer = request.requestHeaders["Referer"] ?: request.requestHeaders["referer"]
-                hub.report(u.toString(), Source.NETWORK, referer = referer ?: currentPage)
+                hub.report(url, Source.NETWORK, referer = referer ?: currentPage)
             }
             return null // Die Seite lädt alles selbst; wir schauen nur zu.
         }
@@ -211,7 +267,12 @@ class BrowserController(
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val u = request.url
             return when (u.scheme) {
-                "http", "https" -> false
+                "http", "https" -> {
+                    // Umleitung der ganzen Seite auf Werbung (ohne Fingertipp oder Popup-Ziel): verhindern.
+                    val stop = request.isForMainFrame && adblock.blocksNavigation(u.toString(), request.hasGesture(), currentPage)
+                    if (stop) countBlocked()
+                    stop
+                }
                 "intent" -> {
                     // Nur auf Fingertipp in eine andere App wechseln, nie per automatischer Weiterleitung.
                     if (request.hasGesture()) openIntentUri(view.context, u)
@@ -269,6 +330,43 @@ class BrowserController(
             fullscreenCallback = null
             _fullscreen.value = null
         }
+
+        /**
+         * Neues Fenster gewünscht (target=_blank, window.open). Erlaubt nur, wenn der Finger
+         * wirklich auf einem Link lag; dann öffnet das Ziel im selben Fenster. Alles andere –
+         * Popunder beim ersten Tipp irgendwohin – fällt weg.
+         */
+        override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+            val hit = view.hitTestResult.type
+            val onLink = hit == WebView.HitTestResult.SRC_ANCHOR_TYPE || hit == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+            val strict = adblock.activeFor(pageHost)
+            if (!isUserGesture || (strict && !onLink)) {
+                if (strict) countBlocked()
+                return false
+            }
+            // Ziel abfangen: ein Wegwerf-WebView nimmt die erste Adresse entgegen.
+            val catcher = WebView(view.context)
+            var handled = false
+            fun take(target: String) {
+                if (handled) return
+                handled = true
+                view.post { catcher.destroy() }
+                if (adblock.blocksPopup(target, currentPage)) countBlocked() else webView.loadUrl(target)
+            }
+            catcher.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
+                    take(r.url.toString())
+                    return true
+                }
+
+                override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) {
+                    if (url.startsWith("http")) take(url)
+                }
+            }
+            (resultMsg.obj as WebView.WebViewTransport).webView = catcher
+            resultMsg.sendToTarget()
+            return true
+        }
     }
 
     private fun openIntentUri(context: Context, uri: Uri) {
@@ -287,6 +385,16 @@ class BrowserController(
         runCatching {
             context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
+    }
+
+    private fun blockedResponse() = WebResourceResponse(
+        "text/plain", "utf-8", 403, "Blocked",
+        mapOf("Access-Control-Allow-Origin" to "*"),
+        ByteArrayInputStream(ByteArray(0)),
+    )
+
+    private object UrlKey {
+        fun of(url: String) = url.substringBefore('#')
     }
 
     companion object {

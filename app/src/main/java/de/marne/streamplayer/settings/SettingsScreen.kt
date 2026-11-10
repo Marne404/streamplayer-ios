@@ -1,7 +1,9 @@
 package de.marne.streamplayer.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -38,6 +41,10 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val theme by settings.theme.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
     val parallel by settings.parallel.collectAsStateWithLifecycle()
+    val adblockOn by settings.adblock.collectAsStateWithLifecycle()
+    val allowlist by settings.allowlist.collectAsStateWithLifecycle()
+    val adblock = de.marne.streamplayer.App.instance.adblock
+    val filter by adblock.status.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "–"
@@ -85,6 +92,51 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 )
                 RowDivider()
                 ListRow(title = "Speicherort", icon = Ic.folder, value = "Filme/Streamplayer")
+            }
+        }
+
+        item { SectionTitle("Werbeblocker") }
+        item {
+            ListGroup {
+                ListRow(
+                    title = "Werbung blockieren",
+                    subtitle = "Mit Trackern und Popups.",
+                    icon = Ic.shield,
+                    trailing = { IvorySwitch(adblockOn, settings::setAdblock) },
+                )
+                RowDivider()
+                ListRow(
+                    title = "Filterlisten",
+                    subtitle = "EasyList, EasyPrivacy, Peter Lowe",
+                    icon = Ic.library,
+                )
+                RowDivider()
+                ListRow(
+                    title = if (filter.updating) "Wird aktualisiert …" else "Jetzt aktualisieren",
+                    subtitle = filter.error ?: listOfNotNull(
+                        filter.updatedAt?.let {
+                            "Stand " + java.time.format.DateTimeFormatter.ofPattern("d. MMMM", java.util.Locale.GERMAN)
+                                .format(it.atZone(java.time.ZoneId.systemDefault()))
+                        },
+                        if (filter.ready) "%,d Regeln".format(java.util.Locale.GERMANY, filter.rules) else null,
+                    ).joinToString(" · "),
+                    icon = Ic.refresh,
+                    showChevron = false,
+                    onClick = if (filter.updating) null else ({ adblock.updateNow() }),
+                )
+                if (allowlist.isNotEmpty()) {
+                    RowDivider()
+                    Disclosure(title = "Erlaubte Seiten", icon = Ic.browser, value = "${allowlist.size}") {
+                        Column {
+                            allowlist.sorted().forEach { host ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(host, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                    QuietButton("Entfernen", color = Palette.wine) { settings.setAllowed(host, false) }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

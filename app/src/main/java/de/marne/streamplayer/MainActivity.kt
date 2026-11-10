@@ -21,6 +21,10 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,7 +91,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val app = App.instance
         hub = DetectionHub(lifecycleScope, Prober(app.http) { browser.userAgent })
-        browser = BrowserController(this, hub, app.settings)
+        browser = BrowserController(this, hub, app.settings, app.adblock)
         if (savedInstanceState == null) handleIntent(intent)
 
         setContent {
@@ -250,6 +254,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, tab: MutableI
                 modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
+
+        // Edge-to-edge: Inhalt scrollt nicht sichtbar unter die Statusleiste.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsTopHeight(WindowInsets.statusBars)
+                .background(Palette.bg)
+        )
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }
     }

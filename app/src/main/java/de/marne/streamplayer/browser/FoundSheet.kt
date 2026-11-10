@@ -126,7 +126,7 @@ private fun CandidateCard(
             when {
                 c.drm -> {
                     VSpace(14.dp)
-                    StatusLine(Ic.shield, "Geschützt (DRM). Lässt sich nicht laden.", Palette.wine)
+                    StatusLine(Ic.shieldLock, "Geschützt (DRM). Lässt sich nicht laden.", Palette.wine)
                 }
                 c.live -> {
                     VSpace(14.dp)

@@ -88,6 +88,12 @@ fun BrowserScreen(
     val showStart by browser.showStart.collectAsStateWithLifecycle()
     val candidates by hub.candidates.collectAsStateWithLifecycle()
     val meta by hub.meta.collectAsStateWithLifecycle()
+    val blocked by browser.blocked.collectAsStateWithLifecycle()
+    val settings = de.marne.streamplayer.App.instance.settings
+    val adblockOn by settings.adblock.collectAsStateWithLifecycle()
+    val allowlist by settings.allowlist.collectAsStateWithLifecycle()
+    val pageHost = remember(url) { browser.pageHost }
+    val allowedHere = pageHost != null && allowlist.any { pageHost == it || pageHost.endsWith(".$it") }
 
     val found = remember(candidates) {
         candidates.filter { it.status == ProbeStatus.OK }.sortedWith(
@@ -109,6 +115,8 @@ fun BrowserScreen(
             onHome = browser::showStart,
             onReload = browser::reload,
             onStop = browser::stop,
+            shield = if (adblockOn && !showStart) ShieldState(blocked, allowedHere, pageHost.orEmpty()) else null,
+            onToggleAllow = browser::toggleAllowCurrentPage,
         )
         Box(Modifier.fillMaxWidth().height(2.dp)) {
             if (loading && !showStart) Bar(progress / 100f, height = 2.dp, track = Color.Transparent)
@@ -196,6 +204,8 @@ private fun AddressBar(
     onHome: () -> Unit,
     onReload: () -> Unit,
     onStop: () -> Unit,
+    shield: ShieldState?,
+    onToggleAllow: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf(TextFieldValue("")) }
@@ -244,6 +254,10 @@ private fun AddressBar(
                         focused = it.isFocused
                     },
                 )
+            }
+            if (!focused && shield != null) {
+                HSpace(8.dp)
+                Shield(shield, onToggleAllow)
             }
             if (focused && text.text.isNotEmpty()) {
                 GIcon(
@@ -325,3 +339,60 @@ private fun StartPage(
 
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
     clickable(interactionSource = null, indication = null, onClick = onClick)
+
+/** Zustand des Werbeblockers für die Adressleiste. */
+data class ShieldState(val blocked: Int, val allowed: Boolean, val host: String)
+
+/** Schild mit Zähler; Tipp öffnet ein kleines Menü zum Erlauben/Blockieren dieser Seite. */
+@Composable
+private fun Shield(state: ShieldState, onToggle: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .clickable { open = true }
+                .padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GIcon(Ic.shield, tint = if (state.allowed) Palette.faint else Palette.muted, size = 16.dp)
+            HSpace(4.dp)
+            Text(
+                if (state.allowed) "aus" else "${state.blocked}",
+                style = MaterialTheme.typography.labelMedium,
+                color = Palette.muted,
+            )
+        }
+        androidx.compose.material3.DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = Palette.surface,
+            shadowElevation = 0.dp,
+            tonalElevation = 0.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Palette.line),
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Text("WERBEBLOCKER", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                VSpace(4.dp)
+                Text(
+                    when {
+                        state.allowed -> "Auf ${state.host} aus."
+                        state.blocked == 1 -> "1 Anfrage blockiert."
+                        else -> "${state.blocked} Anfragen blockiert."
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+            }
+            androidx.compose.material3.DropdownMenuItem(
+                text = {
+                    Text(
+                        if (state.allowed) "Hier wieder blockieren" else "Auf dieser Seite erlauben",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                },
+                onClick = { open = false; onToggle() },
+            )
+        }
+    }
+}

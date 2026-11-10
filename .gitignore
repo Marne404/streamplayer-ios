@@ -8,3 +8,9 @@ local.properties
 captures/
 *.apk
 *.aab
+
+# Signierschlüssel: nie ins Repo
+keystore.properties
+*.jks
+*.keystore
+dist/

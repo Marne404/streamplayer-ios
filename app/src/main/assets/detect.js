@@ -181,4 +181,27 @@
 
   // Single-Page-Apps wechseln die Adresse ohne neues Dokument.
   if (isTop) setInterval(meta, 2500);
+
+  // ---------- Werbeblocker: Werbeflächen ausblenden ----------
+  // Die App antwortet auf „hello“ mit den Ausblende-Regeln für genau diesen Frame.
+
+  function insertCss(css) {
+    var put = function () {
+      var s = document.createElement('style');
+      s.setAttribute('data-streamplayer', '');
+      s.textContent = css;
+      (document.head || document.documentElement).appendChild(s);
+    };
+    if (document.documentElement) { put(); return; }
+    new MutationObserver(function (m, o) {
+      if (document.documentElement) { o.disconnect(); put(); }
+    }).observe(document, { childList: true });
+  }
+
+  bridge.onmessage = function (ev) {
+    var d;
+    try { d = JSON.parse(ev.data); } catch (e) { return; }
+    if (d && d.t === 'css' && d.css) insertCss(d.css);
+  };
+  post({ t: 'hello', url: location.href });
 })();
