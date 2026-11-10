@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ivory & Ink: bg / ink -->
+    <color name="window_bg">#F4F1EA</color>
+    <color name="launcher_bg">#1B1A17</color>
+    <color name="launcher_fg">#F4F1EA</color>
+</resources>
