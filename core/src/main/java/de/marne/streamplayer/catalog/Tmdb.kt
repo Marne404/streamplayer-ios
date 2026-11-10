@@ -35,7 +35,21 @@ class Tmdb(
 
     data class SeasonInfo(val number: Int, val episodeCount: Int, val name: String?, val poster: String?)
 
-    data class Details(val result: Result, val seasons: List<SeasonInfo>, val runtimeMin: Int?)
+    data class Details(
+        val result: Result,
+        val seasons: List<SeasonInfo>,
+        val runtimeMin: Int?,
+        /** Genres in der eingestellten Sprache („Krimi“, „Drama“). */
+        val genres: List<String> = emptyList(),
+        /** TMDB-Bewertung 0–10 und wie viele sie abgegeben haben – wenige Stimmen sagen wenig. */
+        val rating: Double? = null,
+        val votes: Int? = null,
+        val tagline: String? = null,
+        /** Die ersten Namen der Besetzung. */
+        val cast: List<String> = emptyList(),
+        /** Film: Regie; Serie: wer sie erfunden hat. */
+        val creators: List<String> = emptyList(),
+    )
 
     data class EpisodeInfo(val season: Int, val episode: Int, val name: String?, val overview: String?, val still: String?, val runtimeMin: Int?)
 
@@ -55,7 +69,8 @@ class Tmdb(
         return parseSearch(get("search/${kind.path}", params), kind)
     }
 
-    suspend fun details(kind: Kind, id: Int): Details = parseDetails(get("${kind.path}/$id"), kind)
+    /** Mit Besetzung in derselben Anfrage (append_to_response) – eine Abfrage pro Titel statt zwei. */
+    suspend fun details(kind: Kind, id: Int): Details = parseDetails(get("${kind.path}/$id", mapOf("append_to_response" to "credits")), kind)
 
     suspend fun season(tvId: Int, season: Int): List<EpisodeInfo> = parseSeason(get("tv/$tvId/season/$season"))
 
@@ -133,7 +148,27 @@ class Tmdb(
             }.orEmpty()
             val runtime = if (kind == Kind.MOVIE) o.optInt("runtime").takeIf { it > 0 }
             else o.optJSONArray("episode_run_time")?.let { if (it.length() > 0) it.optInt(0) else null }?.takeIf { it > 0 }
-            return Details(parseResult(o, kind), seasons, runtime)
+            val genres = o.optJSONArray("genres")?.let { arr -> List(arr.length()) { arr.getJSONObject(it).s("name") }.filterNotNull() }.orEmpty()
+            val credits = o.optJSONObject("credits")
+            val cast = credits?.optJSONArray("cast")?.let { arr ->
+                List(arr.length()) { arr.getJSONObject(it) }.sortedBy { it.optInt("order", 999) }.mapNotNull { it.s("name") }.distinct().take(8)
+            }.orEmpty()
+            val creators = if (kind == Kind.TV) {
+                o.optJSONArray("created_by")?.let { arr -> List(arr.length()) { arr.getJSONObject(it).s("name") }.filterNotNull() }.orEmpty()
+            } else {
+                credits?.optJSONArray("crew")?.let { arr ->
+                    List(arr.length()) { arr.getJSONObject(it) }.filter { it.s("job") == "Director" }.mapNotNull { it.s("name") }.distinct()
+                }.orEmpty()
+            }
+            return Details(
+                parseResult(o, kind), seasons, runtime,
+                genres = genres,
+                rating = o.optDouble("vote_average").takeIf { !it.isNaN() && it > 0 },
+                votes = o.optInt("vote_count").takeIf { it > 0 },
+                tagline = o.s("tagline"),
+                cast = cast,
+                creators = creators.take(3),
+            )
         }
 
         fun parseSeason(o: JSONObject): List<EpisodeInfo> {

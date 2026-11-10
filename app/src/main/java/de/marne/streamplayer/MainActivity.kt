@@ -71,6 +71,7 @@ import de.marne.streamplayer.ui.Format
 import de.marne.streamplayer.library.ResolveScreen
 import android.app.ActivityOptions
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import de.marne.streamplayer.detect.Candidate
 import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.MediaKind
@@ -83,9 +84,17 @@ import de.marne.streamplayer.downloads.DownloadsScreen
 import de.marne.streamplayer.library.LinkActions
 import de.marne.streamplayer.library.LinkSheet
 import de.marne.streamplayer.library.DetailActions
+import de.marne.streamplayer.library.DiscoverScreen
+import de.marne.streamplayer.library.GridScreen
+import de.marne.streamplayer.library.GridSpec
+import de.marne.streamplayer.library.LibActions
+import de.marne.streamplayer.library.LibState
+import de.marne.streamplayer.library.MineScreen
+import de.marne.streamplayer.library.QuickSheet
+import de.marne.streamplayer.library.CategorySheet
+import de.marne.streamplayer.library.Route
 import de.marne.streamplayer.library.DetailScreen
 import de.marne.streamplayer.library.Episode
-import de.marne.streamplayer.library.HomeActions
 import de.marne.streamplayer.library.HomeScreen
 import de.marne.streamplayer.library.Keys
 import de.marne.streamplayer.library.LibTitle
@@ -102,10 +111,42 @@ import kotlinx.coroutines.launch
 
 /** Navigationszustand, von der Activity gehalten: Intents (Teilen, Benachrichtigung) setzen ihn direkt. */
 class AppNav {
-    var tab by mutableIntStateOf(MainActivity.TAB_LIBRARY)
+    var tab by mutableIntStateOf(MainActivity.TAB_HOME)
     /** Browser ist ein Nebenraum über den Tabs, kein Tab mehr. */
     var browserOpen by mutableStateOf(false)
-    var detailId by mutableStateOf<String?>(null)
+    /**
+     * Seiten über dem Tab (Detail, Übersicht, Downloads), die oberste wird gezeigt. Ein Tabwechsel
+     * leert den Stapel – wie bei Netflix, wo jeder Tab wieder bei sich anfängt.
+     */
+    val stack = androidx.compose.runtime.mutableStateListOf<Route>()
+    /** Richtung der letzten Bewegung: vor (hinein) oder zurück – die Animation erzählt sie. */
+    var forward by mutableStateOf(true)
+    /** Kurzansicht eines Titels (Blatt). */
+    var previewId by mutableStateOf<String?>(null)
+    /** Kategorien-Blatt offen, mit Filter der Startseite (null = alles). */
+    var categories by mutableStateOf(false)
+    var categoriesKind by mutableStateOf<de.marne.streamplayer.library.TitleKind?>(null)
+    /** Lupe auf der Startseite: Entdecken öffnen und das Suchfeld fokussieren. */
+    var focusSearch by mutableStateOf(false)
+
+    fun push(r: Route) {
+        if (stack.lastOrNull() == r) return
+        forward = true
+        stack.add(r)
+    }
+
+    fun pop() {
+        forward = false
+        if (stack.isNotEmpty()) stack.removeAt(stack.lastIndex)
+    }
+
+    fun selectTab(t: Int) {
+        forward = true
+        stack.clear()
+        tab = t
+    }
+
+    fun openDetail(id: String) = push(Route.Detail(id))
     /** Geteilter Link: null = kein Sheet. */
     var linkUrl by mutableStateOf<String?>(null)
     /** Geteilte/geöffnete Katalog-Datei, wird beim nächsten Durchlauf importiert. */
@@ -191,7 +232,8 @@ class MainActivity : ComponentActivity() {
             }
             ACTION_SHOW_DOWNLOADS -> {
                 nav.browserOpen = false
-                nav.tab = TAB_DOWNLOADS
+                nav.selectTab(TAB_MINE)
+                nav.push(Route.Downloads)
             }
         }
     }
@@ -199,14 +241,12 @@ class MainActivity : ComponentActivity() {
     /** Geteilter Link: kurzes Sheet mit „Ansehen“ und „Im Browser öffnen“. */
     private fun openLink(url: String) {
         nav.browserOpen = false
-        nav.tab = TAB_LIBRARY
         nav.linkUrl = url
     }
 
     private fun importCatalog(uri: Uri) {
         nav.browserOpen = false
-        nav.tab = TAB_LIBRARY
-        nav.detailId = null
+        nav.selectTab(TAB_HOME)
         nav.pendingImport = uri
     }
 
@@ -227,17 +267,19 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_SHOW_DOWNLOADS = "de.marne.streamplayer.SHOW_DOWNLOADS"
-        const val TAB_LIBRARY = 0
-        const val TAB_DOWNLOADS = 1
-        const val TAB_SETTINGS = 2
+        const val TAB_HOME = 0
+        const val TAB_DISCOVER = 1
+        const val TAB_MINE = 2
+        const val TAB_SETTINGS = 3
     }
 }
 
 private data class TabSpec(val label: String, val icon: Int, val iconSelected: Int)
 
 private val tabs = listOf(
-    TabSpec("Bibliothek", Ic.library, Ic.libraryFilled),
-    TabSpec("Downloads", Ic.downloads, Ic.downloadsFilled),
+    TabSpec("Start", Ic.library, Ic.libraryFilled),
+    TabSpec("Entdecken", Ic.search, Ic.search),
+    TabSpec("Meins", Ic.bookmark, Ic.bookmarkFilled),
     TabSpec("Einstellungen", Ic.settings, Ic.settingsFilled),
 )
 
@@ -257,6 +299,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val profileList by app.profiles.profiles.collectAsStateWithLifecycle()
     val activeId by app.profiles.activeId.collectAsStateWithLifecycle()
     val activeProfile = profileList.firstOrNull { it.id == activeId } ?: profileList.first()
+    val libState = LibState(titles, progress, activeProfile, enrichStatus, downloads)
     // Mehrere Profile: bei jedem Start fragen, wer schaut – wenn eingestellt. Sonst bleibt das letzte.
     val needsChoice by app.profiles.needsChoice.collectAsStateWithLifecycle()
     val askProfile by app.settings.askProfile.collectAsStateWithLifecycle()
@@ -312,9 +355,10 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         }
         app.downloads.enqueue(c, v, title, thumb, browser.userAgent, libraryKey)
         DownloadService.kick(context)
-        toast("Läuft. Du findest es unter Downloads.", "Ansehen") {
+        toast("Läuft. Du findest es unter Meins → Downloads.", "Ansehen") {
             nav.browserOpen = false
-            nav.tab = MainActivity.TAB_DOWNLOADS
+            nav.selectTab(MainActivity.TAB_MINE)
+            nav.push(Route.Downloads)
         }
     }
 
@@ -450,35 +494,53 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 d.fileUri?.let { uri ->
                     val t = app.library.addOfflineMovie(uri, d.title, d.pageUrl, d.thumbnail, d.durationMs)
                     toast("In der Bibliothek.", "Ansehen") {
-                        nav.tab = MainActivity.TAB_LIBRARY
-                        nav.detailId = t.id
+                        nav.selectTab(MainActivity.TAB_HOME)
+                        nav.openDetail(t.id)
                     }
                 }
             },
         )
     }
 
-    val homeActions = remember {
-        HomeActions(
-            open = { nav.detailId = it.id },
-            play = { c -> resolve(c.title, c.episode, false) },
-            playTitle = { playTitle(it) },
+    fun markTitle(t: LibTitle, watched: Boolean) {
+        if (t.kind == TitleKind.MOVIE) app.progress.setWatched(Keys.movie(t), watched)
+        else t.episodes().forEach { app.progress.setWatched(Keys.episode(t, it), watched) }
+    }
+
+    val libActions = remember {
+        LibActions(
+            open = { nav.previewId = null; nav.openDetail(it.id) },
+            preview = { nav.previewId = it.id },
+            play = { t, e -> if (e != null) resolve(t, e, false) else playTitle(t) },
+            playContinue = { c -> resolve(c.title, c.episode, false) },
+            download = { t, e ->
+                if (t.kind == TitleKind.SERIES && e == null) Shelves.nextFor(t, app.progress.all.value)?.first?.let { resolve(t, it, true) }
+                else resolve(t, e, true)
+            },
+            toggleList = { t ->
+                val had = t.id in app.profiles.active.list
+                app.profiles.toggleList(t.id)
+                toast(if (had) "Aus Meiner Liste entfernt." else "Auf Meiner Liste.")
+            },
+            markWatched = { t, w -> markTitle(t, w) },
+            setWatched = { key, watched -> app.progress.setWatched(key, watched) },
+            grid = { nav.push(Route.Grid(it)) },
+            categories = { k -> nav.categoriesKind = k; nav.categories = true },
+            search = { nav.focusSearch = true; nav.selectTab(MainActivity.TAB_DISCOVER) },
+            profiles = { nav.profileManage = false; nav.profilePicker = true },
             import = { importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
             browser = { nav.browserOpen = true },
-            profiles = { nav.profileManage = false; nav.profilePicker = true },
+            downloads = { nav.push(Route.Downloads) },
+            back = { nav.pop() },
         )
     }
 
     val detailActions = remember {
         DetailActions(
-            back = { nav.detailId = null },
-            play = { t, e -> resolve(t, e, false) },
-            download = { t, e -> resolve(t, e, true) },
             openPage = { url ->
                 nav.browserOpen = true
                 browser.load(url)
             },
-            setWatched = { key, watched -> app.progress.setWatched(key, watched) },
             rename = { t, title -> app.library.rename(t.id, title) },
             changeCover = { t ->
                 coverFor = t.id
@@ -494,16 +556,25 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             remove = { t ->
                 app.library.remove(t.id)
                 app.progress.removeTitle(t.id)
-                nav.detailId = null
+                nav.pop()
                 toast("Aus der Bibliothek entfernt.")
             },
         )
     }
 
+    // Wunsch aus dem Player („Nächste Folge“, Folge aus dem Panel): abholen, sobald wir wieder vorn sind.
+    val bridge by de.marne.streamplayer.player.PlayerBridge.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(bridge) {
+        val r = bridge ?: return@LaunchedEffect
+        de.marne.streamplayer.player.PlayerBridge.take()
+        val t = app.library.get(r.titleId) ?: return@LaunchedEffect
+        t.episode(r.season, r.episode)?.let { resolve(t, it, false) }
+    }
+
     // Zurück: Browser schließen › Detailseite schließen › zur Bibliothek. BrowserScreen hat eigene,
     // spätere Handler (Seitenverlauf, Suche abbrechen) – die gewinnen, solange sie aktiv sind.
-    BackHandler(enabled = !nav.browserOpen && nav.tab != MainActivity.TAB_LIBRARY) { nav.tab = MainActivity.TAB_LIBRARY }
-    BackHandler(enabled = !nav.browserOpen && nav.tab == MainActivity.TAB_LIBRARY && nav.detailId != null) { nav.detailId = null }
+    BackHandler(enabled = !nav.browserOpen && nav.stack.isEmpty() && nav.tab != MainActivity.TAB_HOME) { nav.selectTab(MainActivity.TAB_HOME) }
+    BackHandler(enabled = !nav.browserOpen && nav.stack.isNotEmpty()) { nav.pop() }
     BackHandler(enabled = nav.browserOpen) { if (watch.active) watch.cancel() else nav.browserOpen = false }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
@@ -526,27 +597,19 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         if (!nav.browserOpen || nav.resolving) {
             Column(Modifier.fillMaxSize().background(Palette.bg)) {
                 Box(Modifier.weight(1f)) {
-                    Crossfade(nav.tab, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "tab") { t ->
-                        when (t) {
-                            MainActivity.TAB_LIBRARY -> {
-                                val detail = nav.detailId?.let { id -> titles.firstOrNull { it.id == id } }
-                                Crossfade(detail?.id, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "detail") { id ->
-                                    val d = id?.let { i -> titles.firstOrNull { it.id == i } }
-                                    if (d != null) DetailScreen(d, progress, detailActions)
-                                    else HomeScreen(titles, progress, enrichStatus, activeProfile, homeActions)
-                                }
-                            }
-                            MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, downloadActions)
-                            else -> SettingsScreen(
-                                settings = app.settings,
-                                onClearBrowsingData = browser::clearBrowsingData,
-                                onToast = { toast(it) },
-                                onProfiles = { nav.profileManage = true; nav.profilePicker = true },
-                            )
-                        }
+                    LibraryHost(nav, libState, libActions, detailActions, downloadActions) {
+                        SettingsScreen(
+                            settings = app.settings,
+                            onClearBrowsingData = browser::clearBrowsingData,
+                            onToast = { toast(it) },
+                            onProfiles = { nav.profileManage = true; nav.profilePicker = true },
+                        )
                     }
                 }
-                NavBar(nav.tab, activeCount = downloads.count { it.active }) { nav.tab = it; if (it == MainActivity.TAB_LIBRARY) nav.detailId = null }
+                NavBar(nav.tab, activeCount = downloads.count { it.active }) { t ->
+                    // Nochmal auf den aktiven Tab: zurück zu seinem Anfang.
+                    if (t == nav.tab) { nav.forward = false; nav.stack.clear() } else nav.selectTab(t)
+                }
             }
         }
 
@@ -583,13 +646,20 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             )
         }
 
-        // Edge-to-edge: Inhalt scrollt nicht sichtbar unter die Statusleiste.
-        Box(
+        // Edge-to-edge: Inhalt scrollt nicht sichtbar unter die Statusleiste. Start und Detail
+        // ziehen ihr Bild bis unter die Leiste und decken sie selbst ab, sobald gescrollt wird.
+        val fullBleed = !nav.browserOpen && ((nav.stack.isEmpty() && nav.tab == MainActivity.TAB_HOME) || nav.stack.lastOrNull() is Route.Detail)
+        if (!fullBleed) Box(
             Modifier
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
                 .background(Palette.bg)
         )
+
+        nav.previewId?.let { id ->
+            libState.byId(id)?.let { t -> QuickSheet(t, libState, libActions, onDismiss = { nav.previewId = null }) }
+        }
+        if (nav.categories) CategorySheet(libState, nav.categoriesKind, libActions, onDismiss = { nav.categories = false })
 
         ResolveScreen(
             visible = nav.resolving,
@@ -616,6 +686,59 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     }
 }
 
+/**
+ * Inhalt über der Leiste: Tab oder oberste Seite des Stapels. Hinein schiebt sich die neue Seite
+ * von rechts herein, zurück gleitet sie nach rechts weg (kürzer) – Tabs untereinander blenden nur.
+ * Jede Seite behält ihren Zustand (Scrollen, Reiter), solange sie im Stapel liegt.
+ */
+@Composable
+private fun LibraryHost(
+    nav: AppNav,
+    state: LibState,
+    actions: LibActions,
+    detail: DetailActions,
+    downloadActions: DownloadActions,
+    settings: @Composable () -> Unit,
+) {
+    val holder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    val route = nav.stack.lastOrNull()
+    val target = (route?.key ?: "tab:${nav.tab}") to route
+    val spring = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+    androidx.compose.animation.AnimatedContent(
+        targetState = target,
+        contentKey = { it.first },
+        transitionSpec = {
+            val tabs = initialState.second == null && targetState.second == null
+            when {
+                tabs -> androidx.compose.animation.fadeIn(tween(320, easing = spring)) togetherWith androidx.compose.animation.fadeOut(tween(200))
+                nav.forward -> (androidx.compose.animation.slideInHorizontally(tween(420, easing = spring)) { it / 3 } + androidx.compose.animation.fadeIn(tween(320))) togetherWith
+                    (androidx.compose.animation.slideOutHorizontally(tween(420, easing = spring)) { -it / 10 } + androidx.compose.animation.fadeOut(tween(220)))
+                else -> (androidx.compose.animation.slideInHorizontally(tween(380, easing = spring)) { -it / 10 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith
+                    (androidx.compose.animation.slideOutHorizontally(tween(380, easing = spring)) { it / 3 } + androidx.compose.animation.fadeOut(tween(200)))
+            }.apply { targetContentZIndex = if (nav.forward) 1f else 0f }
+        },
+        label = "page",
+    ) { (key, r) ->
+        holder.SaveableStateProvider(key) {
+            when (r) {
+                is Route.Detail -> {
+                    val t = state.byId(r.id)
+                    if (t != null) DetailScreen(t, state, actions, detail)
+                    else LaunchedEffect(Unit) { nav.pop() } // entfernt, während die Seite offen war
+                }
+                is Route.Grid -> GridScreen(r.spec, state, actions)
+                Route.Downloads -> DownloadsScreen(state.downloads, downloadActions, onBack = actions.back)
+                null -> when (nav.tab) {
+                    MainActivity.TAB_HOME -> HomeScreen(state, actions)
+                    MainActivity.TAB_DISCOVER -> DiscoverScreen(state, actions, nav.focusSearch) { nav.focusSearch = false }
+                    MainActivity.TAB_MINE -> MineScreen(state, actions)
+                    else -> settings()
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun NavBar(selected: Int, activeCount: Int, onSelect: (Int) -> Unit) {
     Column(Modifier.background(Palette.bg)) {
@@ -627,7 +750,7 @@ private fun NavBar(selected: Int, activeCount: Int, onSelect: (Int) -> Unit) {
                     selected = isSel,
                     onClick = { onSelect(i) },
                     icon = {
-                        if (i == MainActivity.TAB_DOWNLOADS && activeCount > 0) {
+                        if (i == MainActivity.TAB_MINE && activeCount > 0) {
                             // Messing markiert Fortschritt: die Zahl laufender Downloads.
                             BadgedBox(badge = { Badge(containerColor = Palette.brass, contentColor = Palette.onInk) { Text("$activeCount") } }) {
                                 Icon(painterResource(if (isSel) t.iconSelected else t.icon), contentDescription = null)

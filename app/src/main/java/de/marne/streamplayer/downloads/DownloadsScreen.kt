@@ -58,7 +58,7 @@ class DownloadActions(
 )
 
 @Composable
-fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions) {
+fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions, onBack: (() -> Unit)? = null) {
     val active = items.filter { it.active }
     val stopped = items.filter { it.state == DlState.PAUSED || it.state == DlState.FAILED }
     val done = items.filter { it.state == DlState.DONE }.sortedByDescending { it.finishedAt ?: it.createdAt }
@@ -75,8 +75,10 @@ fun DownloadsScreen(items: List<DownloadItem>, actions: DownloadActions) {
 
     LazyColumn(
         Modifier.fillMaxSize().background(Palette.bg),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 40.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + if (onBack != null) 4.dp else 16.dp, bottom = 40.dp),
     ) {
+        // Seit 1.7.0 eine Seite unter „Meins“, kein eigener Tab mehr: dann mit Zurück.
+        if (onBack != null) item { androidx.compose.material3.IconButton(onClick = onBack) { de.marne.streamplayer.ui.design.GIcon(Ic.back) } }
         item {
             val subtitle = if (done.isNotEmpty()) "${done.size} in Filme/Streamplayer" else null
             ScreenHeader(title = title, eyebrow = "Downloads", subtitle = subtitle)

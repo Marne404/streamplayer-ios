@@ -63,6 +63,7 @@ class App : Application(), SingletonImageLoader.Factory {
         meta = MetaFetcher(http) { Http.defaultUserAgent(this) }
         tmdb = Tmdb(http, key = { settings.tmdbKey.value }, language = { settings.tmdbLanguage })
         enricher = Enricher(tmdb, library, settings)
+        enricher.upgradeOld()
         importer = Importer(this, library, enricher)
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)

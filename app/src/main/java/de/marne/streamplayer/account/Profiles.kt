@@ -21,12 +21,19 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-/** Ein Profil wie bei Netflix: gemeinsame Bibliothek, eigener Fortschritt. */
-data class Profile(val id: String, val name: String, val color: Int, val createdAt: Long) {
+/**
+ * Ein Profil wie bei Netflix: gemeinsame Bibliothek, eigener Fortschritt, eigene „Meine Liste“.
+ * [list]: Titel-IDs, die neuesten vorn. Liegt im Profil, damit sie mit dem Profil abgeglichen wird.
+ */
+data class Profile(val id: String, val name: String, val color: Int, val createdAt: Long, val list: List<String> = emptyList()) {
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("color", color).put("createdAt", createdAt)
+        .put("list", JSONArray(list))
 
     companion object {
-        fun fromJson(o: JSONObject) = Profile(o.getString("id"), o.optString("name", "Profil"), o.optInt("color"), o.optLong("createdAt"))
+        fun fromJson(o: JSONObject) = Profile(
+            o.getString("id"), o.optString("name", "Profil"), o.optInt("color"), o.optLong("createdAt"),
+            o.optJSONArray("list")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
+        )
         /** Das erste Profil übernimmt den Fortschritt aus der Zeit vor den Profilen. */
         const val DEFAULT_ID = "main"
     }
@@ -95,6 +102,18 @@ class ProfileStore(context: Context) {
     /** Name und Farbe auf einmal (Willkommens-Ablauf). */
     fun update(id: String, name: String, color: Int) = _profiles.update { list ->
         list.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }, color = color.mod(COLORS)) else it }
+    }
+
+    /** „Meine Liste“ des aktiven Profils: hinzufügen (vorn) oder entfernen. */
+    fun toggleList(titleId: String) {
+        val id = _activeId.value
+        _profiles.update { list ->
+            list.map { p ->
+                if (p.id != id) p
+                else if (titleId in p.list) p.copy(list = p.list - titleId)
+                else p.copy(list = listOf(titleId) + p.list)
+            }
+        }
     }
 
     fun rename(id: String, name: String) = _profiles.update { list -> list.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it } }

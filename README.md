@@ -61,7 +61,9 @@ gemeldet, statt die ganze Datei abzulehnen.
 Ein kostenloser Schlüssel von themoviedb.org kommt in die Einstellungen beider Apps. Akzeptiert
 werden der API-Schlüssel (v3) und das Lese-Token (v4, `eyJ…`). Der Schlüssel bleibt auf dem
 Gerät und landet nie im Katalog. Im Player ergänzt `Enricher` danach Poster, Hintergrund,
-Beschreibung, Jahr und Laufzeit. Fehlen einer Serie die Staffeln, liefert TMDB sie samt
+Beschreibung, Jahr und Laufzeit, seit 1.7.0 auch Genres, Bewertung, Tagline, Besetzung und Regie
+(eine Abfrage mit `append_to_response=credits`). Titel, die vorher ergänzt wurden, lädt die App
+einmal nach (`Enricher.upgradeOld`). Fehlen einer Serie die Staffeln, liefert TMDB sie samt
 Folgenzahl, und je Folge kommen Name, Standbild und Inhalt dazu. Katalog-Angaben gewinnen immer,
 TMDB füllt nur Lücken. Die Bildreihenfolge ist: eigenes Cover › Katalog › TMDB › Seitenbild.
 
@@ -166,12 +168,57 @@ erscheinen.
 
 ## Mediathek
 
-- **Startseite:** Oben die eine dunkle Hero-Karte (Ivory & Ink erlaubt eine pro Screen), mit
-  „Weiterschauen“ bzw. „Nächste Folge“, sonst dem neuesten Titel. Darunter Regale:
-  Weiterschauen, Serien, Filme, Offline.
-- **Detailseite:** Bild, Titel, Beschreibung, „Abspielen“ bzw. „Fortsetzen · noch 12 Min.“.
-  Bei Serien gibt es Staffel-Pills und eine Folgenliste mit Fortschritt; gesehene Folgen haben
-  ein gefülltes Häkchen. Folgen lassen sich einzeln laden oder als (un)gesehen markieren.
+Seit 1.7.0 ist die Bibliothek wie Netflix aufgebaut. Das Kleid bleibt Ivory & Ink. Unten gibt es
+vier Tabs: **Start**, **Entdecken**, **Meins** und **Einstellungen**. Detailseiten und Übersichten
+legen sich als Stapel über den aktuellen Tab. Zurück nimmt die oberste Seite weg, ein Tabwechsel
+leert den Stapel (`AppNav.stack`, `Route`).
+
+- **Start:** Ganz oben steht „Für <Profil>“ mit Lupe und Profilbild. Darunter folgen Filter
+  (Serien, Filme, Kategorien), die die ganze Seite filtern. Dann kommt eine große Empfehlung, das
+  Poster mit Genres und den Knöpfen „Abspielen“ und „Meine Liste“. Dahinter liegt derselbe Titel
+  unscharf als Abglanz. Danach folgen die Regale:
+  - Weiterschauen
+  - Meine Liste
+  - Für dich
+  - Top 10 (große Serifen-Ziffern)
+  - Weil du „…“ geschaut hast
+  - Neu in der Bibliothek
+  - Genre-Regale
+  - Offline
+
+  Jedes Regal hat „Alle“, das führt zur Übersicht.
+- **Kurzansicht:** Ein Tipp auf ein Poster öffnet ein Blatt mit Abspielen, Meine Liste,
+  Gesehen und Laden. „Details & Folgen“ führt weiter. Langer Druck öffnet direkt die Detailseite.
+- **Entdecken:** Die Suche läuft über Titel, Originaltitel, Besetzung, Regie, Genre und Jahr.
+  Akzente sind egal. Ohne Suche zeigt die Seite Kategorien als Karten und „Stöbern“: Alle,
+  Serien, Filme, Neu, Am besten bewertet und Ohne Genre.
+- **Meins:** Hier stehen das Profil und „Dein Schauen“. Das ist die Auswertung: Zeit insgesamt
+  und diese Woche, Folgen, Filme und Lieblingsgenres. Dazu kommen Weiterschauen, Meine Liste,
+  Downloads (früher ein eigener Tab), Offline, Gesehen, Katalog importieren und Browser.
+- **Übersicht** (`GridScreen`): ein Poster-Raster mit Serien/Filme-Filter und Sortierung
+  (Empfohlen, Neu, A–Z, Bewertung, Jahr).
+- **Detailseite:**
+  - Oben das Bild randlos bis unter die Statusleiste.
+  - Darunter Bewertung in Messing, Fakten und Genres.
+  - Dann der große Knopf mit Fortschritt und die Aktionen Meine Liste, Gesehen und Laden.
+  - Danach Tagline, Inhalt, Besetzung und Regie bzw. Idee.
+  - Serien haben die Reiter „Folgen“ (Staffel-Pills, Folgen mit Standbild, Dauer und Inhalt)
+    und „Ähnliche“.
+- **Empfehlungen** (`Recommend`) rechnen nur mit dem, was auf dem Gerät liegt:
+  - Den Geschmack bilden Genres gesehener und angefangener Titel und Meiner Liste. Eine Serie
+    zählt höchstens dreifach, viele Genres teilen ihr Gewicht.
+  - Dazu kommen die TMDB-Bewertung (erst ab 20 Stimmen) und ein kleiner Bonus für Neues.
+  - Ohne Verlauf entscheidet die Bewertung.
+  - Den großen Titel oben wählt die App pro Tag aus den besten fünf.
+- **Meine Liste** gehört zum Profil (`Profile.list`) und wird mit ihm abgeglichen.
+- **Player** (`player/`): eine eigene Oberfläche in Compose, im Querformat:
+  - Steuerung: −10 s, +10 s, eine Suchleiste mit Zeitblase, Bildformat Anpassen/Füllen, Sperre.
+  - Gesten: Doppeltipp zum Spulen, Wischen für Helligkeit und Lautstärke.
+  - Panels für Folgen, Geschwindigkeit sowie Ton und Untertitel.
+  - Die Karte „Nächste Folge“ kommt in den letzten 40 s. Nach dem Ende geht es nach 8 s von
+    selbst weiter.
+  - Die nächste Folge löst der Player nicht selbst auf: `PlayerBridge` gibt den Wunsch an
+    MainActivity zurück, die Ladebildschirm und Player neu startet.
 - **Film hinzufügen (bis 1.0, heute per Katalog):** ein Link. Titel, Bild und Beschreibung holt `MetaFetcher` per einfachem
   Abruf aus og:-Angaben. Was fehlt, ergänzt das erste Ansehen.
 - **Serie hinzufügen (bis 1.0, heute im Creator):** Link zu einer Folge. `Pattern.derive` macht daraus eine Vorlage

@@ -116,11 +116,24 @@ fun PosterTile(
     width: Dp = 124.dp,
     progress: Float? = null,
     watched: Boolean = false,
+    badge: String? = null,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
-    Column(Modifier.width(width).combinedClickable(onClick = onClick)) {
+    val press = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    Column(
+        Modifier.width(width).pressScale(press, 0.96f)
+            .combinedClickable(interactionSource = press, indication = null, onClick = onClick, onLongClick = onLongClick)
+    ) {
         Box {
             Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(2f / 3f), radius = 18.dp)
+            if (badge != null) {
+                Text(
+                    badge, style = MaterialTheme.typography.labelSmall, color = Palette.onInk,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp).clip(RoundedCornerShape(50))
+                        .background(Palette.ink.copy(alpha = 0.88f)).padding(horizontal = 7.dp, vertical = 2.dp),
+                )
+            }
             if (watched) {
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(8.dp).clip(RoundedCornerShape(50)).background(Palette.ink).padding(4.dp)
@@ -195,11 +208,13 @@ fun titleMeta(t: LibTitle, withHost: Boolean = true): String = buildList {
         if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
         if (t.episodeCount > 0) add("${t.episodeCount} Folgen")
     } else {
-        t.runtimeMs?.let { add(Format.duration(it)) }
+        t.runtimeMs?.let { add(minutesText(it) ?: Format.duration(it)) }
         if (t.offline.isNotEmpty()) add("offline")
     }
     if (withHost) t.host?.let { add(it) }
 }.joinToString(" · ")
 
 /** Kurz für Poster-Kacheln: „2008 · 5 Staffeln“ / „2010 · 2:28:00“ */
-fun shortMeta(t: LibTitle): String = titleMeta(t, withHost = false).split(" · ").take(2).joinToString(" · ")
+fun shortMeta(t: LibTitle): String =
+    if (t.kind == TitleKind.MOVIE) listOfNotNull(t.shownYear?.toString(), t.runtimeMs?.let { "${it / 60_000} Min." }).joinToString(" · ")
+    else titleMeta(t, withHost = false).split(" · ").take(2).joinToString(" · ")

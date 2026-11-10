@@ -43,6 +43,11 @@ class Enricher(
 
     val available: Boolean get() = tmdb.configured
 
+    /** Titel, denen Genres & Co. fehlen (vor 1.7.0 ergänzt), einmal nachladen. Beim Start aufgerufen. */
+    fun upgradeOld() {
+        enqueue(store.titles.value.filter { it.tmdb != null && it.tmdb.genres == null }.map { it.id })
+    }
+
     fun enqueue(ids: List<String>, force: Boolean = false) {
         if (!tmdb.configured || ids.isEmpty()) return
         val s = _status.value
@@ -52,7 +57,8 @@ class Enricher(
 
     private suspend fun enrich(id: String, force: Boolean) {
         val t = store.get(id) ?: return
-        if (t.tmdb != null && !force) return
+        // Schon ergänzt – außer Genres & Co. fehlen noch (Stand vor 1.7.0): dann einmal nachholen.
+        if (t.tmdb != null && t.tmdb.genres != null && !force) return
         val kind = if (t.kind == TitleKind.SERIES) Tmdb.Kind.TV else Tmdb.Kind.MOVIE
         val tmdbId = t.tmdbId ?: run {
             if (!settings.tmdbAuto.value && t.tmdbQuery == null) return
@@ -62,9 +68,18 @@ class Enricher(
         val d = tmdb.details(kind, tmdbId)
         val r = d.result
         val seasons = d.seasons.filter { it.number > 0 && it.episodeCount > 0 }.map { SeasonSpec(it.number, it.episodeCount) }
-        store.applyTmdb(id, TmdbInfo(r.id, r.title, r.poster, r.backdrop, r.overview, r.year, d.runtimeMin), seasons)
+        val upgradeOnly = t.tmdb != null && t.tmdb.genres == null && !force
+        store.applyTmdb(
+            id,
+            TmdbInfo(
+                r.id, r.title, r.poster, r.backdrop, r.overview, r.year, d.runtimeMin,
+                genres = d.genres, rating = d.rating, votes = d.votes, tagline = d.tagline, cast = d.cast, creators = d.creators,
+            ),
+            seasons,
+        )
 
-        if (kind == Tmdb.Kind.TV) {
+        // Nachholen braucht die Folgen nicht noch einmal: die sind schon da.
+        if (kind == Tmdb.Kind.TV && !upgradeOnly) {
             val current = store.get(id) ?: return
             val info = mutableMapOf<String, EpInfo>()
             for (season in current.seasons) {

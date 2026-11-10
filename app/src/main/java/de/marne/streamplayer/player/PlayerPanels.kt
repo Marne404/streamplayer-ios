@@ -196,6 +196,7 @@ internal fun NextUpCard(
     title: LibTitle?,
     next: Episode?,
     ended: Boolean,
+    controlsShown: Boolean,
     onPlay: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -203,11 +204,14 @@ internal fun NextUpCard(
     // Inhalt festhalten, solange die Karte hinausgleitet – sonst wäre sie beim Ausblenden leer.
     var shown by remember { mutableStateOf(next) }
     if (next != null) shown = next
+    // Über der Leiste, solange die Steuerung sichtbar ist; sonst tiefer. Im Querformat bleibt so die
+    // Mitte (−10 s, Play, +10 s) frei – die erste, hohe Fassung verdeckte dort „+10 s“.
+    val bottom by animateDpAsState(if (controlsShown) 100.dp else 28.dp, tween(DUR_MOVE, easing = Spring), label = "nextBottom")
     AnimatedVisibility(
         visible = visible && title != null,
         enter = fadeIn(tween(DUR_SWAP)) + slideInHorizontally(tween(DUR_MOVE, easing = Bouncy)) { it / 2 },
         exit = fadeOut(tween(DUR_FADE)) + slideOutHorizontally(tween(DUR_SWAP, easing = Spring)) { it / 2 },
-        modifier = modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(end = 20.dp, bottom = 104.dp),
+        modifier = modifier.windowInsetsPadding(WindowInsets.displayCutout).padding(end = 20.dp, bottom = bottom),
     ) {
         val e = shown ?: return@AnimatedVisibility
         val countdown = remember { Animatable(0f) }
@@ -217,46 +221,42 @@ internal fun NextUpCard(
             countdown.animateTo(1f, tween(NEXT_UP_COUNTDOWN_MS, easing = LinearEasing))
             onPlay()
         }
-        Column(
-            Modifier.width(360.dp).clip(RoundedCornerShape(22.dp)).background(Palette.surface.copy(alpha = 0.96f)).padding(14.dp),
+        // Eine Zeile statt zwei: Bild, Text, Knopf, Schließen – flach genug für das Querformat.
+        Row(
+            Modifier.width(420.dp).clip(RoundedCornerShape(20.dp)).background(Palette.surface.copy(alpha = 0.96f)).padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Thumb(Tmdb.largeModel(e.still ?: title?.wide), Modifier.width(120.dp).aspectRatio(16f / 9f), radius = 12.dp)
-                HSpace(14.dp)
-                Column(Modifier.weight(1f)) {
-                    Text("NÄCHSTE FOLGE", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                    VSpace(4.dp)
-                    Text(e.label, style = MaterialTheme.typography.titleSmall, color = Palette.text)
-                    e.title?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                }
-            }
-            VSpace(12.dp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val source = remember { MutableInteractionSource() }
-                val pressed by source.collectIsPressedAsState()
-                val scale by animateFloatAsState(if (pressed) 0.97f else 1f, tween(DUR_PRESS), label = "press")
-                Box(
-                    Modifier.weight(1f).height(44.dp).scale(scale).clip(RoundedCornerShape(50))
-                        .background(Palette.text.copy(alpha = if (ended) 0.35f else 1f))
-                        .clickable(interactionSource = source, indication = null, onClick = onPlay),
-                    contentAlignment = Alignment.CenterStart,
-                ) {
-                    // Nach dem Ende füllt sich der Knopf von links: Countdown ohne Zahl.
-                    if (ended) Box(Modifier.fillMaxHeight().fillMaxWidth(countdown.value.coerceAtLeast(0.001f)).background(Palette.text))
-                    Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-                        GIcon(Ic.play, tint = Palette.bg, size = 20.dp)
-                        HSpace(6.dp)
-                        Text("Abspielen", style = MaterialTheme.typography.labelLarge, color = Palette.bg)
-                    }
-                }
-                HSpace(8.dp)
+            Thumb(Tmdb.largeModel(e.still ?: title?.wide), Modifier.width(96.dp).aspectRatio(16f / 9f), radius = 10.dp)
+            HSpace(12.dp)
+            Column(Modifier.weight(1f)) {
+                Text("NÄCHSTE FOLGE", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                 Text(
-                    "Abbrechen",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = Palette.text,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).clickable(onClick = onCancel).padding(horizontal = 14.dp, vertical = 12.dp),
+                    listOfNotNull(e.label, e.title).joinToString(" · "),
+                    style = MaterialTheme.typography.titleSmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
             }
+            HSpace(8.dp)
+            val source = remember { MutableInteractionSource() }
+            val pressed by source.collectIsPressedAsState()
+            val scale by animateFloatAsState(if (pressed) 0.97f else 1f, tween(DUR_PRESS), label = "press")
+            Box(
+                Modifier.width(124.dp).height(40.dp).scale(scale).clip(RoundedCornerShape(50))
+                    .background(Palette.text.copy(alpha = if (ended) 0.35f else 1f))
+                    .clickable(interactionSource = source, indication = null, onClick = onPlay),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                // Nach dem Ende füllt sich der Knopf von links: Countdown ohne Zahl.
+                if (ended) Box(Modifier.fillMaxHeight().fillMaxWidth(countdown.value.coerceAtLeast(0.001f)).background(Palette.text))
+                Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+                    GIcon(Ic.play, tint = Palette.bg, size = 18.dp)
+                    HSpace(6.dp)
+                    Text("Abspielen", style = MaterialTheme.typography.labelLarge, color = Palette.bg)
+                }
+            }
+            Box(
+                Modifier.padding(start = 4.dp).size(40.dp).clip(RoundedCornerShape(50)).clickable(onClick = onCancel),
+                contentAlignment = Alignment.Center,
+            ) { GIcon(Ic.close, tint = Palette.text, size = 20.dp) }
         }
     }
 }

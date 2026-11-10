@@ -242,6 +242,7 @@ fun PlayerScreen(
             title = info.libTitle,
             next = nextUp,
             ended = state.ended,
+            controlsShown = controls,
             onPlay = { nextUp?.let { onPlayEpisode(info.libTitle!!, it) } },
             onCancel = { nextDismissed = true; controls = true },
             modifier = Modifier.align(Alignment.BottomEnd),

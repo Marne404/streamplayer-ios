@@ -34,6 +34,13 @@ data class TmdbInfo(
     val overview: String?,
     val year: Int?,
     val runtimeMin: Int?,
+    /** null: noch nie geholt (Stand vor 1.7.0) – der Enricher lädt dann einmal nach. */
+    val genres: List<String>? = null,
+    val rating: Double? = null,
+    val votes: Int? = null,
+    val tagline: String? = null,
+    val cast: List<String> = emptyList(),
+    val creators: List<String> = emptyList(),
 )
 
 /**
@@ -84,6 +91,9 @@ data class LibTitle(
     val image: String? get() = wide
 
     val text: String? get() = description ?: tmdb?.overview
+    val genres: List<String> get() = tmdb?.genres.orEmpty()
+    /** Nur mit genug Stimmen: eine 10,0 aus zwei Bewertungen ist keine Empfehlung. */
+    val rating: Double? get() = tmdb?.rating?.takeIf { (tmdb.votes ?: 0) >= 20 }
     val shownYear: Int? get() = year ?: tmdb?.year
     val runtimeMs: Long? get() = durationMs ?: tmdb?.runtimeMin?.let { it * 60_000L }
 
@@ -122,7 +132,9 @@ data class LibTitle(
         put("tmdbId", tmdbId); put("tmdbQuery", tmdbQuery); put("sourceId", sourceId)
         tmdb?.let { t ->
             put("tmdb", JSONObject().put("id", t.id).put("title", t.title).put("poster", t.poster).put("backdrop", t.backdrop)
-                .put("overview", t.overview).put("year", t.year).put("runtimeMin", t.runtimeMin))
+                .put("overview", t.overview).put("year", t.year).put("runtimeMin", t.runtimeMin)
+                .put("genres", t.genres?.let { JSONArray(it) }).put("rating", t.rating).put("votes", t.votes)
+                .put("tagline", t.tagline).put("cast", JSONArray(t.cast)).put("creators", JSONArray(t.creators)))
         }
         put("episodeInfo", JSONObject().apply {
             episodeInfo.forEach { (k, e) ->
@@ -166,7 +178,18 @@ data class LibTitle(
                 year = o.long("year")?.toInt(),
                 tmdbId = o.long("tmdbId")?.toInt(),
                 tmdbQuery = o.str("tmdbQuery"),
-                tmdb = tm?.let { TmdbInfo(it.getInt("id"), it.str("title"), it.str("poster"), it.str("backdrop"), it.str("overview"), it.long("year")?.toInt(), it.long("runtimeMin")?.toInt()) },
+                tmdb = tm?.let {
+                    TmdbInfo(
+                        it.getInt("id"), it.str("title"), it.str("poster"), it.str("backdrop"), it.str("overview"),
+                        it.long("year")?.toInt(), it.long("runtimeMin")?.toInt(),
+                        genres = it.optJSONArray("genres")?.strings(),
+                        rating = if (it.isNull("rating") || !it.has("rating")) null else it.optDouble("rating").takeIf { r -> !r.isNaN() },
+                        votes = it.long("votes")?.toInt(),
+                        tagline = it.str("tagline"),
+                        cast = it.optJSONArray("cast")?.strings().orEmpty(),
+                        creators = it.optJSONArray("creators")?.strings().orEmpty(),
+                    )
+                },
                 sourceId = o.str("sourceId"),
                 episodeInfo = ei.keys().asSequence().associateWith { k ->
                     val e = ei.getJSONObject(k)
@@ -179,6 +202,7 @@ data class LibTitle(
 
         private fun JSONObject.str(k: String): String? = if (isNull(k)) null else optString(k).takeIf { it.isNotEmpty() }
         private fun JSONObject.long(k: String): Long? = if (isNull(k) || !has(k)) null else optLong(k)
+        private fun JSONArray.strings(): List<String> = List(length()) { optString(it) }.filter { it.isNotEmpty() }
     }
 }
 
