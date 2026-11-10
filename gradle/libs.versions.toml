@@ -17,6 +17,7 @@ firebaseBom = "35.1.0"
 googleServices = "4.5.0"
 credentials = "1.6.0"
 googleid = "1.2.1"
+jsoup = "1.21.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -49,6 +50,8 @@ androidx-credentials = { module = "androidx.credentials:credentials", version.re
 androidx-credentials-play = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
 googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "lifecycle" }
+# HTML lesen für „Aus Link übernehmen“ (Creator): Links, Meta-Angaben, JSON-LD.
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 junit = { module = "junit:junit", version = "4.13.2" }
 # org.json ist im Android-Framework, in JVM-Unit-Tests aber nur ein Stub.
 orgjson = { module = "org.json:json", version = "20240303" }

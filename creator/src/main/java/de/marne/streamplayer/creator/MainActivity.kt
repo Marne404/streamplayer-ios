@@ -1,5 +1,6 @@
 package de.marne.streamplayer.creator
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import de.marne.streamplayer.catalog.CatalogJson
 import de.marne.streamplayer.catalog.CatalogTitle
 import de.marne.streamplayer.catalog.CatalogType
+import de.marne.streamplayer.importer.Importer
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace
 import de.marne.streamplayer.ui.design.Ic
@@ -73,6 +75,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val prefs = CreatorApp.instance.prefs
+        if (savedInstanceState == null) handleShare(intent)
         setContent {
             val theme by prefs.theme.collectAsState()
             val dark = isAppDark(theme)
@@ -83,12 +86,38 @@ class MainActivity : ComponentActivity() {
             IvoryInkTheme(dark) { CreatorRoot() }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleShare(intent)
+    }
+
+    /** Geteilter Text mit Adresse(n) oder eine geteilte Datei mit Links → „Aus Link übernehmen“. */
+    private fun handleShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val imports = CreatorApp.instance.imports
+        val stream = androidx.core.content.IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, android.net.Uri::class.java)
+        if (stream != null) {
+            imports.openFile(this, stream)
+            return
+        }
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        if (Importer.normalize(text) != null) imports.request(text)
+    }
 }
 
 @Composable
 private fun CreatorRoot() {
     var editing by rememberSaveable { mutableStateOf<String?>(null) }
     var settings by rememberSaveable { mutableStateOf(false) }
+    var importing by rememberSaveable { mutableStateOf(false) }
+    val imports = CreatorApp.instance.imports
+    val requests by imports.requests.collectAsState()
+    val importState by imports.state.collectAsState()
+    val notice by imports.notice.collectAsState()
+    LaunchedEffect(requests) {
+        if (requests > 0) { editing?.let { CreatorApp.instance.store.finalizeId(it) }; editing = null; settings = false; importing = true }
+    }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     fun toast(text: String) = scope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(text) }
@@ -97,19 +126,37 @@ private fun CreatorRoot() {
         editing?.let { CreatorApp.instance.store.finalizeId(it) }
         editing = null
     }
-    BackHandler(enabled = editing != null || settings) { closeEditor(); settings = false }
+    LaunchedEffect(notice) {
+        notice?.let { toast(it); imports.notice.value = null }
+    }
+    BackHandler(enabled = editing != null || settings || importing) {
+        when {
+            // Zurück aus einer laufenden Analyse oder einem Entwurf: eine Stufe zurück zur Eingabe.
+            // Massenimport: erst anhalten (Fertiges bleibt), dann zurück zur Eingabe.
+            importing && editing == null && importState is ImportSession.State.Batch -> imports.stop()
+            importing && editing == null && (importState is ImportSession.State.Running || importState is ImportSession.State.Done) -> imports.cancel()
+            importing && editing == null -> { imports.reset(); importing = false }
+            else -> { closeEditor(); settings = false }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         val screen = when {
             editing != null -> "edit:$editing"
             settings -> "settings"
+            importing -> "import"
             else -> "list"
         }
         Crossfade(screen.substringBefore(':'), animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "screen") { s ->
             when (s) {
                 "edit" -> editing?.let { id -> EditorScreen(id, onBack = ::closeEditor, onIdChange = { editing = it }) }
                 "settings" -> SettingsScreen(onBack = { settings = false }, toast = ::toast)
-                else -> CatalogScreen(onEdit = { editing = it }, onSettings = { settings = true }, toast = ::toast)
+                "import" -> ImportScreen(
+                    onBack = { imports.reset(); importing = false },
+                    onEdit = { id -> importing = false; editing = id },
+                    toast = ::toast,
+                )
+                else -> CatalogScreen(onEdit = { editing = it }, onSettings = { settings = true }, onImport = { importing = true }, toast = ::toast)
             }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)) { data ->
@@ -120,7 +167,7 @@ private fun CreatorRoot() {
 }
 
 @Composable
-private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, toast: (String) -> Unit) {
+private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onImport: () -> Unit, toast: (String) -> Unit) {
     val context = LocalContext.current
     val store = CreatorApp.instance.store
     val catalog by store.catalog.collectAsState()
@@ -161,6 +208,8 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, toas
         }
         item {
             VSpace(28.dp)
+            SecondaryButton("Aus Link übernehmen", icon = Ic.browser, onClick = onImport)
+            VSpace(12.dp)
             Row {
                 Box(Modifier.weight(1f)) { SecondaryButton("Serie", icon = Ic.tv) { create(CatalogType.SERIES) } }
                 HSpace(12.dp)

@@ -3,7 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Gemeinsam für Player und Creator: Ivory & Ink, das Katalogformat, Muster und TMDB.
+// Gemeinsam für Player und Creator: Ivory & Ink, das Katalogformat, Muster, TMDB und die Link-Analyse.
 android {
     namespace = "de.marne.streamplayer.core"
     compileSdk {
@@ -40,6 +40,7 @@ dependencies {
     api(libs.coil.network.okhttp)
     api(libs.okhttp)
     api(libs.kotlinx.coroutines.android)
+    implementation(libs.jsoup)
     testImplementation(libs.junit)
     testImplementation(libs.orgjson)
 }

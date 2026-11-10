@@ -14,13 +14,13 @@ als Werkzeug hinter den Kulissen. Die Oberfläche folgt dem Design-System **Ivor
 | Modul | APK | wofür |
 | --- | --- | --- |
 | `:app` | `de.marne.streamplayer` | Player: Mediathek, Abspielen, Downloads, Browser |
-| `:creator` | `de.marne.streamplayer.creator` | Kataloge bauen: Serien-Muster, Staffeln, TMDB, Cover |
-| `:core` | (Bibliothek) | Ivory & Ink, Katalogformat, Muster, TMDB-Client |
+| `:creator` | `de.marne.streamplayer.creator` | Kataloge bauen: aus Link übernehmen, Serien-Muster, Staffeln, TMDB, Cover |
+| `:core` | (Bibliothek) | Ivory & Ink, Katalogformat, Muster, TMDB-Client, Link-Analyse |
 
 Filme und Serien kommen nur noch über **Katalog-Dateien** in den Player. Gebaut werden sie im
-Creator und mit „An Streamplayer senden“ direkt übergeben. Alternativ gibt es das
-Import-Symbol oben rechts in der Bibliothek, oder man öffnet bzw. teilt eine `.json` aus einem
-Dateimanager. Ein erneuter Import aktualisiert Titel mit derselben Katalog-ID; Fortschritt,
+Creator und mit „An Streamplayer senden“ direkt übergeben. Alternativ öffnet bzw. teilt man eine
+`.json` aus einem Dateimanager; solange die Bibliothek leer ist, gibt es dort auch „Katalog
+importieren“. Die Symbole für Browser und Datei-Import oben rechts sind seit 1.4.1 weg. Ein erneuter Import aktualisiert Titel mit derselben Katalog-ID; Fortschritt,
 Downloads und eigene Cover bleiben dabei erhalten. Kaputte Einträge werden übersprungen und
 gemeldet, statt die ganze Datei abzulehnen.
 
@@ -67,7 +67,8 @@ TMDB füllt nur Lücken. Die Bildreihenfolge ist: eigenes Cover › Katalog › 
 
 ### Creator
 
-Eine Liste von Serien und Filmen, dazu ein Editor, der jede Änderung sofort speichert. Er bietet:
+Eine Liste von Serien und Filmen, dazu „Aus Link übernehmen“ (siehe unten) und ein Editor, der
+jede Änderung sofort speichert. Er bietet:
 - Name und Jahr
 - TMDB-Suche mit Postern und „Staffeln übernehmen“
 - „Link einer Folge“ → Muster ableiten
@@ -75,6 +76,66 @@ Eine Liste von Serien und Filmen, dazu ein Editor, der jede Änderung sofort spe
   Muster und Titel je Staffel
 - Vorschau aller Adressen: tippen öffnet sie im Browser, einzelne Folgen lassen sich ändern
 - Cover und Hintergrund aus der Galerie oder als Adresse
+
+### Aus Link übernehmen (Creator 1.1.0)
+
+Link zu einer Serie, Staffel, Folge oder einem Film einfügen, oder ihn aus dem Browser an den
+Creator **teilen**. Der Creator liest die Seite und zeigt einen fertigen Entwurf mit Name, Jahr,
+Bild, Staffeln, Muster und erster bzw. letzter Adresse. „In den Katalog“ übernimmt ihn mit einem
+Tipp. Es gibt **keine Regeln für einzelne Seiten**, nur allgemeine Verfahren
+(`core/…/importer/`):
+
+1. **Laden:** schlicht über OkHttp (Kennung der WebView, Cookies nur für diese Analyse). Ist die
+   Seite gesperrt (401/403/429/503), eine Vorschaltseite, hat sie kaum Verweise oder kein
+   erkennbares Muster, kommt eine verdeckte WebView dazu (`BrowserFetcher`). Sie wartet, bis sich
+   die Zahl der Verweise nicht mehr ändert. Will die Seite eine Bestätigung (Captcha), wird die
+   WebView sichtbar, bis man „Weiter“ tippt.
+2. **Was die Seite über sich sagt** (`Info`): schema.org als JSON-LD (`TVSeries`, `TVEpisode` →
+   `partOfSeries`, `Movie`), dann `og:`-Angaben, `<h1>` und `<title>`. Titel werden aufgeräumt:
+   Seitenname, „Staffel 2 Folge 5“, „online anschauen“ und dergleichen fallen weg.
+3. **Struktur aus Verweisen** (`Structure`): Jede Adresse wird in Text und Zahlen zerlegt.
+   Gleiche Form ergibt eine Familie, und die Zahlen, die sich unterscheiden, sind die Variablen.
+   Wörter davor sagen, was sie bedeuten (`staffel`, `season`, `s` → Staffel; `episode`, `folge`,
+   `e`, `x` → Folge; `film`, `ova`, `special` → Specials; `page`, `jahr`, `id` → nichts davon).
+   Gezählt werden nur Verweise derselben Serie: Ein Pfadsegment muss nach dem Entfernen von
+   „staffel-2“, „folge-5“ und Endungen genauso heißen wie die Serie in der Startadresse. So
+   fallen Seitenleisten mit anderen Serien heraus, auch „foo-2“ neben „foo“. Ergebnis:
+   Muster mit `{s}`/`{e}` (mit Nullen `{ss}`/`{ee}`/`{eee}`), Folgen je Staffel, `start` für
+   weiterzählende Seiten, Specials als Staffel 0 mit eigenem Muster, Lücken als Hinweis.
+4. **Nachladen, höchstens 40 Abrufe, 0,4 s Abstand:** War die Startseite eine Folge, kommt die
+   Übersicht der Serie dazu (aus dem Muster abgeleitet). Dann je Staffel, deren Folgen noch keine
+   geladene Seite lückenlos zeigt, eine Seite: die Staffelseite, sonst die erste bekannte Folge.
+   Ganze Seiten werden nie abgegrast.
+5. **TMDB** (mit Schlüssel): Ein eindeutiger Treffer (gleicher Name oder Originalname, Jahr ±1)
+   wird verknüpft. Poster, Hintergrund und Beschreibung kommen dann von TMDB und stehen direkt im
+   Katalog, also auch ohne TMDB-Schlüssel im Player. Ohne Treffer kommen sie von der Seite. Sonst stehen
+   bis zu vier Kandidaten zur Wahl. Die Staffeln der Seite werden gegen TMDB (oder gegen
+   `containsSeason` der Seite) geprüft. Zählt die Seite durch und passt die Summe genau, werden
+   die TMDB-Staffeln mit `{a}` übernommen. Abweichungen erscheinen als Hinweis, geraten wird
+   nicht.
+
+**Viele Links auf einmal (Creator 1.2.0):** Stehen im Feld mehrere Links, wird jeder ein eigener
+Titel. Dasselbe gilt für geteilten Text mit mehreren Links und für Dateien („Aus Datei“ oder aus
+einem Dateimanager geteilt). Erlaubt ist Text mit beliebig verteilten Links, ein JSON-Array oder
+JSON mit eigenen Namen:
+
+```json
+{ "links": ["https://…/serie/a", { "url": "https://…/serie/b", "title": "Eigener Name" }] }
+```
+
+Doppelte fallen weg, höchstens 200 Links pro Durchgang. Gelesen wird nacheinander, mit Pause
+zwischen den Links. Fertige Einträge sind gewählt, ein Tipp wählt ab. „N Titel übernehmen“ nimmt
+alle gewählten in den Katalog, schon vorhandene werden aktualisiert. Ist eine Datei ein Katalog
+im Streamplayer-Format, wird sie wie mit „Datei öffnen“ übernommen. Wo TMDB nicht eindeutig
+war, steht „TMDB unklar“: im Editor nachwählen, oder der Player sucht später selbst.
+
+Liefert ein Link denselben Titel noch einmal (gleiches Muster bzw. gleiche Filmseite), heißt der
+Knopf „Im Katalog aktualisieren“. Das übernimmt Staffeln und neue Folgen. Eigene Namen, Bilder,
+Staffeltitel und Ausnahmen bleiben.
+
+Grenzen: Inhalte hinter Logins, endlos nachladende Listen, Folgen nur mit IDs statt Nummern
+(dann bleibt es beim Hinweis „Kein Folgen-Muster“) und Listen, die erst nach einem Klick
+erscheinen.
 
 ## Mediathek
 
@@ -285,9 +346,20 @@ Gradle den Debug-Schlüssel.
 ## Testen ohne fremde Seiten
 
 ```sh
-tools/testsite.sh                   # MP4 + HLS mit zwei Qualitäten auf Port 8765
+tools/testsite.sh                   # MP4 + HLS mit zwei Qualitäten auf Port 8765, dazu katalog/ für den Import
 adb shell am start -a android.intent.action.VIEW -d http://10.0.2.2:8765/ \
   -n de.marne.streamplayer.debug/de.marne.streamplayer.MainActivity
+```
+
+Import im Creator: `katalog/testserie/` (Übersicht mit JSON-LD, Staffel-Reitern und Specials,
+auch von einer Folge aus), `katalog/jsliste/` (Liste erst per JavaScript), `katalog/pruefung/`
+(Vorschaltseite mit „Ich bin ein Mensch“), `katalog/testfilm.html` und `katalog/links.json`
+(Linkliste für den Massenimport). Teilen per adb:
+
+```sh
+adb shell am start -a android.intent.action.SEND -t text/plain \
+  --es android.intent.extra.TEXT "http://10.0.2.2:8765/katalog/testserie/staffel-2/episode-3.html" \
+  -n de.marne.streamplayer.creator.debug/de.marne.streamplayer.creator.MainActivity
 ```
 
 Hinweis zum Emulator auf diesem Rechner: `-gpu swiftshader_indirect` stürzt ab, sobald die

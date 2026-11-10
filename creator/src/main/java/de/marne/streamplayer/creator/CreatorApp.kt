@@ -35,6 +35,8 @@ class CreatorApp : Application() {
         private set
     lateinit var tmdb: Tmdb
         private set
+    lateinit var imports: ImportSession
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -43,6 +45,7 @@ class CreatorApp : Application() {
         store = CatalogStore(this)
         val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
         tmdb = Tmdb(http, key = { prefs.tmdbKey.value }, language = { prefs.language.value })
+        imports = ImportSession(this, http)
     }
 
     companion object {

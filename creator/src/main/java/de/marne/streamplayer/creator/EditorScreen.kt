@@ -516,7 +516,8 @@ fun summary(t: CatalogTitle): String = buildList {
     if (t.type == CatalogType.SERIES) {
         val real = t.seasons.count { it.number > 0 }
         if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
-        val n = t.seasons.sumOf { it.episodes }
+        // Nur reguläre Folgen, wie die Staffelzahl davor – Specials zählen nicht mit.
+        val n = t.seasons.filter { it.number > 0 }.sumOf { it.episodes }
         if (n > 0) add("$n Folgen")
         if (t.template == null && t.seasons.any { it.template == null }) add("Muster fehlt")
     } else if (t.url == null) add("Link fehlt")

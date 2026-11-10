@@ -186,6 +186,7 @@ fun IvoryField(
     label: String? = null,
     singleLine: Boolean = true,
     password: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
 ) {
     OutlinedTextField(
         visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation()
@@ -193,6 +194,7 @@ fun IvoryField(
         value = value,
         onValueChange = onChange,
         singleLine = singleLine,
+        maxLines = if (singleLine) 1 else maxLines,
         label = label?.let { { Text(it) } },
         placeholder = { Text(placeholder, color = Palette.muted) },
         shape = RoundedCornerShape(16.dp),

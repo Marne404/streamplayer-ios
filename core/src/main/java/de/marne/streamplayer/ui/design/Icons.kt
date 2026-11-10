@@ -20,6 +20,7 @@ object Ic {
     val close = R.drawable.ic_close
     val check = R.drawable.ic_check
     val checkCircle = R.drawable.ic_check_circle
+    val circle = R.drawable.ic_circle
     val info = R.drawable.ic_info
     val error = R.drawable.ic_error
     val refresh = R.drawable.ic_refresh

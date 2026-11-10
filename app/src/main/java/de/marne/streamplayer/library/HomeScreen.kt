@@ -21,9 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
-import de.marne.streamplayer.ui.design.IconBadge
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
@@ -66,8 +64,8 @@ fun HomeScreen(
                     VSpace(6.dp)
                     Text(greeting(), style = MaterialTheme.typography.headlineLarge)
                 }
-                IconButton(onClick = actions.browser) { GIcon(Ic.browser, tint = Palette.text) }
-                IconButton(onClick = actions.import) { IconBadge(Ic.importFile) }
+                // Browser und Datei-Import sind hier oben weg (1.4.1): Kataloge kommen per „Teilen“ aus
+                // dem Creator oder als geöffnete .json, der Browser über geteilte Links und „Seite anzeigen“.
                 // Wer gerade schaut – ein Tipp wechselt das Profil.
                 IconButton(onClick = actions.profiles) { de.marne.streamplayer.account.ProfileAvatar(profile, 34.dp) }
             }
