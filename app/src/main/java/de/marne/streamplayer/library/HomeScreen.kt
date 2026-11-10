@@ -37,11 +37,18 @@ class HomeActions(
     val playTitle: (LibTitle) -> Unit,
     val import: () -> Unit,
     val browser: () -> Unit,
+    val profiles: () -> Unit,
 )
 
 /** Startseite wie eine Mediathek: eine dunkle Hero-Karte, darunter Regale. */
 @Composable
-fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, enrich: Enricher.Status, actions: HomeActions) {
+fun HomeScreen(
+    titles: List<LibTitle>,
+    progress: Map<String, Progress>,
+    enrich: Enricher.Status,
+    profile: de.marne.streamplayer.account.Profile,
+    actions: HomeActions,
+) {
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val cont = remember(titles, progress) { Shelves.continueWatching(titles, progress) }
     val series = remember(titles) { titles.filter { it.kind == TitleKind.SERIES } }
@@ -61,6 +68,8 @@ fun HomeScreen(titles: List<LibTitle>, progress: Map<String, Progress>, enrich: 
                 }
                 IconButton(onClick = actions.browser) { GIcon(Ic.browser, tint = Palette.text) }
                 IconButton(onClick = actions.import) { IconBadge(Ic.importFile) }
+                // Wer gerade schaut – ein Tipp wechselt das Profil.
+                IconButton(onClick = actions.profiles) { de.marne.streamplayer.account.ProfileAvatar(profile, 34.dp) }
             }
         }
         if (enrich.running) {

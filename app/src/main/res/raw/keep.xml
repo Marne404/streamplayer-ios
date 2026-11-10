@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Die Web-Client-ID für „Mit Google anmelden“ wird zur Laufzeit per Name gesucht (sie existiert
+     nur, wenn google-services.json da ist). Ohne diese Zeile entfernt der Ressourcen-Schrumpfer sie
+     im Release – die Google-Anmeldung verschwände still. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@string/default_web_client_id" />

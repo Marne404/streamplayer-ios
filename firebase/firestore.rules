@@ -1,0 +1,59 @@
+rules_version = '2';
+
+// Streamplayer: jedes Konto sieht und schreibt nur seine eigenen Daten.
+// Grundhaltung: alles verboten, bis eine Regel es erlaubt. Kein Catch-all.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Abgleich-Dokument: { json, updatedAt, deleted }.
+    // updatedAt muss die Serverzeit sein – die App liest nur „was seit dem letzten Mal neu ist“,
+    // eine erfundene Zeit in der Zukunft würde andere Geräte Änderungen verpassen lassen.
+    function validSyncDoc() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['json', 'updatedAt', 'deleted'])
+        && d.keys().hasAll(['json', 'updatedAt', 'deleted'])
+        && d.json is string && d.json.size() < 900000
+        && d.deleted is bool
+        && d.updatedAt == request.time;
+    }
+
+    // Eigenes Bild: { data, updatedAt }, unter 1 MB.
+    function validCover() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['data', 'updatedAt'])
+        && d.keys().hasAll(['data', 'updatedAt'])
+        && d.data is bytes && d.data.size() <= 1000000
+        && d.updatedAt == request.time;
+    }
+
+    // Das Konto-Dokument selbst gibt es nicht; nur seine Untersammlungen.
+    match /users/{uid}/titles/{titleId} {
+      allow get, list: if owner(uid);
+      allow create, update: if owner(uid) && validSyncDoc();
+      allow delete: if owner(uid);
+    }
+
+    match /users/{uid}/profiles/{profileId} {
+      allow get, list: if owner(uid);
+      allow create, update: if owner(uid) && validSyncDoc();
+      allow delete: if owner(uid);
+    }
+
+    match /users/{uid}/profiles/{profileId}/progress/{titleId} {
+      allow get, list: if owner(uid);
+      allow create, update: if owner(uid) && validSyncDoc();
+      allow delete: if owner(uid);
+    }
+
+    // Bilder werden einzeln geholt, nie aufgelistet.
+    match /users/{uid}/covers/{name} {
+      allow get: if owner(uid);
+      allow create, update: if owner(uid) && validCover();
+      allow delete: if owner(uid);
+    }
+  }
+}

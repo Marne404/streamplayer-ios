@@ -42,6 +42,12 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var importer: Importer
         private set
+    lateinit var profiles: de.marne.streamplayer.account.ProfileStore
+        private set
+    lateinit var cloud: de.marne.streamplayer.account.Cloud
+        private set
+    lateinit var sync: de.marne.streamplayer.account.CloudSync
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -50,13 +56,16 @@ class App : Application(), SingletonImageLoader.Factory {
         http = Http.client(this)
         downloads = DownloadStore(this)
         library = LibraryStore(this)
-        progress = ProgressStore(this)
+        profiles = de.marne.streamplayer.account.ProfileStore(this)
+        progress = ProgressStore(this, profiles.activeId)
         meta = MetaFetcher(http) { Http.defaultUserAgent(this) }
         tmdb = Tmdb(http, key = { settings.tmdbKey.value }, language = { settings.tmdbLanguage })
         enricher = Enricher(tmdb, library, settings)
         importer = Importer(this, library, enricher)
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)
+        cloud = de.marne.streamplayer.account.Cloud(this)
+        sync = de.marne.streamplayer.account.CloudSync(this, cloud, library, profiles, progress).also { it.start() }
     }
 
     // Vorschaubilder: Netz über denselben OkHttp-Client, fertige Videos über ein Standbild.

@@ -190,6 +190,48 @@ die uBlock standardmäßig nutzt: **EasyList, EasyPrivacy, Peter Lowe** (rund 12
 Lizenzen: EasyList und EasyPrivacy stehen unter GPLv3 / CC BY-SA 3.0. Die Liste von Peter Lowe
 ist für die private Nutzung frei.
 
+## Konto, Profile, Abgleich (Firebase)
+
+Profile wie bei Netflix: eine gemeinsame Bibliothek, jedes Profil mit eigenem Fortschritt.
+Profile gibt es auch ohne Konto. Mit Konto (Google oder E-Mail) werden Bibliothek, Profile,
+Fortschritt und eigene Cover zwischen Geräten abgeglichen.
+
+- **Das Gerät bleibt die Quelle.** Die App liest immer aus ihren lokalen Dateien; Firestore ist
+  nur der Weg zwischen Geräten. Offline geht alles, Änderungen werden nachgeliefert.
+- **Kosten:** gelesen wird nur, was seit dem letzten Abgleich neu ist (`updatedAt > since`), und
+  nur im Vordergrund. Geschrieben wird nur Geändertes (Hash-Vergleich), Fortschritt erst nach
+  20 s Ruhe. Bilder sind eigene Dokumente und werden nur geholt, wenn sie fehlen.
+- **Nie im Konto:** der TMDB-Schlüssel, Downloads (Videodateien), welches Profil gerade schaut.
+
+```
+users/{uid}/titles/{titleId}                         { json, updatedAt, deleted }
+users/{uid}/profiles/{profileId}                     { json, updatedAt, deleted }
+users/{uid}/profiles/{profileId}/progress/{titleId}  { json, updatedAt, deleted }
+users/{uid}/covers/{name}                            { data (Bytes, < 1 MB), updatedAt }
+```
+
+**Einrichtung:** `app/google-services.json` aus der Firebase-Konsole (gitignored; ohne die
+Datei baut die App, das Konto zeigt „nicht eingerichtet“). In der Konsole: beide Android-Apps
+(`de.marne.streamplayer`, `de.marne.streamplayer.debug`) mit SHA-1 der Signierschlüssel,
+Authentication mit E-Mail und Google, Firestore-Datenbank.
+
+**Regeln:** `firebase/firestore.rules` – jedes Konto nur seine eigenen Daten, alles andere zu.
+Nach jeder Änderung die Tests laufen lassen (Firestore-Emulator, braucht Java):
+
+```sh
+cd firebase && npm install
+npm test                       # Regeltests gegen den Emulator
+npx firebase login             # einmalig
+npm run deploy:rules           # Regeln ins Projekt streamplayer-eba4c
+```
+
+**Testen ohne echtes Projekt:** `npm run emulators` startet Auth und Firestore lokal;
+`./gradlew :app:assembleDebug -Pfirebase.emulator=10.0.2.2` baut einen Debug-Player, der im
+Android-Emulator dagegen läuft (Demo-Projekt, keine echten Daten).
+
+**Nie ins Repo oder in die App:** Dienstkonto-Schlüssel (`*-firebase-adminsdk-*.json`). Die App
+braucht keinen; wer ihn hat, umgeht alle Regeln.
+
 ## Was sie bewusst nicht kann
 
 - **DRM** (Widevine & Co.): wird erkannt und als „Geschützt“ markiert, nicht geladen.
@@ -205,6 +247,7 @@ app/src/main/
 ├── assets/detect.js                 Erkennung in der Seite
 └── java/de/marne/streamplayer/
     ├── App.kt                       app-weite Objekte, Coil-Loader
+    ├── account/                     Konto (Firebase), Profile, Abgleich
     ├── MainActivity.kt              Tabs, Snackbar, Vollbild-Video
     ├── browser/                     WebView, Adressleiste, Fund-Sheet
     ├── detect/                      UrlClassifier, Prober, DetectionHub

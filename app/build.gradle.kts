@@ -5,6 +5,14 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Firebase (Konto, Sync): nur mit google-services.json aus der Firebase-Konsole. Ohne die Datei
+// baut die App trotzdem – das Konto zeigt dann „nicht eingerichtet“. Die Datei ist gitignored.
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
+
+// Nur zum Testen: -Pfirebase.emulator=10.0.2.2 verbindet Debug-Builds mit dem lokalen
+// Firebase-Emulator (Demo-Projekt, keine echten Daten).
+val firebaseEmulator = (findProperty("firebase.emulator") as String?).orEmpty()
+
 // Release-Schlüssel liegt außerhalb des Repos; keystore.properties (gitignored) zeigt darauf.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -32,8 +40,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.2.1"
+        versionCode = 10
+        versionName = "1.3.0"
     }
 
     buildTypes {
@@ -43,9 +51,11 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Ohne keystore.properties (z. B. auf einem anderen Rechner) signiert der Debug-Schlüssel.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            buildConfigField("String", "FIREBASE_EMULATOR", "\"\"")
         }
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "FIREBASE_EMULATOR", "\"$firebaseEmulator\"")
         }
     }
 
@@ -56,6 +66,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -93,6 +104,14 @@ dependencies {
     implementation(libs.coil.network.okhttp)
     implementation(libs.coil.video)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.firestore)
+    implementation(libs.kotlinx.coroutines.play.services)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play)
+    implementation(libs.googleid)
+    implementation(libs.androidx.lifecycle.process)
     debugImplementation(libs.androidx.compose.ui.tooling)
     testImplementation(libs.junit)
     testImplementation(libs.orgjson)

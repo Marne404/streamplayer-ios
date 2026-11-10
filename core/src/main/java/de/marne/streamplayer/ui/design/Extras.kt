@@ -185,15 +185,18 @@ fun IvoryField(
     type: KeyboardType = KeyboardType.Text,
     label: String? = null,
     singleLine: Boolean = true,
+    password: Boolean = false,
 ) {
     OutlinedTextField(
+        visualTransformation = if (password) androidx.compose.ui.text.input.PasswordVisualTransformation()
+        else androidx.compose.ui.text.input.VisualTransformation.None,
         value = value,
         onValueChange = onChange,
         singleLine = singleLine,
         label = label?.let { { Text(it) } },
         placeholder = { Text(placeholder, color = Palette.muted) },
         shape = RoundedCornerShape(16.dp),
-        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = type, autoCorrectEnabled = false),
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = if (password) KeyboardType.Password else type, autoCorrectEnabled = false),
         textStyle = MaterialTheme.typography.bodyLarge,
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Palette.text,

@@ -40,7 +40,7 @@ import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Segmented
 
 @Composable
-fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast: (String) -> Unit) {
+fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast: (String) -> Unit, onProfiles: () -> Unit) {
     val theme by settings.theme.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
     val parallel by settings.parallel.collectAsStateWithLifecycle()
@@ -66,6 +66,9 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 40.dp),
     ) {
         item { ScreenHeader(title = "Wie soll es laufen?", eyebrow = "Einstellungen") }
+
+        item { SectionTitle("Konto") }
+        item { de.marne.streamplayer.account.AccountSection(onProfiles = onProfiles, onToast = onToast) }
 
         item { SectionTitle("Darstellung") }
         item {

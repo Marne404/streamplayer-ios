@@ -14,3 +14,10 @@ keystore.properties
 *.jks
 *.keystore
 dist/
+
+# Firebase-Konfiguration des eigenen Projekts (aus der Konsole)
+google-services.json
+firebase/node_modules/
+firebase/*.log
+# Dienstkonto-Schlüssel: nie ins Repo
+*-firebase-adminsdk-*.json

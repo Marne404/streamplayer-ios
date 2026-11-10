@@ -119,6 +119,9 @@ class AppNav {
      */
     var handoff by mutableStateOf(false)
     var closeInstant by mutableStateOf(false)
+    /** „Wer schaut?“: offen, und ob gleich im Verwalten-Modus (aus den Einstellungen). */
+    var profilePicker by mutableStateOf(false)
+    var profileManage by mutableStateOf(false)
 }
 
 class MainActivity : ComponentActivity() {
@@ -236,6 +239,16 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val fullscreen by browser.fullscreen.collectAsStateWithLifecycle()
     val watchState by watch.state.collectAsStateWithLifecycle()
     val enrichStatus by app.enricher.status.collectAsStateWithLifecycle()
+    val profileList by app.profiles.profiles.collectAsStateWithLifecycle()
+    val activeId by app.profiles.activeId.collectAsStateWithLifecycle()
+    val activeProfile = profileList.firstOrNull { it.id == activeId } ?: profileList.first()
+    // Mehrere Profile: beim Start fragen, wer schaut. Einmal pro Sitzung.
+    LaunchedEffect(Unit) {
+        if (app.profiles.profiles.value.size > 1 && !app.profiles.chosenThisSession) {
+            nav.profileManage = false
+            nav.profilePicker = true
+        }
+    }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     fun toast(text: String, action: String? = null, onAction: () -> Unit = {}) {
@@ -434,6 +447,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             playTitle = { playTitle(it) },
             import = { importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
             browser = { nav.browserOpen = true },
+            profiles = { nav.profileManage = false; nav.profilePicker = true },
         )
     }
 
@@ -501,7 +515,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                                 Crossfade(detail?.id, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "detail") { id ->
                                     val d = id?.let { i -> titles.firstOrNull { it.id == i } }
                                     if (d != null) DetailScreen(d, progress, detailActions)
-                                    else HomeScreen(titles, progress, enrichStatus, homeActions)
+                                    else HomeScreen(titles, progress, enrichStatus, activeProfile, homeActions)
                                 }
                             }
                             MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, downloadActions)
@@ -509,6 +523,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                                 settings = app.settings,
                                 onClearBrowsingData = browser::clearBrowsingData,
                                 onToast = { toast(it) },
+                                onProfiles = { nav.profileManage = true; nav.profilePicker = true },
                             )
                         }
                     }
@@ -568,6 +583,13 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 nav.resolving = false
                 watch.showPage()
             },
+        )
+
+        de.marne.streamplayer.account.ProfilePicker(
+            visible = nav.profilePicker,
+            startManaging = nav.profileManage,
+            canDismiss = true,
+            onDone = { nav.profilePicker = false },
         )
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }

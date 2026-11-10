@@ -56,4 +56,12 @@ object Ic {
     val editNote = R.drawable.ic_edit_note
     val tv = R.drawable.ic_tv
     val download = R.drawable.ic_download
+    // Konto und Sync
+    val account = R.drawable.ic_account_circle
+    val logout = R.drawable.ic_logout
+    val cloudDone = R.drawable.ic_cloud_done
+    val cloudSync = R.drawable.ic_cloud_sync
+    val cloudOff = R.drawable.ic_cloud_off
+    val group = R.drawable.ic_group
+    val mail = R.drawable.ic_mail
 }

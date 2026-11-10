@@ -151,6 +151,21 @@ class LibraryStore(context: Context) {
         }
     }
 
+    // --- Sync ---
+
+    /**
+     * Titel aus dem Konto übernehmen. Downloads bleiben, sie gehören dem Gerät. [replacing]: ein
+     * lokales Doppel (gleicher Katalog-Eintrag, andere ID), das durch diesen Titel ersetzt wird.
+     */
+    fun putRemote(t: LibTitle, replacing: String? = null) = _titles.update { list ->
+        val old = list.firstOrNull { it.id == t.id }
+        val dup = replacing?.let { r -> list.firstOrNull { it.id == r } }
+        val merged = t.copy(offline = (dup?.offline.orEmpty()) + (old?.offline.orEmpty()))
+        val rest = list.filterNot { it.id == replacing }
+        if (old != null) rest.map { if (it.id == t.id) merged else it }
+        else (rest + merged).sortedByDescending { it.addedAt }
+    }
+
     private fun update(id: String, change: (LibTitle) -> LibTitle) =
         _titles.update { list -> list.map { if (it.id == id) change(it) else it } }
 
