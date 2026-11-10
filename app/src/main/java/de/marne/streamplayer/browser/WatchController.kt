@@ -44,7 +44,8 @@ class WatchController(
 
     sealed interface State {
         data object Idle : State
-        data class Searching(val host: String, val step: String) : State
+        /** phase: 0 Seite lädt, 1 Player fragen, 2 stumm anstoßen, 3 gefunden – treibt den Ladebalken. */
+        data class Searching(val host: String, val step: String, val phase: Int = 0) : State
         /** autoStart: Player sofort öffnen; danach false, dann zeigt die Ansicht die Auswahl. */
         data class Ready(val candidate: Candidate, val title: String, val thumbnail: String?, val autoStart: Boolean) : State
         data class NotFound(val host: String) : State
@@ -85,7 +86,7 @@ class WatchController(
                 if (usable.isNotEmpty()) {
                     if (firstHit == 0L) {
                         firstHit = now
-                        _state.value = State.Searching(host, "Gefunden. Player startet …")
+                        _state.value = State.Searching(host, "Gefunden. Player startet …", 3)
                     }
                     // Kurz weitersammeln: Oft kommen Manifest und Qualitäten gleich hinterher.
                     if (now - firstHit >= GRACE_MS) {
@@ -110,9 +111,9 @@ class WatchController(
                     if (!nudged && ((loaded && elapsed > NUDGE_AFTER_MS) || elapsed > NUDGE_LATEST_MS)) {
                         nudged = true
                         browser.nudgePlayback()
-                        _state.value = State.Searching(host, "Starte das Video stumm …")
+                        _state.value = State.Searching(host, "Starte das Video stumm …", 2)
                     } else if (!nudged && loaded) {
-                        _state.value = State.Searching(host, "Frage den Player …")
+                        _state.value = State.Searching(host, "Frage den Player …", 1)
                     }
                 }
 

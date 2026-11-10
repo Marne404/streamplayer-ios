@@ -65,6 +65,10 @@ import androidx.lifecycle.lifecycleScope
 import de.marne.streamplayer.browser.BrowserController
 import de.marne.streamplayer.browser.BrowserScreen
 import de.marne.streamplayer.browser.WatchController
+import de.marne.streamplayer.library.ResolveInfo
+import de.marne.streamplayer.ui.Format
+import de.marne.streamplayer.library.ResolveScreen
+import android.app.ActivityOptions
 import de.marne.streamplayer.detect.Candidate
 import de.marne.streamplayer.detect.DetectionHub
 import de.marne.streamplayer.detect.MediaKind
@@ -106,6 +110,14 @@ class AppNav {
     var pendingImport by mutableStateOf<Uri?>(null)
     /** Browser wurde nur zum Auflösen geöffnet: danach wieder schließen. */
     var resolving by mutableStateOf(false)
+    /** Was der Ladebildschirm währenddessen zeigt. */
+    var resolveInfo by mutableStateOf<ResolveInfo?>(null)
+    /**
+     * Der Player ist gestartet, liegt aber noch nicht davor: Der Ladebildschirm bleibt, bis die
+     * Activity verdeckt ist, und verschwindet dann ohne Animation – sonst blitzt kurz die Bibliothek auf.
+     */
+    var handoff by mutableStateOf(false)
+    var closeInstant by mutableStateOf(false)
 }
 
 class MainActivity : ComponentActivity() {
@@ -305,6 +317,19 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             return
         }
         val url = ep?.url ?: t.pageUrl ?: return
+        nav.resolveInfo = ResolveInfo(
+            title = t.title,
+            eyebrow = listOfNotNull(
+                if (download) "Laden" else null,
+                ep?.label ?: listOfNotNull("Film", t.shownYear?.toString()).joinToString(" · "),
+            ).joinToString(" · "),
+            subtitle = ep?.title,
+            // Nur echte Bilder ihrer Art: ein Breitbild als „Poster“ gequetscht sah doppelt aus.
+            image = ep?.still ?: t.backdrop ?: t.tmdb?.backdrop,
+            poster = t.customPoster ?: t.poster ?: t.tmdb?.poster,
+            download = download,
+        )
+        nav.closeInstant = false
         nav.resolving = true
         nav.browserOpen = true
         watch.start(url, WatchController.Request(key = key, label = label, titleId = t.id, download = download, fromLibrary = true))
@@ -324,6 +349,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                     startDownload(s.candidate, s.candidate.variants.firstOrNull(), r.label ?: s.title, s.thumbnail, r.key)
                     watch.showPage()
                 } else {
+                    // Der Ladebildschirm ist dunkel, der Player schwarz: überblenden statt hereinschieben.
+                    val fade = ActivityOptions.makeCustomAnimation(context, R.anim.player_enter, R.anim.hold).toBundle()
                     context.startActivity(
                         PlayerActivity.intent(
                             context, Uri.parse(s.candidate.url), r.label ?: s.title,
@@ -332,16 +359,45 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                             userAgent = browser.userAgent,
                             key = r.key,
                             startMs = r.key?.let(app.progress::resumePosition) ?: 0,
-                        )
+                        ),
+                        fade,
                     )
-                    if (r.fromLibrary) watch.showPage() else watch.playerOpened()
+                    if (r.fromLibrary) {
+                        if (nav.resolving) nav.handoff = true
+                        watch.showPage()
+                    } else watch.playerOpened()
                 }
             }
-            WatchController.State.Idle -> if (nav.resolving) {
+            WatchController.State.Idle -> if (nav.resolving && !nav.handoff) {
                 nav.resolving = false
                 nav.browserOpen = false
             }
             else -> Unit
+        }
+    }
+
+    // Übergabe an den Player: erst wenn er davor liegt, still wegräumen. Startet er nicht
+    // (Absturz, abgelehnter Intent), nach ein paar Sekunden trotzdem – sichtbar ausblenden.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_STOP && nav.handoff) {
+                nav.closeInstant = true
+                nav.handoff = false
+                nav.resolving = false
+                nav.browserOpen = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+    }
+    LaunchedEffect(nav.handoff) {
+        if (!nav.handoff) return@LaunchedEffect
+        kotlinx.coroutines.delay(5000)
+        if (nav.handoff) {
+            nav.handoff = false
+            nav.resolving = false
+            nav.browserOpen = false
         }
     }
 
@@ -418,6 +474,9 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     BackHandler(enabled = nav.browserOpen) { if (watch.active) watch.cancel() else nav.browserOpen = false }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
+        // Beim Auflösen liegt die WebView ganz unten (sie muss angehängt und sichtbar sein, damit
+        // Player starten), die Bibliothek bleibt darüber stehen, der Ladebildschirm blendet über ihr ein.
+        // So sieht man nie Adressleiste oder Seite, auch nicht während des Einblendens.
         if (nav.browserOpen) {
             BrowserScreen(
                 browser = browser,
@@ -430,8 +489,9 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 onClose = { nav.browserOpen = false },
                 onWatchShowPage = { nav.resolving = false },
             )
-        } else {
-            Column(Modifier.fillMaxSize()) {
+        }
+        if (!nav.browserOpen || nav.resolving) {
+            Column(Modifier.fillMaxSize().background(Palette.bg)) {
                 Box(Modifier.weight(1f)) {
                     Crossfade(nav.tab, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "tab") { t ->
                         when (t) {
@@ -463,6 +523,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                     dismiss = { nav.linkUrl = null },
                     watchNow = { u ->
                         nav.linkUrl = null
+                        nav.resolveInfo = ResolveInfo(title = Format.host(u), eyebrow = "Geteilter Link")
+                        nav.closeInstant = false
                         nav.resolving = true
                         nav.browserOpen = true
                         watch.start(u, WatchController.Request(fromLibrary = true))
@@ -493,6 +555,18 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 .fillMaxWidth()
                 .windowInsetsTopHeight(WindowInsets.statusBars)
                 .background(Palette.bg)
+        )
+
+        ResolveScreen(
+            visible = nav.resolving,
+            instant = nav.closeInstant,
+            info = nav.resolveInfo,
+            state = watchState,
+            onCancel = watch::cancel,
+            onShowPage = {
+                nav.resolving = false
+                watch.showPage()
+            },
         )
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }

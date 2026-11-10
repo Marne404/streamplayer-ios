@@ -36,8 +36,18 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun finish() {
+        super.finish()
+        @Suppress("DEPRECATION")
+        if (android.os.Build.VERSION.SDK_INT < 34) overridePendingTransition(0, de.marne.streamplayer.R.anim.player_exit)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Schließen: wegblenden statt wegschieben – passend zum Überblenden beim Start.
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, de.marne.streamplayer.R.anim.player_exit)
+        }
         val uri = intent.data ?: return finish()
         val referer = intent.getStringExtra(EXTRA_REFERER)
         val userAgent = intent.getStringExtra(EXTRA_UA) ?: Http.defaultUserAgent(this)
