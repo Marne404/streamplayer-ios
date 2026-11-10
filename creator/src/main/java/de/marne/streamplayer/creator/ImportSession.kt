@@ -9,6 +9,8 @@ import de.marne.streamplayer.importer.Draft
 import de.marne.streamplayer.importer.Importer
 import de.marne.streamplayer.importer.LinkItem
 import de.marne.streamplayer.importer.LinkList
+import de.marne.streamplayer.importer.Overview
+import de.marne.streamplayer.importer.Throttle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,19 +36,44 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         data class Running(val step: String, val host: String) : State
         data class Done(val draft: Draft, val busy: Boolean = false) : State
         data class Failed(val message: String) : State
-        /** Massenimport: jeder Link ein eigener Titel. [skipped]: Links über [LinkList.MAX] hinaus. */
-        data class Batch(val items: List<BatchItem>, val running: Boolean, val skipped: Int = 0) : State {
+        /**
+         * Massenimport: jeder Link ein eigener Titel. [skipped]: Links über [LinkList.MAX] hinaus.
+         * [crawl]: gesetzt, wenn die Links aus einer Übersicht stammen.
+         */
+        data class Batch(val items: List<BatchItem>, val running: Boolean, val skipped: Int = 0, val crawl: Crawl? = null) : State {
             val finished: Int get() = items.count { it.status is ItemStatus.Ready || it.status is ItemStatus.Failed }
             val chosen: List<BatchItem> get() = items.filter { (it.status as? ItemStatus.Ready)?.include == true }
+            /** Was gelesen werden soll – ohne Übersprungene. */
+            val planned: Int get() = items.count { it.status !is ItemStatus.Skipped }
+            val waiting: Int get() = items.count { it.status is ItemStatus.Waiting }
         }
     }
 
-    data class BatchItem(val link: LinkItem, val status: ItemStatus) {
-        val name: String get() = link.name ?: (status as? ItemStatus.Ready)?.draft?.title?.title.orEmpty()
+    /**
+     * Stand eines Übersichts-Imports. [scanning]: Schritt, solange die Übersicht selbst gelesen
+     * wird. [halt]: warum der Durchgang angehalten hat (Abrufgrenze, die Seite bremst).
+     */
+    data class Crawl(
+        val host: String,
+        val scanning: String?,
+        val listPages: Int = 0,
+        val more: Boolean = false,
+        val used: Int = 0,
+        val budget: Int,
+        val halt: String? = null,
+    )
+
+    /** [label]: Name aus dem Verweis der Übersicht – bis die Seite selbst gelesen ist. */
+    data class BatchItem(val link: LinkItem, val status: ItemStatus, val label: String? = null) {
+        val name: String get() = link.name
+            ?: (status as? ItemStatus.Ready)?.draft?.title?.title?.takeIf { it.isNotBlank() }
+            ?: label.orEmpty()
     }
 
     sealed interface ItemStatus {
         data object Waiting : ItemStatus
+        /** Übersichts-Import: abgewählt, bevor er gelesen wurde – kostet keine Abrufe. */
+        data object Skipped : ItemStatus
         data class Running(val step: String) : ItemStatus
         data class Ready(val draft: Draft, val include: Boolean = true) : ItemStatus
         data class Failed(val message: String) : ItemStatus
@@ -56,6 +83,8 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     private val _state = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = _state.asStateFlow()
     val input = MutableStateFlow("")
+    /** Eingabe ist eine Übersicht mit vielen Titeln statt Links zu einzelnen Titeln. */
+    val overview = MutableStateFlow(false)
     /** Eigener Name, falls der erkannte nicht passt. Überlebt das Wählen eines anderen TMDB-Treffers. */
     val nameOverride = MutableStateFlow<String?>(null)
 
@@ -116,6 +145,10 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     }
 
     private fun importer() = Importer(HttpFetcher(http, userAgent), browser, app.tmdb)
+
+    /** Übersichts-Import: eine Bremse für alle Abrufe, über „Weiterlesen“ hinweg (robots.txt, Pause). */
+    private var throttle: Throttle? = null
+    private var crawlHttp: HttpFetcher? = null
 
     /** Ein Link → Entwurf zum Prüfen. Mehrere → Massenimport. */
     fun start(text: String = input.value) {
@@ -193,19 +226,174 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         if (s !is State.Batch) s else s.copy(items = s.items.mapIndexed { i, item -> if (i == index) item.copy(status = status) else item })
     }
 
-    /** Eintrag im Massenimport an- oder abwählen. */
+    /** Eintrag im Massenimport an- oder abwählen. Beim Übersichts-Import auch, bevor er gelesen ist. */
     fun toggle(index: Int) = _state.update { s ->
         if (s !is State.Batch) s
         else s.copy(items = s.items.mapIndexed { i, item ->
             val st = item.status
-            if (i == index && st is ItemStatus.Ready) item.copy(status = st.copy(include = !st.include)) else item
+            when {
+                i != index -> item
+                st is ItemStatus.Ready -> item.copy(status = st.copy(include = !st.include))
+                s.crawl != null && st is ItemStatus.Waiting -> item.copy(status = ItemStatus.Skipped)
+                s.crawl != null && st is ItemStatus.Skipped -> item.copy(status = ItemStatus.Waiting)
+                else -> item
+            }
         })
     }
 
-    /** Was noch wartet, bleibt als „angehalten“ sichtbar; Fertiges bleibt wählbar. */
-    private fun halted(s: State.Batch) = s.copy(running = false, items = s.items.map { item ->
-        if (item.status is ItemStatus.Waiting || item.status is ItemStatus.Running) item.copy(status = ItemStatus.Failed("Angehalten")) else item
-    })
+    private fun setCrawl(block: (Crawl) -> Crawl) = _state.update { s ->
+        if (s is State.Batch && s.crawl != null) s.copy(crawl = block(s.crawl)) else s
+    }
+
+    /**
+     * „Ganze Übersicht“: die Seite (und ihre Folgeseiten) nach Titeln absuchen und dann jeden Titel
+     * lesen wie einen einzelnen Link – nacheinander, alle Abrufe über eine [Throttle]: Pause,
+     * Abrufe pro Durchgang, robots.txt, Bremse bei 429. An der Grenze hält der Durchgang an,
+     * [more] setzt ihn fort.
+     */
+    fun startOverview(text: String = input.value) {
+        val url = Importer.normalize(text)
+        input.value = url ?: text
+        if (url == null) {
+            _state.value = State.Failed("Das ist keine Adresse. Sie beginnt mit http:// oder https://.")
+            return
+        }
+        stopJob()
+        val run = gen
+        val prefs = app.prefs
+        val plain = HttpFetcher(http, userAgent)
+        val t = Throttle(plain, prefs.crawlBudget.value, prefs.crawlPause.value)
+        throttle = t
+        crawlHttp = plain
+        val host = url.substringAfter("://").substringBefore('/').removePrefix("www.")
+        val crawl = Crawl(host = host, scanning = "Lade die Übersicht …", budget = t.budget)
+        _state.value = State.Batch(emptyList(), running = true, crawl = crawl)
+        job = scope.launch {
+            try {
+                val scan = withContext(Dispatchers.Default) {
+                    Overview.scan(url, t.wrap(plain), t.wrap(browser), MAX_LIST_PAGES, LinkList.MAX) { page, found ->
+                        setCrawl {
+                            it.copy(scanning = if (page == 1) "Lade die Übersicht …" else "Übersicht, Seite $page · $found Titel", used = t.used)
+                        }
+                    }
+                }
+                _state.value = State.Batch(
+                    scan.titles.map { BatchItem(LinkItem(it.url), ItemStatus.Waiting, label = it.name) },
+                    running = true,
+                    crawl = crawl.copy(scanning = null, listPages = scan.pages, more = scan.more, used = t.used),
+                )
+                readPending(t, plain)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (run == gen) _state.value = State.Failed(e.message ?: "Die Übersicht ließ sich nicht lesen.")
+            } finally {
+                withContext(NonCancellable) {
+                    if (run == gen) {
+                        _state.update { s -> if (s is State.Batch) halted(s) else s }
+                        browser.release()
+                    }
+                }
+            }
+        }
+    }
+
+    /** Nächster Durchgang des Übersichts-Imports: neues Abrufbudget, weiter mit dem, was wartet. */
+    fun more() {
+        val s = _state.value as? State.Batch ?: return
+        val crawl = s.crawl ?: return
+        val t = throttle ?: return
+        val plain = crawlHttp ?: return
+        if (s.running || s.waiting == 0) return
+        stopJob()
+        val run = gen
+        t.refill(app.prefs.crawlBudget.value)
+        _state.value = s.copy(running = true, crawl = crawl.copy(halt = null, used = 0, budget = t.budget))
+        job = scope.launch {
+            try {
+                readPending(t, plain)
+            } finally {
+                withContext(NonCancellable) {
+                    if (run == gen) {
+                        _state.update { st -> if (st is State.Batch) halted(st) else st }
+                        browser.release()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Wartende Titel lesen, bis keiner mehr wartet oder der Durchgang an seine Grenze kommt. Ein
+     * Titel bekommt höchstens so viele Abrufe, wie noch übrig sind. Reicht das nicht für alle
+     * Staffeln, oder bremst die Seite mittendrin, bleibt er wartend und wird beim nächsten
+     * Durchgang neu gelesen – statt unvollständig in der Liste zu landen.
+     */
+    private suspend fun readPending(t: Throttle, plain: HttpFetcher) {
+        val http = t.wrap(plain)
+        val br = t.wrap(browser)
+        while (true) {
+            val s = _state.value as? State.Batch ?: return
+            val i = s.items.indexOfFirst { it.status is ItemStatus.Waiting }
+            if (i < 0) break
+            val stop = t.stop
+            if (stop != null || t.remaining < MIN_PER_TITLE) {
+                setCrawl { it.copy(halt = Throttle.message(stop ?: Throttle.Stop.BUDGET), used = t.used) }
+                return
+            }
+            val item = s.items[i]
+            if (!withContext(Dispatchers.Default) { t.allowed(item.link.url) }) {
+                setItem(i, ItemStatus.Failed(Throttle.DISALLOWED))
+                continue
+            }
+            setItem(i, ItemStatus.Running("Lade die Seite …"))
+            val limit = minOf(PER_TITLE, t.remaining)
+            val importer = Importer(http, br, app.tmdb, pauseMs = 0, maxPages = limit)
+            val result: ItemStatus? = try {
+                val d = withContext(Dispatchers.Default) {
+                    importer.analyze(item.link.url) { step ->
+                        setItem(i, ItemStatus.Running(step))
+                        setCrawl { it.copy(used = t.used) }
+                    }
+                }
+                if (t.stop != null || (d.unread.isNotEmpty() && limit < PER_TITLE)) null
+                else ItemStatus.Ready(d, include = d.title.title.isNotBlank() || item.label != null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (t.stop != null) null else ItemStatus.Failed(e.message ?: "Die Seite ließ sich nicht lesen.")
+            }
+            if (result == null) {
+                setItem(i, ItemStatus.Waiting)
+                setCrawl { it.copy(halt = Throttle.message(t.stop ?: Throttle.Stop.BUDGET), used = t.used) }
+                return
+            }
+            setItem(i, result)
+            setCrawl { it.copy(used = t.used) }
+        }
+        setCrawl { it.copy(halt = null, used = t.used) }
+    }
+
+    /**
+     * Was noch wartet, bleibt als „angehalten“ sichtbar; Fertiges bleibt wählbar. Beim
+     * Übersichts-Import bleibt Wartendes wartend – „Weiterlesen“ macht dort weiter.
+     */
+    private fun halted(s: State.Batch) = s.copy(
+        running = false,
+        items = s.items.map { item ->
+            when {
+                s.crawl != null && item.status is ItemStatus.Running -> item.copy(status = ItemStatus.Waiting)
+                s.crawl != null -> item
+                item.status is ItemStatus.Waiting || item.status is ItemStatus.Running -> item.copy(status = ItemStatus.Failed("Angehalten"))
+                else -> item
+            }
+        },
+        // Von Hand angehalten (beim Lesen der Übersicht oder mitten in den Titeln): sagen, statt „Lese …“ stehen zu lassen.
+        crawl = s.crawl?.let { c ->
+            val open = c.scanning != null || s.items.any { it.status is ItemStatus.Waiting || it.status is ItemStatus.Running }
+            c.copy(scanning = null, halt = c.halt ?: "Angehalten.".takeIf { open })
+        },
+    )
 
     /** Laufenden Massenimport anhalten (Fertiges bleibt), sonst wie [cancel]. */
     fun stop() {
@@ -314,6 +502,12 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     companion object {
         /** Abstand zwischen zwei Links eines Massenimports, zusätzlich zur Pause innerhalb einer Analyse. */
         private const val BETWEEN_LINKS_MS = 600L
+        /** Übersichts-Import: höchstens so viele Seiten der Übersicht selbst. */
+        const val MAX_LIST_PAGES = 20
+        /** Höchstens so viele Abrufe für einen Titel (wie beim einzelnen Link). */
+        private const val PER_TITLE = 40
+        /** Darunter fängt ein Durchgang keinen neuen Titel mehr an: Seite, Browser, Übersicht. */
+        private const val MIN_PER_TITLE = 3
         private const val MAX_FILE = 2 * 1024 * 1024
     }
 }

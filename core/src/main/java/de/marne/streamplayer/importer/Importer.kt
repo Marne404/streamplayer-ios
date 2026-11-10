@@ -39,6 +39,8 @@ data class Draft(
     internal val info: PageInfo,
     internal val structure: Structure?,
     internal val details: Tmdb.Details? = null,
+    /** Staffeln, die wegen der Abrufgrenze nicht mehr gelesen wurden. */
+    val unread: List<Int> = emptyList(),
 ) {
     val episodeCount: Int get() = title.seasons.sumOf { it.episodes }
 }
@@ -144,6 +146,9 @@ class Importer(
             st = Structure.analyze(landed, loaded)
         }
 
+        // Abrufgrenze erreicht, bevor alle Staffeln gelesen waren: sagen statt still kürzen.
+        val unread = if (count >= maxPages) st!!.toLoad(loaded, tried).map { it.first } else emptyList()
+
         // Verrät die Seite keinen Namen, dann wenigstens der aus der Adresse – auch für die TMDB-Suche.
         if (info.name.isNullOrBlank()) info = info.copy(name = nameFromUrl(landed))
 
@@ -157,7 +162,7 @@ class Importer(
             title = CatalogTitle(id = "", type = if (kind == Kind.SERIES) CatalogType.SERIES else CatalogType.MOVIE, title = info.name.orEmpty()),
             notes = emptyList(), linked = null, candidates = emptyList(),
             // Verschiedene Seiten, nicht Abrufe: schlicht und dann im Browser ist dieselbe Seite.
-            pages = tried.size, usedBrowser = viaBrowser, info = info, structure = structure,
+            pages = tried.size, usedBrowser = viaBrowser, info = info, structure = structure, unread = unread,
         )
 
         // 4. TMDB: eindeutiger Treffer wird verknüpft, sonst Kandidaten zur Wahl.
@@ -276,6 +281,13 @@ class Importer(
                     if (ref != null) "TMDB" else "die Seite", draft.source,
                 )
                 template = tpl; seasons = sea; notes += n
+            }
+            if (draft.unread.isNotEmpty()) {
+                val u = draft.unread
+                notes += Note(
+                    if (u.size == 1) "Abrufgrenze erreicht: Staffel ${u[0]} nicht gelesen." else "Abrufgrenze erreicht: Staffeln ${u.joinToString(", ")} nicht gelesen.",
+                    warning = true,
+                )
             }
             extra?.let { notes += it }
             val name = linked?.title ?: info.name.orEmpty()

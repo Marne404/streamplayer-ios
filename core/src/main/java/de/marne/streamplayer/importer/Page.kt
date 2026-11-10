@@ -5,8 +5,11 @@ import org.json.JSONObject
 import org.json.JSONTokener
 import org.jsoup.Jsoup
 
-/** Ein Verweis auf der Seite, schon absolut und ohne #Anker. */
-data class Link(val url: String, val text: String)
+/**
+ * Ein Verweis auf der Seite, schon absolut und ohne #Anker. [text]: sichtbarer Text, sonst
+ * title-Attribut oder Bild-Alt. [image]: ein Bild im Verweis – Kacheln einer Übersicht.
+ */
+data class Link(val url: String, val text: String, val image: Boolean = false)
 
 /**
  * Was der Creator von einer geladenen Seite braucht: Titel, Meta-Angaben, JSON-LD und alle
@@ -23,6 +26,8 @@ class Page(
     val links: List<Link>,
     /** Hinweise auf eine Vorschaltseite (Captcha, „Moment bitte“), ohne die echte Seite. */
     val challenge: Boolean,
+    /** Nächste Seite einer Liste laut rel="next", sonst null. */
+    val next: String? = null,
 ) {
     companion object {
         fun parse(html: String, url: String): Page {
@@ -37,12 +42,19 @@ class Page(
             val ld = doc.select("script[type*=ld+json]").flatMap { flattenLd(it.data()) }
 
             val links = LinkedHashMap<String, Link>()
-            fun add(abs: String, text: String) {
+            fun add(abs: String, text: String, image: Boolean = false) {
                 val clean = abs.substringBefore('#').trim()
                 if (!clean.startsWith("http://") && !clean.startsWith("https://")) return
-                if (clean !in links) links[clean] = Link(clean, text.trim().take(200))
+                val t = text.trim().take(200)
+                val old = links[clean]
+                // Kachel (nur Bild) und Titel-Link zeigen oft auf dieselbe Adresse: Text und Bild zusammenführen.
+                links[clean] = if (old == null) Link(clean, t, image) else old.copy(text = old.text.ifEmpty { t }, image = old.image || image)
             }
-            doc.select("a[href]").forEach { add(it.absUrl("href"), it.text()) }
+            doc.select("a[href]").forEach { a ->
+                val img = a.selectFirst("img")
+                val text = a.text().ifBlank { a.attr("title") }.ifBlank { img?.attr("alt").orEmpty() }
+                add(a.absUrl("href"), text, image = img != null || a.selectFirst("picture") != null)
+            }
             // Staffel-Auswahl als Klappliste oder Knöpfe mit Ziel im data-Attribut: häufig bei Serienseiten.
             doc.select("[data-href]").forEach { add(it.absUrl("data-href"), it.text()) }
             doc.select("[data-url]").forEach { add(it.absUrl("data-url"), it.text()) }
@@ -53,12 +65,16 @@ class Page(
             // Folgen, die die Seite selbst in JSON-LD auflistet, sind die verlässlichsten Verweise.
             ld.forEach { collectLdUrls(it, url) { u -> add(u, "") } }
 
+            val next = doc.select("link[rel][href], a[rel][href]")
+                .firstOrNull { e -> e.attr("rel").lowercase().split(' ').contains("next") }
+                ?.absUrl("href")?.substringBefore('#')?.takeIf { it.startsWith("http") }
+
             val title = doc.title().trim().ifEmpty { null }
             val h1 = doc.selectFirst("h1")?.text()?.trim()?.takeIf { it.isNotEmpty() }
             val lower = html.take(200_000).lowercase()
             val challenge = CHALLENGE_MARKERS.any { it in lower } ||
                 (title?.lowercase()?.let { t -> CHALLENGE_TITLES.any { it in t } } ?: false)
-            return Page(url, title, h1, meta, ld, links.values.toList(), challenge)
+            return Page(url, title, h1, meta, ld, links.values.toList(), challenge, next)
         }
 
         private val CHALLENGE_MARKERS = listOf(

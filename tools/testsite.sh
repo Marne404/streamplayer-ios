@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Baut lokale Testseiten: MP4 + HLS (index.html), Erkennung ohne Play (jw.html, vjs.html,
-# config.html), Werbeblocker (ads.html) und Serienseiten für den Creator-Import (katalog/)
+# config.html), Werbeblocker (ads.html) und Serienseiten für den Creator-Import (katalog/,
+# katalog/uebersicht/ für „Ganze Übersicht“)
 # und stellt sie auf Port 8765 bereit. Im Emulator: http://10.0.2.2:8765/
 set -euo pipefail
 DIR="${1:-${TMPDIR:-/tmp}/streamplayer-testsite}"
@@ -209,6 +210,48 @@ if (document.cookie.indexOf('mensch=1') >= 0) {
 }
 </script></body></html>
 HTML
+fi
+
+# „Ganze Übersicht“ (Creator): Katalogseite mit Kacheln, Navigation (Genres, A–Z, Konto,
+# Rechtliches, neue Folgen) und einer Folgeseite per rel="next". Dazu weitere Serien in
+# verschiedenen Formen, ein Film und ein Titel, den robots.txt sperrt.
+if [ ! -f robots.txt ]; then
+  printf 'User-agent: *\nDisallow: /katalog/gesperrt/\nCrawl-delay: 1\n' > robots.txt
+fi
+if [ ! -d katalog/uebersicht ]; then
+  mkdir -p katalog/uebersicht/seite/2 katalog/nordlicht/staffel-1 katalog/nordlicht/staffel-2 katalog/hafenwache katalog/sternwarte katalog/gesperrt
+  pg() { printf '%s' "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>$1</title><style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}a{display:inline-block;margin:4px 8px 4px 0}.k{display:inline-block;width:140px;margin:6px}.k img{width:140px;height:200px;background:#ccc;display:block}</style>$2</head><body>"; }
+  kachel() { printf '%s' "<div class=\"k\"><a href=\"$1\"><img src=\"/img/$3.jpg\" alt=\"$2\"></a><a href=\"$1\">$2</a></div>"; }
+  CHROME='<nav><a href="/katalog/">Start</a> <a href="/katalog/uebersicht/">Alle Titel</a> <a href="/katalog/genre/action/">Action</a> <a href="/katalog/genre/drama/">Drama</a> <a href="/katalog/genre/krimi/">Krimi</a> <a href="/katalog/a-z/a/">A</a> <a href="/katalog/a-z/b/">B</a> <a href="/katalog/a-z/c/">C</a> <a href="/katalog/login/">Anmelden</a></nav>'
+  NEU='<p>Neue Folgen: <a href="/katalog/testserie/staffel-2/episode-3.html">Importserie 2x3</a> <a href="/katalog/nordlicht/staffel-2/folge-2.html">Nordlicht 2x2</a></p>'
+  FUSS='<footer><a href="/katalog/impressum/">Impressum</a> <a href="/katalog/datenschutz/">Datenschutz</a></footer>'
+  { pg "Alle Titel | Testkatalog" '<link rel="next" href="/katalog/uebersicht/seite/2/">'; printf '%s' "$CHROME<h1>Alle Titel</h1>$NEU"
+    kachel /katalog/testserie/ Importserie serie; kachel /katalog/jsliste/ JS-Serie js; kachel /katalog/testfilm.html "Der Importfilm" film
+    kachel /katalog/nordlicht/ Nordlicht nordlicht; kachel /katalog/hafenwache/ Hafenwache hafen; kachel /katalog/gesperrt/ "Gesperrte Serie" gesperrt
+    printf '%s' '<p><a href="/katalog/uebersicht/seite/2/">Weiter</a></p>'"$FUSS</body></html>"; } > katalog/uebersicht/index.html
+  { pg "Alle Titel – Seite 2 | Testkatalog" ""; printf '%s' "$CHROME<h1>Alle Titel, Seite 2</h1>"
+    kachel /katalog/sternwarte/ Sternwarte stern; kachel /katalog/bergfilm.html "Der Bergfilm" berg
+    printf '%s' '<p><a href="/katalog/uebersicht/">Zurück</a></p>'"$FUSS</body></html>"; } > katalog/uebersicht/seite/2/index.html
+
+  # Nordlicht: Übersicht mit Staffel-Reitern, Folgen auf den Staffelseiten
+  NL='<p><a href="/katalog/nordlicht/staffel-1/">Staffel 1</a> <a href="/katalog/nordlicht/staffel-2/">Staffel 2</a></p>'
+  nlist() { local t='<ul>' e; for ((e = 1; e <= $2; e++)); do t+="<li><a href=\"/katalog/nordlicht/staffel-$1/folge-$e.html\">Folge $e</a></li>"; done; printf '%s' "$t</ul>"; }
+  { pg "Nordlicht | Testkatalog" '<script type="application/ld+json">{"@context":"https://schema.org","@type":"TVSeries","name":"Nordlicht","startDate":"2018-01-01"}</script>'; printf '%s' "$CHROME<h1>Nordlicht</h1>$NL"; nlist 1 3; echo "$FUSS</body></html>"; } > katalog/nordlicht/index.html
+  { pg "Nordlicht Staffel 1 | Testkatalog" ""; printf '%s' "$CHROME<h1>Nordlicht – Staffel 1</h1>$NL"; nlist 1 3; echo "$FUSS</body></html>"; } > katalog/nordlicht/staffel-1/index.html
+  { pg "Nordlicht Staffel 2 | Testkatalog" ""; printf '%s' "$CHROME<h1>Nordlicht – Staffel 2</h1>$NL"; nlist 2 5; echo "$FUSS</body></html>"; } > katalog/nordlicht/staffel-2/index.html
+
+  # Hafenwache: alle Folgen auf einer Seite, s01e01-Form
+  { pg "Hafenwache (2016) | Testkatalog" ""; printf '%s' "$CHROME<h1>Hafenwache</h1><ul>"
+    for s in 1 2; do for e in 1 2 3 4; do printf '<li><a href="/katalog/hafenwache/hafenwache-s%02de%02d.html">S%d F%d</a></li>' $s $e $s $e; done; done
+    echo "</ul>$FUSS</body></html>"; } > katalog/hafenwache/index.html
+
+  # Sternwarte: zählt durch, eine Seite
+  { pg "Sternwarte | Testkatalog" ""; printf '%s' "$CHROME<h1>Sternwarte</h1><ul>"
+    for e in 1 2 3 4 5 6 7 8; do printf '<li><a href="/katalog/sternwarte/episode-%d.html">Episode %d</a></li>' $e $e; done
+    echo "</ul>$FUSS</body></html>"; } > katalog/sternwarte/index.html
+
+  { pg "Gesperrte Serie | Testkatalog" ""; printf '%s' "<h1>Gesperrte Serie</h1>"; echo '<a href="/katalog/gesperrt/folge-1.html">Folge 1</a><a href="/katalog/gesperrt/folge-2.html">Folge 2</a></body></html>'; } > katalog/gesperrt/index.html
+  { pg "Der Bergfilm | Testkatalog" '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Movie","name":"Der Bergfilm","datePublished":"2017-09-01"}</script>'; printf '%s' "$CHROME<h1>Der Bergfilm</h1>$FUSS</body></html>"; } > katalog/bergfilm.html
 fi
 
 # Linkliste für den Massenimport im Creator (Aus Datei oder geteilt).

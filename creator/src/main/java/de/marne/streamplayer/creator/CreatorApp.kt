@@ -63,7 +63,15 @@ class CreatorPrefs(context: Context) {
     private val _theme = MutableStateFlow(p.getString("theme", "system") ?: "system")
     val theme: StateFlow<String> = _theme.asStateFlow()
 
+    // Übersichts-Import: Pause zwischen zwei Abrufen und Abrufe pro Durchgang.
+    private val _crawlPause = MutableStateFlow(p.getLong("crawl_pause", 1000L))
+    val crawlPause: StateFlow<Long> = _crawlPause.asStateFlow()
+    private val _crawlBudget = MutableStateFlow(p.getInt("crawl_budget", 300))
+    val crawlBudget: StateFlow<Int> = _crawlBudget.asStateFlow()
+
     fun setTmdbKey(v: String) { _tmdbKey.value = v.trim(); p.edit().putString("tmdb_key", v.trim()).apply() }
+    fun setCrawlPause(ms: Long) { _crawlPause.value = ms; p.edit().putLong("crawl_pause", ms).apply() }
+    fun setCrawlBudget(n: Int) { _crawlBudget.value = n; p.edit().putInt("crawl_budget", n).apply() }
     fun setLanguage(v: String) { _language.value = v.trim(); p.edit().putString("language", v.trim()).apply() }
     fun setTheme(v: String) { _theme.value = v; p.edit().putString("theme", v).apply() }
 }

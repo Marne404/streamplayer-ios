@@ -122,6 +122,7 @@ private fun Input(error: String?, onBack: () -> Unit) {
     val context = LocalContext.current
     val session = CreatorApp.instance.imports
     val input by session.input.collectAsState()
+    val overview by session.overview.collectAsState()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val count = remember(input) { LinkList.parse(input).size }
     val file = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -134,11 +135,21 @@ private fun Input(error: String?, onBack: () -> Unit) {
             ScreenHeader(title = "Welche Seite?", eyebrow = "Aus Link")
         }
         item {
-            VSpace(32.dp)
+            VSpace(28.dp)
+            Segmented(
+                listOf("titles" to "Einzelne Titel", "overview" to "Ganze Übersicht"),
+                if (overview) "overview" else "titles",
+                { session.overview.value = it == "overview" },
+            )
+            VSpace(20.dp)
             IvoryField(
                 input, { session.input.value = it }, "https://…", KeyboardType.Uri,
-                label = if (count >= 2) "$count Links, einer pro Titel" else "Serie, Staffel, Folge oder Film",
-                singleLine = false, maxLines = 6,
+                label = when {
+                    overview -> "Seite mit vielen Serien oder Filmen"
+                    count >= 2 -> "$count Links, einer pro Titel"
+                    else -> "Serie, Staffel, Folge oder Film"
+                },
+                singleLine = overview, maxLines = if (overview) 1 else 6,
             )
             if (error != null) {
                 VSpace(8.dp)
@@ -150,19 +161,59 @@ private fun Input(error: String?, onBack: () -> Unit) {
                     val text = cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
                     if (!text.isNullOrBlank()) session.input.value = text.trim()
                 }
-                QuietButton("Aus Datei", color = Palette.text) { file.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
+                if (!overview) QuietButton("Aus Datei", color = Palette.text) { file.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
             }
             Text(
-                "Der Creator liest die Seite und findet Staffeln, Folgen und Muster selbst. Mehrere Links gehen auch, einer pro Titel: " +
-                    "eingefügt, aus dem Browser geteilt oder als Text- oder JSON-Datei.",
+                if (overview) {
+                    "Eine Seite, die viele Titel auflistet: Katalog, Genre, Neuheiten. Der Creator findet die Titel darauf, " +
+                        "auch auf den Folgeseiten, und liest dann jeden mit Staffeln und Folgen."
+                } else {
+                    "Der Creator liest die Seite und findet Staffeln, Folgen und Muster selbst. Mehrere Links gehen auch, einer pro Titel: " +
+                        "eingefügt, aus dem Browser geteilt oder als Text- oder JSON-Datei."
+                },
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
         }
+        if (overview) {
+            item { SectionTitle("Grenzen") }
+            item { CrawlLimits() }
+        }
         item {
             VSpace(28.dp)
-            PrimaryButton(if (count >= 2) "$count Links analysieren" else "Seite analysieren", enabled = input.isNotBlank(), icon = Ic.search) { session.start(input) }
+            when {
+                overview -> PrimaryButton("Übersicht lesen", enabled = input.isNotBlank(), icon = Ic.search) { session.startOverview(input) }
+                else -> PrimaryButton(if (count >= 2) "$count Links analysieren" else "Seite analysieren", enabled = input.isNotBlank(), icon = Ic.search) { session.start(input) }
+            }
         }
     }
+}
+
+/** Pause zwischen Abrufen und Abrufe pro Durchgang – gelten für alles zusammen: Übersicht, Titel, Staffeln. */
+@Composable
+private fun CrawlLimits() {
+    val prefs = CreatorApp.instance.prefs
+    val pause by prefs.crawlPause.collectAsState()
+    val budget by prefs.crawlBudget.collectAsState()
+    Text("Pause zwischen zwei Abrufen", style = MaterialTheme.typography.bodyMedium)
+    VSpace(10.dp)
+    Segmented(
+        listOf("500" to "0,5 s", "1000" to "1 s", "2000" to "2 s", "5000" to "5 s"),
+        pause.toString(), { prefs.setCrawlPause(it.toLong()) },
+    )
+    VSpace(20.dp)
+    Text("Abrufe pro Durchgang", style = MaterialTheme.typography.bodyMedium)
+    VSpace(10.dp)
+    Segmented(
+        listOf("100" to "100", "300" to "300", "1000" to "1000"),
+        budget.toString(), { prefs.setCrawlBudget(it.toInt()) },
+    )
+    VSpace(12.dp)
+    Text(
+        "Ein Titel braucht meist 1 bis 5 Abrufe, je nach Zahl der Staffeln. Ist die Grenze erreicht, hält der Creator an, " +
+            "und „Weiterlesen“ startet den nächsten Durchgang. Er hält sich an die robots.txt der Seite. Meldet sie " +
+            "„zu viele Anfragen“, wird er langsamer, und beim zweiten Mal hält er an.",
+        style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+    )
 }
 
 @Composable
@@ -307,46 +358,84 @@ private fun Result(s: ImportSession.State.Done, onBack: () -> Unit, onEdit: (Str
 /**
  * Massenimport: oben der Fortschritt, darunter jeder Link als Zeile. Fertige Einträge sind
  * gewählt (Häkchen); ein Tipp wählt ab. Ein Knopf nimmt alle gewählten in den Katalog.
+ * Beim Übersichts-Import zählen die Abrufe mit, Wartendes lässt sich überspringen, und an der
+ * Abrufgrenze geht es mit „Weiterlesen“ in den nächsten Durchgang.
  */
 @Composable
 private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (String) -> Unit) {
     val session = CreatorApp.instance.imports
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val n = s.items.size
+    val crawl = s.crawl
+    val n = s.planned
     val failed = s.items.count { it.status is ImportSession.ItemStatus.Failed }
     val chosen = s.chosen.size
     val current = s.items.firstOrNull { it.status is ImportSession.ItemStatus.Running }
+    val scanning = crawl?.scanning
+
+    val title = when {
+        scanning != null -> "Lese die Übersicht …"
+        s.running -> "Lese ${minOf(s.finished + 1, n)} von $n …"
+        crawl != null && s.items.isEmpty() -> "Angehalten."
+        crawl != null && s.waiting > 0 -> "${s.finished} von $n gelesen."
+        crawl != null -> if (n == 1) "Ein Titel gelesen." else "$n Titel gelesen."
+        n == 1 -> "Ein Link gelesen."
+        else -> "$n Links gelesen."
+    }
+    val subtitle = listOfNotNull(
+        "${s.items.size} Titel gefunden".takeIf { crawl != null && scanning == null },
+        "${s.finished - failed} erkannt".takeIf { s.finished > 0 },
+        "$failed ohne Ergebnis".takeIf { failed > 0 },
+        "nur die ersten ${LinkList.MAX} Links".takeIf { s.skipped > 0 },
+    ).joinToString(" · ").ifEmpty { null }
 
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
         item {
             IconButton(onClick = session::stop) { GIcon(Ic.back) }
             ScreenHeader(
-                title = if (s.running) "Lese ${minOf(s.finished + 1, n)} von $n …" else if (n == 1) "Ein Link gelesen." else "$n Links gelesen.",
-                eyebrow = "Aus Links",
-                subtitle = listOfNotNull(
-                    "${s.finished - failed} erkannt".takeIf { s.finished > 0 },
-                    "$failed ohne Ergebnis".takeIf { failed > 0 },
-                    "nur die ersten ${LinkList.MAX} Links".takeIf { s.skipped > 0 },
-                ).joinToString(" · ").ifEmpty { null },
+                title = title,
+                eyebrow = if (crawl != null) "Übersicht · ${crawl.host}" else "Aus Links",
+                subtitle = subtitle,
             )
         }
         item {
             VSpace(24.dp)
-            Bar(if (n == 0) 0f else s.finished.toFloat() / n)
-            if (s.running && current != null) {
+            Bar(if (scanning != null || n == 0) 0f else s.finished.toFloat() / n)
+            val step = scanning ?: (current?.status as? ImportSession.ItemStatus.Running)?.step
+            if (s.running && step != null) {
                 VSpace(10.dp)
-                val step = (current.status as ImportSession.ItemStatus.Running).step
                 Crossfade(step, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "step") {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted)
                 }
             }
+            if (crawl != null) {
+                VSpace(10.dp)
+                Text(
+                    listOfNotNull(
+                        "${crawl.used} von ${crawl.budget} Abrufen",
+                        (if (crawl.listPages == 1) "1 Seite Übersicht" else "${crawl.listPages} Seiten Übersicht").takeIf { crawl.listPages > 0 },
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                )
+                if (crawl.more && scanning == null) {
+                    VSpace(8.dp)
+                    StatusLine(
+                        Ic.info,
+                        "Die Übersicht geht weiter. Gelesen sind höchstens ${ImportSession.MAX_LIST_PAGES} Seiten und ${LinkList.MAX} Titel.",
+                        Palette.muted,
+                    )
+                }
+                if (crawl.halt != null && !s.running) {
+                    VSpace(8.dp)
+                    StatusLine(Ic.pause, crawl.halt, Palette.text)
+                }
+            }
         }
-        item {
+        if (s.items.isNotEmpty()) item {
             VSpace(28.dp)
             ListGroup(Modifier.animateContentSize(MaterialTheme.motionScheme.defaultSpatialSpec())) {
                 s.items.forEachIndexed { i, item ->
                     if (i > 0) RowDivider(inset = 56.dp)
-                    BatchRow(item) { session.toggle(i) }
+                    BatchRow(item, crawl = crawl != null, running = s.running) { session.toggle(i) }
                 }
             }
         }
@@ -361,6 +450,10 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
                 onBack()
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                if (crawl != null && !s.running && s.waiting > 0) {
+                    val budget by CreatorApp.instance.prefs.crawlBudget.collectAsState()
+                    QuietButton("Weiterlesen ($budget Abrufe)", color = Palette.text, onClick = session::more)
+                }
                 QuietButton(if (s.running) "Anhalten" else "Verwerfen", color = Palette.muted, onClick = session::stop)
             }
         }
@@ -368,7 +461,7 @@ private fun BatchView(s: ImportSession.State.Batch, onBack: () -> Unit, toast: (
 }
 
 @Composable
-private fun BatchRow(item: ImportSession.BatchItem, onToggle: () -> Unit) {
+private fun BatchRow(item: ImportSession.BatchItem, crawl: Boolean, running: Boolean, onToggle: () -> Unit) {
     val st = item.status
     val host = item.link.url.substringAfter("://").substringBefore('/').removePrefix("www.")
     val path = item.link.url.substringAfter("://").let { r -> r.indexOf('/').takeIf { it >= 0 }?.let { r.substring(it) } ?: "/" }
@@ -377,24 +470,31 @@ private fun BatchRow(item: ImportSession.BatchItem, onToggle: () -> Unit) {
         is ImportSession.ItemStatus.Failed -> Ic.error to Palette.wine
         is ImportSession.ItemStatus.Running -> Ic.schedule to Palette.text
         ImportSession.ItemStatus.Waiting -> Ic.schedule to Palette.faint
+        ImportSession.ItemStatus.Skipped -> Ic.circle to Palette.faint
     }
     val title = item.name.ifBlank { path }
     val subtitle = when (st) {
         is ImportSession.ItemStatus.Ready -> if (st.include) readySummary(st.draft) else "Wird nicht übernommen"
         is ImportSession.ItemStatus.Failed -> st.message
         is ImportSession.ItemStatus.Running -> "Wird gelesen …"
-        ImportSession.ItemStatus.Waiting -> host
+        ImportSession.ItemStatus.Waiting -> if (crawl) (if (running) path else "Noch nicht gelesen · $path") else host
+        ImportSession.ItemStatus.Skipped -> "Wird übersprungen"
     }
+    val tappable = st is ImportSession.ItemStatus.Ready ||
+        (crawl && (st is ImportSession.ItemStatus.Waiting || st is ImportSession.ItemStatus.Skipped))
     Row(
         Modifier.fillMaxWidth()
-            .let { if (st is ImportSession.ItemStatus.Ready) it.clickable(onClick = onToggle) else it }
+            .let { if (tappable) it.clickable(onClick = onToggle) else it }
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         GIcon(icon, tint = tint, size = 20.dp)
         HSpace(18.dp)
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = if (st is ImportSession.ItemStatus.Skipped) Palette.muted else Palette.text,
+            )
             Text(
                 subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 color = if (st is ImportSession.ItemStatus.Failed) Palette.wine else Palette.muted,

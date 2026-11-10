@@ -129,6 +129,33 @@ alle gewählten in den Katalog, schon vorhandene werden aktualisiert. Ist eine D
 im Streamplayer-Format, wird sie wie mit „Datei öffnen“ übernommen. Wo TMDB nicht eindeutig
 war, steht „TMDB unklar“: im Editor nachwählen, oder der Player sucht später selbst.
 
+**Ganze Übersicht (Creator 1.3.0):** Oben auf „Ganze Übersicht“ umschalten und die Adresse einer
+Seite eingeben, die viele Titel auflistet (Katalog, Genre, Neuheiten). Der Creator findet die
+Titel darauf, liest die Folgeseiten der Übersicht mit und dann jeden Titel wie einen einzelnen
+Link, also mit Staffeln, Folgen, Muster und TMDB. Auch hier gibt es keine Regeln für einzelne
+Seiten (`Overview`):
+
+1. **Titel finden:** schema.org `ItemList` in JSON-LD, sonst Familien von Verweisen, die sich in
+   genau einem Pfadsegment oder Query-Wert unterscheiden (`/serie/foo`, `/serie/bar` …).
+   Familien mit Navigationswörtern (`genre`, `page`, `login`, `impressum` …), A–Z-Leisten und
+   Folgen-Adressen (`staffel-2`, `episode-5`) fallen weg. Kacheln mit Bild zählen mehr.
+   Stehen Serien und Filme in eigenen Familien, kommen beide mit.
+2. **Folgeseiten:** `rel="next"`, sonst die Adresse mit Seitenzahl + 1 (`?page=2`,
+   `/seite/2/`), sonst ein Verweis „Weiter“. Höchstens 20 Seiten und 200 Titel.
+3. **Grenzen** (`Throttle`), einstellbar im Eingabeschirm: Pause zwischen zwei Abrufen
+   (0,5–5 s, Standard 1 s) und Abrufe pro Durchgang (100/300/1000, Standard 300). Sie gelten
+   für alles zusammen: Übersicht, Titel, Staffeln, Browser. Die robots.txt der Seite wird
+   beachtet (`Disallow`/`Allow`, `Crawl-delay` hebt die Pause an). Antwortet die Seite mit 429,
+   verdoppelt sich die Pause, und nach 20 s kommt ein zweiter Versuch. Kommt wieder 429, hält
+   der Durchgang an.
+4. **Durchgänge:** Ein Titel bekommt höchstens so viele Abrufe, wie noch übrig sind. Reicht das
+   nicht für alle Staffeln, bleibt er wartend, statt unvollständig in der Liste zu landen. An der
+   Grenze hält der Creator an, „Weiterlesen“ startet den nächsten Durchgang. Wartende Titel lassen
+   sich vorher abwählen und kosten dann nichts. Übernommen wird wie beim Massenimport.
+
+Grenzen der Übersicht: Listen, die erst beim Scrollen nachladen, zeigt die WebView nur so weit,
+wie sie anfangs da sind. A–Z-Unterseiten werden nicht verfolgt.
+
 Liefert ein Link denselben Titel noch einmal (gleiches Muster bzw. gleiche Filmseite), heißt der
 Knopf „Im Katalog aktualisieren“. Das übernimmt Staffeln und neue Folgen. Eigene Namen, Bilder,
 Staffeltitel und Ausnahmen bleiben.
@@ -383,8 +410,9 @@ adb shell am start -a android.intent.action.VIEW -d http://10.0.2.2:8765/ \
 
 Import im Creator: `katalog/testserie/` (Übersicht mit JSON-LD, Staffel-Reitern und Specials,
 auch von einer Folge aus), `katalog/jsliste/` (Liste erst per JavaScript), `katalog/pruefung/`
-(Vorschaltseite mit „Ich bin ein Mensch“), `katalog/testfilm.html` und `katalog/links.json`
-(Linkliste für den Massenimport). Teilen per adb:
+(Vorschaltseite mit „Ich bin ein Mensch“), `katalog/testfilm.html`, `katalog/links.json`
+(Linkliste für den Massenimport) und `katalog/uebersicht/` für „Ganze Übersicht“ (zwei Seiten,
+Navigation in derselben Familie wie die Titel, ein Titel per `/robots.txt` gesperrt). Teilen per adb:
 
 ```sh
 adb shell am start -a android.intent.action.SEND -t text/plain \
