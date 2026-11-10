@@ -27,6 +27,21 @@ class WatchController(
     private val hub: DetectionHub,
     private val scope: CoroutineScope,
 ) {
+    /**
+     * Wer fragt und wozu. key: Fortschritts-Schlüssel (Bibliothek); download: statt abspielen laden;
+     * fromLibrary: danach zurück in die Bibliothek statt die Ergebnis-Ansicht zu zeigen.
+     */
+    data class Request(
+        val key: String? = null,
+        val label: String? = null,
+        val titleId: String? = null,
+        val download: Boolean = false,
+        val fromLibrary: Boolean = false,
+    )
+
+    var request: Request = Request()
+        private set
+
     sealed interface State {
         data object Idle : State
         data class Searching(val host: String, val step: String) : State
@@ -44,16 +59,17 @@ class WatchController(
 
     val active: Boolean get() = _state.value != State.Idle
 
-    fun start(input: String) {
+    fun start(input: String, request: Request = Request()) {
         val url = BrowserController.toUrl(input) ?: return
         stopSearch()
+        this.request = request
         val host = Format.host(url)
         startUrl = url
         // Sofort leeren, nicht erst beim ersten Netzwerk-Request: sonst zählt ein Fund der alten Seite.
         hub.reset(url)
         browser.setAutoplay(true)
         browser.load(url)
-        _state.value = State.Searching(host, "Seite lädt …")
+        _state.value = State.Searching(request.label ?: host, "Seite lädt …")
 
         job = scope.launch {
             val t0 = SystemClock.elapsedRealtime()
@@ -82,8 +98,10 @@ class WatchController(
                             thumbnail = best.thumbnail ?: hub.meta.value.image,
                             autoStart = true,
                         )
-                        // Gemerkter Link ohne Titel/Bild? Jetzt wissen wir beides.
-                        de.marne.streamplayer.App.instance.library.enrich(url, ready.title, ready.thumbnail, best.durationMs)
+                        // Titel in der Bibliothek ohne Bild/Titel? Jetzt wissen wir beides.
+                        val library = de.marne.streamplayer.App.instance.library
+                        val id = request.titleId ?: library.findByPage(url)?.id
+                        if (id != null) library.enrich(id, ready.title, ready.thumbnail, null, best.durationMs)
                         _state.value = ready
                         return@launch
                     }

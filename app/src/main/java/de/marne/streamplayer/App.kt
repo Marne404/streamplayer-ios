@@ -11,6 +11,8 @@ import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.download.DownloadStore
 import de.marne.streamplayer.download.Notifications
 import de.marne.streamplayer.library.LibraryStore
+import de.marne.streamplayer.library.MetaFetcher
+import de.marne.streamplayer.library.ProgressStore
 import de.marne.streamplayer.net.Http
 import okhttp3.OkHttpClient
 
@@ -27,6 +29,10 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var library: LibraryStore
         private set
+    lateinit var progress: ProgressStore
+        private set
+    lateinit var meta: MetaFetcher
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -35,6 +41,8 @@ class App : Application(), SingletonImageLoader.Factory {
         http = Http.client(this)
         downloads = DownloadStore(this)
         library = LibraryStore(this)
+        progress = ProgressStore(this)
+        meta = MetaFetcher(http) { Http.defaultUserAgent(this) }
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)
     }

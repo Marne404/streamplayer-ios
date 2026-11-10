@@ -178,6 +178,7 @@ class DownloadService : Service() {
                         finishedAt = System.currentTimeMillis(),
                     )
                 }
+                item.libraryKey?.let { App.instance.library.attachOffline(it, saved.uri.toString()) }
                 store.get(item.id)?.let { Notifications.done(this@DownloadService, it) }
             } catch (e: CancellationException) {
                 throw e

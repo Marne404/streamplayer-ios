@@ -155,10 +155,10 @@ private fun CandidateCard(
                     Row(Modifier.align(Alignment.CenterHorizontally)) {
                         QuietButton("Vorher ansehen", color = Palette.muted) { onPreview() }
                         val library = de.marne.streamplayer.App.instance.library
-                        val items by library.items.collectAsState()
-                        val saved = items.any { de.marne.streamplayer.detect.UrlClassifier.key(it.url) == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
+                        val items by library.titles.collectAsState()
+                        val saved = items.any { it.pageUrl != null && de.marne.streamplayer.detect.UrlClassifier.key(it.pageUrl) == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
                         QuietButton(if (saved) "Gemerkt" else "Merken", color = if (saved) Palette.muted else Palette.text) {
-                            if (!saved) library.addLink(c.pageUrl, title, thumb)
+                            if (!saved) library.addMovie(c.pageUrl, title, thumb)
                         }
                     }
                 }

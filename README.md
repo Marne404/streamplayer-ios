@@ -1,13 +1,40 @@
 # Streamplayer
 
-Android-App, die Videos auf Webseiten findet und lädt. Im Kern ein Browser: Du öffnest
-eine Seite, startest das Video, und die App zeigt unten „1 Video gefunden“. Ein Tipp
-darauf, Qualität wählen, laden. Fertige Videos landen in der Mediathek unter
-`Filme/Streamplayer`.
+Eine Mediathek für Videos aus dem Netz, gedacht wie Jellyfin oder Netflix, nur ohne Server.
+Filme und Serien kommen per Link hinein. Abgespielt wird im eigenen Player, mit Fortschritt,
+„Weiterschauen“ und „Nächste Folge“. Gespeichert wird immer die **Seite**, nie der Stream:
+Stream-Adressen leben bei den meisten Hostern nur wenige Stunden. Aufgelöst wird erst beim
+Abspielen, mit derselben Erkennung wie im eingebauten Browser.
 
-Vorbild ist die Funktionsweise von Video Downloader Pro (siehe Analyse-Artefakt
-„Wie Video Downloader Pro Streams findet“). Der Code hier ist eigenständig geschrieben.
-Die Oberfläche folgt dem Design-System **Ivory & Ink**.
+Der Browser ist dafür nur noch ein Nebenraum: zum Finden, für Seiten, die mehr brauchen, und
+als Werkzeug hinter den Kulissen. Die Oberfläche folgt dem Design-System **Ivory & Ink**.
+
+## Mediathek
+
+- **Startseite:** Oben die eine dunkle Hero-Karte (Ivory & Ink erlaubt eine pro Screen), mit
+  „Weiterschauen“ bzw. „Nächste Folge“, sonst dem neuesten Titel. Darunter Regale:
+  Weiterschauen, Serien, Filme, Offline.
+- **Detailseite:** Bild, Titel, Beschreibung, „Abspielen“ bzw. „Fortsetzen · noch 12 Min.“.
+  Bei Serien gibt es Staffel-Pills und eine Folgenliste mit Fortschritt; gesehene Folgen haben
+  ein gefülltes Häkchen. Folgen lassen sich einzeln laden oder als (un)gesehen markieren.
+- **Film hinzufügen:** ein Link. Titel, Bild und Beschreibung holt `MetaFetcher` per einfachem
+  Abruf aus og:-Angaben. Was fehlt, ergänzt das erste Ansehen.
+- **Serie hinzufügen:** Link zu einer Folge. `Pattern.derive` macht daraus eine Vorlage
+  (`staffel-1/episode-1` → `staffel-{s}/episode-{e}`, `s01e05` → `s{ss}e{ee}`, sonst die
+  letzten zwei Zahlen im Pfad). Dazu kommen die Folgen je Staffel („12, 8, 10“). Die Vorschau
+  zeigt erste und letzte Adresse, damit ein falsches Muster sofort auffällt. Neue Staffel:
+  „Folgen bearbeiten“, Zahl anhängen.
+- **Fortschritt:** `PlayerActivity` meldet die Position alle 10 Sekunden und beim Verlassen.
+  Weniger als 2 Minuten oder 5 % Rest zählen als gesehen (Abspann). Fortgesetzt wird ab 30
+  Sekunden.
+- **Offline:** Geladene Filme und Folgen hängen am Titel (`offline`), und Abspielen nimmt dann
+  die Datei.
+- **Abspielen von Links:** Der Browser lädt die Seite verdeckt („Nur ansehen“). Ist der Stream
+  gefunden, öffnet sich der Player, und danach geht es zurück in die Bibliothek.
+- **Geteilte Links** öffnen das Hinzufügen-Sheet, mit „Nur ansehen“ und „Im Browser öffnen“.
+
+Gespeichert wird in filesDir: `titles.json` (Mediathek) und `progress.json` (Fortschritt). Die
+Bibliothek bis 0.5 (`library.json`) wird beim ersten Start in Filme übernommen.
 
 ## Was sie kann
 
@@ -55,9 +82,9 @@ auch für Links, die per „Teilen“ oder als Link aus anderen Apps kommen.
 5. Zurück aus dem Player gibt es „Nochmal ansehen“, „Laden“ und „Seite anzeigen“. Nach 30 Sekunden
    ohne Fund erscheint ein Hinweis mit „Seite anzeigen“. Livestreams lassen sich ansehen, DRM nicht.
 
-## Bibliothek
+## Bibliothek (bis 0.5)
 
-Eigener Tab mit Kacheln (16:9-Vorschau, Titel, Herkunft). Zwei Arten:
+Abgelöst durch die Mediathek oben; alte Einträge werden übernommen. Damals: ein Tab mit Kacheln in zwei Arten:
 
 - **Links:** Ein Tipp spielt über „Nur ansehen“ direkt im Player ab. Gespeichert wird die Seite,
   nicht die Stream-Adresse, denn die verfällt meist nach Stunden. Fehlen Titel oder Bild, trägt

@@ -32,6 +32,8 @@ data class DownloadItem(
     val fileName: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val finishedAt: Long? = null,
+    /** Fortschritts-Schlüssel des Films/der Folge in der Bibliothek; die fertige Datei hängt sich dort an. */
+    val libraryKey: String? = null,
 ) {
     val active: Boolean get() = state == DlState.QUEUED || state == DlState.RUNNING || state == DlState.MERGING || state == DlState.WAITING_WIFI
 
@@ -42,7 +44,7 @@ data class DownloadItem(
         put("keys", JSONArray().apply { keys.forEach { put(JSONArray(listOf(it.period, it.group, it.stream))) } })
         put("state", state.name); put("bytesDone", bytesDone); put("bytesTotal", bytesTotal); put("progress", progress.toDouble())
         put("error", error); put("fileUri", fileUri); put("fileName", fileName)
-        put("createdAt", createdAt); put("finishedAt", finishedAt)
+        put("createdAt", createdAt); put("finishedAt", finishedAt); put("libraryKey", libraryKey)
     }
 
     companion object {
@@ -70,6 +72,7 @@ data class DownloadItem(
                 fileName = o.optStringOrNull("fileName"),
                 createdAt = o.optLong("createdAt"),
                 finishedAt = o.optLongOrNull("finishedAt"),
+                libraryKey = o.optStringOrNull("libraryKey"),
             )
         }
 

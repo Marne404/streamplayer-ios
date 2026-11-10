@@ -47,6 +47,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -72,8 +74,18 @@ import de.marne.streamplayer.download.DownloadItem
 import de.marne.streamplayer.download.DownloadService
 import de.marne.streamplayer.downloads.DownloadActions
 import de.marne.streamplayer.downloads.DownloadsScreen
-import de.marne.streamplayer.library.LibraryActions
-import de.marne.streamplayer.library.LibraryScreen
+import de.marne.streamplayer.library.AddActions
+import de.marne.streamplayer.library.AddSheet
+import de.marne.streamplayer.library.DetailActions
+import de.marne.streamplayer.library.DetailScreen
+import de.marne.streamplayer.library.Episode
+import de.marne.streamplayer.library.HomeActions
+import de.marne.streamplayer.library.HomeScreen
+import de.marne.streamplayer.library.Keys
+import de.marne.streamplayer.library.LibTitle
+import de.marne.streamplayer.library.Pattern
+import de.marne.streamplayer.library.Shelves
+import de.marne.streamplayer.library.TitleKind
 import de.marne.streamplayer.player.PlayerActivity
 import de.marne.streamplayer.settings.SettingsScreen
 import de.marne.streamplayer.ui.design.Hairline
@@ -83,12 +95,24 @@ import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.isAppDark
 import kotlinx.coroutines.launch
 
+/** Navigationszustand, von der Activity gehalten: Intents (Teilen, Benachrichtigung) setzen ihn direkt. */
+class AppNav {
+    var tab by mutableIntStateOf(MainActivity.TAB_LIBRARY)
+    /** Browser ist ein Nebenraum über den Tabs, kein Tab mehr. */
+    var browserOpen by mutableStateOf(false)
+    var detailId by mutableStateOf<String?>(null)
+    /** Hinzufügen-Sheet: null = zu, sonst vorbelegter Link (leer = ohne). */
+    var addUrl by mutableStateOf<String?>(null)
+    /** Browser wurde nur zum Auflösen geöffnet: danach wieder schließen. */
+    var resolving by mutableStateOf(false)
+}
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var hub: DetectionHub
     private lateinit var browser: BrowserController
     private lateinit var watch: WatchController
-    private val tab = mutableIntStateOf(TAB_BROWSER)
+    private val nav = AppNav()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -108,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             IvoryInkTheme(dark) {
-                AppRoot(browser, hub, watch, tab)
+                AppRoot(browser, hub, watch, nav)
             }
         }
     }
@@ -124,14 +148,18 @@ class MainActivity : ComponentActivity() {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
                 ?.let { Regex("""https?://\S+""").find(it)?.value }
                 ?.let(::openLink)
-            ACTION_SHOW_DOWNLOADS -> tab.intValue = TAB_DOWNLOADS
+            ACTION_SHOW_DOWNLOADS -> {
+                nav.browserOpen = false
+                nav.tab = TAB_DOWNLOADS
+            }
         }
     }
 
-    /** Geteilter oder geöffneter Link: im Modus „Nur ansehen“ direkt abspielen. */
+    /** Geteilter Link: Hinzufügen-Sheet mit dem Link – dort auch „Nur ansehen“ und „Im Browser öffnen“. */
     private fun openLink(url: String) {
-        tab.intValue = TAB_BROWSER
-        if (App.instance.settings.watchMode.value) watch.start(url) else browser.load(url)
+        nav.browserOpen = false
+        nav.tab = TAB_LIBRARY
+        nav.addUrl = url
     }
 
     override fun onPause() {
@@ -151,31 +179,32 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_SHOW_DOWNLOADS = "de.marne.streamplayer.SHOW_DOWNLOADS"
-        const val TAB_BROWSER = 0
-        const val TAB_LIBRARY = 1
-        const val TAB_DOWNLOADS = 2
-        const val TAB_SETTINGS = 3
+        const val TAB_LIBRARY = 0
+        const val TAB_DOWNLOADS = 1
+        const val TAB_SETTINGS = 2
     }
 }
 
 private data class TabSpec(val label: String, val icon: Int, val iconSelected: Int)
 
 private val tabs = listOf(
-    TabSpec("Browser", Ic.browser, Ic.browserFilled),
     TabSpec("Bibliothek", Ic.library, Ic.libraryFilled),
     TabSpec("Downloads", Ic.downloads, Ic.downloadsFilled),
     TabSpec("Einstellungen", Ic.settings, Ic.settingsFilled),
 )
 
 @Composable
-private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchController, tab: MutableIntState) {
+private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchController, nav: AppNav) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = App.instance
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val history by app.settings.history.collectAsStateWithLifecycle()
     val downloads by app.downloads.items.collectAsStateWithLifecycle()
+    val titles by app.library.titles.collectAsStateWithLifecycle()
+    val progress by app.progress.all.collectAsStateWithLifecycle()
     val fullscreen by browser.fullscreen.collectAsStateWithLifecycle()
+    val watchState by watch.state.collectAsStateWithLifecycle()
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     fun toast(text: String, action: String? = null, onAction: () -> Unit = {}) {
@@ -186,15 +215,18 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         }
     }
 
-    val startDownload: (Candidate, Variant?, String, String?) -> Unit = { c, v, title, thumb ->
+    fun startDownload(c: Candidate, v: Variant?, title: String, thumb: String?, libraryKey: String?) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        app.downloads.enqueue(c, v, title, thumb, browser.userAgent)
+        app.downloads.enqueue(c, v, title, thumb, browser.userAgent, libraryKey)
         DownloadService.kick(context)
-        toast("Läuft. Du findest es unter Downloads.", "Ansehen") { tab.intValue = MainActivity.TAB_DOWNLOADS }
+        toast("Läuft. Du findest es unter Downloads.", "Ansehen") {
+            nav.browserOpen = false
+            nav.tab = MainActivity.TAB_DOWNLOADS
+        }
     }
 
     val preview: (Candidate, String) -> Unit = { c, title ->
@@ -208,79 +240,199 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         )
     }
 
-    val actions = remember {
+    /** Titel/Bild/Beschreibung von der Seite holen und nachtragen. */
+    fun fetchMeta(id: String, url: String) {
+        scope.launch {
+            app.meta.fetch(url)?.let { m -> app.library.enrich(id, m.title, m.image, m.description) }
+        }
+    }
+
+    /**
+     * Film oder Folge abspielen bzw. laden. Offline-Datei: direkt. Sonst Seite verdeckt laden,
+     * Stream finden (WatchController), danach zurück in die Bibliothek.
+     */
+    fun resolve(t: LibTitle, ep: Episode?, download: Boolean) {
+        val key = ep?.let { Keys.episode(t, it) } ?: Keys.movie(t)
+        val label = if (ep != null) "${t.title} · ${ep.label}" else t.title
+        val offline = t.offline[key]
+        if (!download && offline != null) {
+            context.startActivity(PlayerActivity.intent(context, Uri.parse(offline), label, key = key, startMs = app.progress.resumePosition(key)))
+            return
+        }
+        val url = ep?.url ?: t.pageUrl ?: return
+        nav.resolving = true
+        nav.browserOpen = true
+        watch.start(url, WatchController.Request(key = key, label = label, titleId = t.id, download = download, fromLibrary = true))
+    }
+
+    fun playTitle(t: LibTitle) {
+        if (t.kind == TitleKind.MOVIE) resolve(t, null, false)
+        else resolve(t, Shelves.nextFor(t, app.progress.all.value)?.first ?: t.episodes().firstOrNull() ?: return, false)
+    }
+
+    // Stream gefunden: abspielen oder laden – und bei Aufträgen aus der Bibliothek dorthin zurück.
+    LaunchedEffect(watchState) {
+        when (val s = watchState) {
+            is WatchController.State.Ready -> if (s.autoStart) {
+                val r = watch.request
+                if (r.download) {
+                    startDownload(s.candidate, s.candidate.variants.firstOrNull(), r.label ?: s.title, s.thumbnail, r.key)
+                    watch.showPage()
+                } else {
+                    context.startActivity(
+                        PlayerActivity.intent(
+                            context, Uri.parse(s.candidate.url), r.label ?: s.title,
+                            mime = s.candidate.mime.takeIf { s.candidate.kind != MediaKind.FILE },
+                            referer = s.candidate.referer ?: s.candidate.pageUrl,
+                            userAgent = browser.userAgent,
+                            key = r.key,
+                            startMs = r.key?.let(app.progress::resumePosition) ?: 0,
+                        )
+                    )
+                    if (r.fromLibrary) watch.showPage() else watch.playerOpened()
+                }
+            }
+            WatchController.State.Idle -> if (nav.resolving) {
+                nav.resolving = false
+                nav.browserOpen = false
+            }
+            else -> Unit
+        }
+    }
+
+    val downloadActions = remember {
         DownloadActions(
-            play = { d -> d.fileUri?.let { context.startActivity(PlayerActivity.intent(context, Uri.parse(it), d.title, d.mime)) } },
+            play = { d -> d.fileUri?.let { context.startActivity(PlayerActivity.intent(context, Uri.parse(it), d.title, d.mime, key = d.libraryKey, startMs = d.libraryKey?.let(app.progress::resumePosition) ?: 0)) } },
             pause = { d -> DownloadService.pause(context, d.id) },
             resume = { d -> DownloadService.resume(context, d.id) },
             remove = { d -> DownloadService.remove(context, d.id) },
             share = { d -> share(context, d) },
             openWith = { d -> openWith(context, d) },
             openPage = { d ->
-                tab.intValue = MainActivity.TAB_BROWSER
+                nav.browserOpen = true
                 browser.load(d.pageUrl)
             },
-            goBrowse = { tab.intValue = MainActivity.TAB_BROWSER },
+            goBrowse = { nav.browserOpen = true },
             saveToLibrary = { d ->
-                d.fileUri?.let { app.library.addFile(it, d.title, d.pageUrl, d.thumbnail, d.durationMs, d.mime) }
-                toast("In der Bibliothek.", "Ansehen") { tab.intValue = MainActivity.TAB_LIBRARY }
-            },
-        )
-    }
-
-    val library by app.library.items.collectAsStateWithLifecycle()
-    val libraryActions = remember {
-        LibraryActions(
-            watch = { item ->
-                // Gemerkter Link: direkt im Player, über „Nur ansehen“.
-                tab.intValue = MainActivity.TAB_BROWSER
-                watch.start(item.url)
-            },
-            play = { item -> context.startActivity(PlayerActivity.intent(context, Uri.parse(item.url), item.title, item.mime)) },
-            openPage = { item ->
-                tab.intValue = MainActivity.TAB_BROWSER
-                browser.load(item.pageUrl ?: item.url)
-            },
-            addLink = { url ->
-                app.library.addLink(url, null, null)
-                toast("Gemerkt. Titel und Bild kommen beim ersten Ansehen.")
-            },
-            rename = { item, title -> app.library.rename(item.id, title) },
-            remove = { item ->
-                app.library.remove(item.id)
-                toast("Aus der Bibliothek entfernt.")
-            },
-            goBrowse = { tab.intValue = MainActivity.TAB_BROWSER },
-        )
-    }
-
-    BackHandler(enabled = tab.intValue != MainActivity.TAB_BROWSER) { tab.intValue = MainActivity.TAB_BROWSER }
-
-    Box(Modifier.fillMaxSize().background(Palette.bg)) {
-        Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) {
-                Crossfade(tab.intValue, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "tab") { t ->
-                    when (t) {
-                        MainActivity.TAB_BROWSER -> BrowserScreen(
-                            browser = browser,
-                            hub = hub,
-                            watch = watch,
-                            history = history,
-                            onClearHistory = app.settings::clearHistory,
-                            onDownload = startDownload,
-                            onPreview = preview,
-                        )
-                        MainActivity.TAB_LIBRARY -> LibraryScreen(library, libraryActions)
-                        MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, actions)
-                        else -> SettingsScreen(
-                            settings = app.settings,
-                            onClearBrowsingData = browser::clearBrowsingData,
-                            onToast = { toast(it) },
-                        )
+                d.fileUri?.let { uri ->
+                    val t = app.library.addOfflineMovie(uri, d.title, d.pageUrl, d.thumbnail, d.durationMs)
+                    toast("In der Bibliothek.", "Ansehen") {
+                        nav.tab = MainActivity.TAB_LIBRARY
+                        nav.detailId = t.id
                     }
                 }
+            },
+        )
+    }
+
+    val homeActions = remember {
+        HomeActions(
+            open = { nav.detailId = it.id },
+            play = { c -> resolve(c.title, c.episode, false) },
+            playTitle = { playTitle(it) },
+            add = { nav.addUrl = "" },
+            browser = { nav.browserOpen = true },
+        )
+    }
+
+    val detailActions = remember {
+        DetailActions(
+            back = { nav.detailId = null },
+            play = { t, e -> resolve(t, e, false) },
+            download = { t, e -> resolve(t, e, true) },
+            openPage = { url ->
+                nav.browserOpen = true
+                browser.load(url)
+            },
+            setWatched = { key, watched -> app.progress.setWatched(key, watched) },
+            rename = { t, title -> app.library.rename(t.id, title) },
+            editSeries = { t, tpl, seasons -> app.library.updateSeries(t.id, tpl, seasons) },
+            remove = { t ->
+                app.library.remove(t.id)
+                app.progress.removeTitle(t.id)
+                nav.detailId = null
+                toast("Aus der Bibliothek entfernt.")
+            },
+        )
+    }
+
+    // Zurück: Browser schließen › Detailseite schließen › zur Bibliothek. BrowserScreen hat eigene,
+    // spätere Handler (Seitenverlauf, Suche abbrechen) – die gewinnen, solange sie aktiv sind.
+    BackHandler(enabled = !nav.browserOpen && nav.tab != MainActivity.TAB_LIBRARY) { nav.tab = MainActivity.TAB_LIBRARY }
+    BackHandler(enabled = !nav.browserOpen && nav.tab == MainActivity.TAB_LIBRARY && nav.detailId != null) { nav.detailId = null }
+    BackHandler(enabled = nav.browserOpen) { if (watch.active) watch.cancel() else nav.browserOpen = false }
+
+    Box(Modifier.fillMaxSize().background(Palette.bg)) {
+        if (nav.browserOpen) {
+            BrowserScreen(
+                browser = browser,
+                hub = hub,
+                watch = watch,
+                history = history,
+                onClearHistory = app.settings::clearHistory,
+                onDownload = { c, v, t, thumb -> startDownload(c, v, t, thumb, null) },
+                onPreview = preview,
+                onClose = { nav.browserOpen = false },
+                onWatchShowPage = { nav.resolving = false },
+            )
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f)) {
+                    Crossfade(nav.tab, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "tab") { t ->
+                        when (t) {
+                            MainActivity.TAB_LIBRARY -> {
+                                val detail = nav.detailId?.let { id -> titles.firstOrNull { it.id == id } }
+                                Crossfade(detail?.id, animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(), label = "detail") { id ->
+                                    val d = id?.let { i -> titles.firstOrNull { it.id == i } }
+                                    if (d != null) DetailScreen(d, progress, detailActions)
+                                    else HomeScreen(titles, progress, homeActions)
+                                }
+                            }
+                            MainActivity.TAB_DOWNLOADS -> DownloadsScreen(downloads, downloadActions)
+                            else -> SettingsScreen(
+                                settings = app.settings,
+                                onClearBrowsingData = browser::clearBrowsingData,
+                                onToast = { toast(it) },
+                            )
+                        }
+                    }
+                }
+                NavBar(nav.tab, activeCount = downloads.count { it.active }) { nav.tab = it; if (it == MainActivity.TAB_LIBRARY) nav.detailId = null }
             }
-            NavBar(tab.intValue, activeCount = downloads.count { it.active }) { tab.intValue = it }
+        }
+
+        nav.addUrl?.let { initial ->
+            AddSheet(
+                initialUrl = initial,
+                actions = AddActions(
+                    dismiss = { nav.addUrl = null },
+                    addMovie = { url ->
+                        val t = app.library.addMovie(url, null, null)
+                        fetchMeta(t.id, url)
+                        nav.addUrl = null
+                        nav.tab = MainActivity.TAB_LIBRARY
+                        nav.detailId = t.id
+                    },
+                    addSeries = { name, tpl, seasons ->
+                        val t = app.library.addSeries(name, tpl, seasons, null, null)
+                        fetchMeta(t.id, Pattern.fill(tpl, 1, 1))
+                        nav.addUrl = null
+                        nav.tab = MainActivity.TAB_LIBRARY
+                        nav.detailId = t.id
+                    },
+                    watchNow = { url ->
+                        nav.addUrl = null
+                        nav.resolving = true
+                        nav.browserOpen = true
+                        watch.start(url, WatchController.Request(fromLibrary = true))
+                    },
+                    openInBrowser = { url ->
+                        nav.addUrl = null
+                        nav.browserOpen = true
+                        browser.load(url)
+                    },
+                ),
+            )
         }
 
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)) { data ->

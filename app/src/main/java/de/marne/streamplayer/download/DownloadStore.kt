@@ -45,7 +45,7 @@ class DownloadStore(private val context: Context) {
     }
 
     /** Legt einen Download an und gibt seine ID zurück. */
-    fun enqueue(c: Candidate, variant: Variant?, title: String, thumbnail: String?, userAgent: String): String {
+    fun enqueue(c: Candidate, variant: Variant?, title: String, thumbnail: String?, userAgent: String, libraryKey: String? = null): String {
         val item = DownloadItem(
             id = UUID.randomUUID().toString(),
             url = c.url,
@@ -60,6 +60,7 @@ class DownloadStore(private val context: Context) {
             mime = c.mime,
             durationMs = c.durationMs,
             bytesTotal = variant?.estimatedBytes ?: c.sizeBytes,
+            libraryKey = libraryKey,
         )
         _items.update { listOf(item) + it }
         return item.id

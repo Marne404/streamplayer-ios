@@ -82,6 +82,8 @@ fun BrowserScreen(
     onClearHistory: () -> Unit,
     onDownload: (Candidate, Variant?, String, String?) -> Unit,
     onPreview: (Candidate, String) -> Unit,
+    onClose: () -> Unit,
+    onWatchShowPage: () -> Unit = {},
 ) {
     val url by browser.url.collectAsStateWithLifecycle()
     val title by browser.title.collectAsStateWithLifecycle()
@@ -108,7 +110,7 @@ fun BrowserScreen(
     val watchMode by settings.watchMode.collectAsStateWithLifecycle()
     val watchState by watch.state.collectAsStateWithLifecycle()
     val library = de.marne.streamplayer.App.instance.library
-    val libraryItems by library.items.collectAsStateWithLifecycle()
+    val libraryItems by library.titles.collectAsStateWithLifecycle()
     val pageSaved = remember(url, libraryItems) { url.isNotBlank() && library.containsLink(url) }
     val watching = watchState != WatchController.State.Idle
 
@@ -117,14 +119,6 @@ fun BrowserScreen(
         if (watchMode && BrowserController.looksLikeUrl(input)) watch.start(input) else browser.load(input)
     }
 
-    // Gefunden: Player sofort öffnen, genau einmal.
-    LaunchedEffect(watchState) {
-        val s = watchState
-        if (s is WatchController.State.Ready && s.autoStart) {
-            onPreview(s.candidate, s.title)
-            watch.playerOpened()
-        }
-    }
 
     BackHandler(enabled = !showStart) { browser.back() }
     BackHandler(enabled = watching) { watch.cancel() }
@@ -136,11 +130,12 @@ fun BrowserScreen(
             onPage = !showStart,
             onSubmit = open,
             onHome = { if (watching) watch.cancel() else browser.showStart() },
+            onClose = onClose,
             placeholder = if (watchMode) "Link zum Ansehen einfügen" else "Adresse oder Suchbegriff",
             saved = if (showStart) null else pageSaved,
             onToggleSaved = {
                 if (pageSaved) library.removeLink(url)
-                else library.addLink(url, meta.title.ifBlank { title }, meta.image)
+                else library.addMovie(url, meta.title.ifBlank { title }, meta.image)
             },
             onReload = browser::reload,
             onStop = browser::stop,
@@ -180,12 +175,12 @@ fun BrowserScreen(
                             onDownload(it.candidate, it.candidate.variants.firstOrNull(), it.title, it.thumbnail)
                         }
                     },
-                    onShowPage = watch::showPage,
+                    onShowPage = { onWatchShowPage(); watch.showPage() },
                     onCancel = watch::cancel,
                     saved = pageSaved,
                     onSave = {
                         val s = watchState
-                        if (!pageSaved && s is WatchController.State.Ready) library.addLink(url, s.title, s.thumbnail)
+                        if (!pageSaved && s is WatchController.State.Ready) library.addMovie(url, s.title, s.thumbnail)
                     },
                 )
             }
@@ -252,6 +247,7 @@ private fun AddressBar(
     onPage: Boolean,
     onSubmit: (String) -> Unit,
     onHome: () -> Unit,
+    onClose: () -> Unit,
     onReload: () -> Unit,
     onStop: () -> Unit,
     shield: ShieldState?,
@@ -271,10 +267,11 @@ private fun AddressBar(
         Modifier.fillMaxWidth().statusBarsPadding().padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Auf einer Seite: zur Browser-Startseite. Auf der Startseite: zurück in die Bibliothek.
         if (onPage) {
             IconButton(onClick = onHome) { GIcon(Ic.home, tint = Palette.text) }
         } else {
-            HSpace(14.dp)
+            IconButton(onClick = onClose) { GIcon(Ic.back, tint = Palette.text) }
         }
         Row(
             Modifier

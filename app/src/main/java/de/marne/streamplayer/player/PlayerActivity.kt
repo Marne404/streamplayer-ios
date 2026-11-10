@@ -27,12 +27,22 @@ import de.marne.streamplayer.net.Http
 class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
+    private var key: String? = null
+    private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
+    private val saveTick = object : Runnable {
+        override fun run() {
+            saveProgress()
+            ticker.postDelayed(this, 10_000)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val uri = intent.data ?: return finish()
         val referer = intent.getStringExtra(EXTRA_REFERER)
         val userAgent = intent.getStringExtra(EXTRA_UA) ?: Http.defaultUserAgent(this)
+        key = intent.getStringExtra(EXTRA_KEY)
+        val startMs = intent.getLongExtra(EXTRA_START, 0)
 
         val http = OkHttpDataSource.Factory(App.instance.http)
             .setUserAgent(userAgent)
@@ -48,8 +58,15 @@ class PlayerActivity : ComponentActivity() {
                 .setUri(uri)
                 .setMimeType(intent.getStringExtra(EXTRA_MIME))
                 .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra(EXTRA_TITLE)).build())
-                .build()
+                .build(),
+            startMs,
         )
+        p.addListener(object : androidx.media3.common.Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                // Zu Ende geschaut: als gesehen merken – das macht „Nächste Folge“ möglich.
+                if (state == androidx.media3.common.Player.STATE_ENDED) saveProgress(ended = true)
+            }
+        })
         p.prepare()
         p.playWhenReady = true
         player = p
@@ -70,12 +87,27 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        ticker.postDelayed(saveTick, 10_000)
+    }
+
     override fun onStop() {
         super.onStop()
+        ticker.removeCallbacks(saveTick)
         player?.pause()
+        saveProgress()
+    }
+
+    private fun saveProgress(ended: Boolean = false) {
+        val k = key ?: return
+        val p = player ?: return
+        val duration = p.duration.takeIf { it > 0 && it != androidx.media3.common.C.TIME_UNSET } ?: return
+        de.marne.streamplayer.App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended)
     }
 
     override fun onDestroy() {
+        ticker.removeCallbacks(saveTick)
         player?.release()
         player = null
         super.onDestroy()
@@ -86,9 +118,17 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_UA = "ua"
         private const val EXTRA_MIME = "mime"
         private const val EXTRA_TITLE = "title"
+        private const val EXTRA_KEY = "key"
+        private const val EXTRA_START = "start"
 
-        fun intent(context: Context, uri: Uri, title: String, mime: String? = null, referer: String? = null, userAgent: String? = null): Intent =
+        /** key: Fortschritts-Schlüssel aus der Bibliothek; startMs: ab hier weiterspielen. */
+        fun intent(
+            context: Context, uri: Uri, title: String, mime: String? = null, referer: String? = null,
+            userAgent: String? = null, key: String? = null, startMs: Long = 0,
+        ): Intent =
             Intent(context, PlayerActivity::class.java)
+                .putExtra(EXTRA_KEY, key)
+                .putExtra(EXTRA_START, startMs)
                 .setData(uri)
                 .putExtra(EXTRA_TITLE, title)
                 .putExtra(EXTRA_MIME, mime)

@@ -119,6 +119,32 @@ HTML
   cat > novideo.html <<'HTML'
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Ohne Video</title></head><body><h1>Hier gibt es kein Video.</h1></body></html>
 HTML
+  # Mediathek: Film (3 Minuten, für Fortsetzen) und Serie (2 Staffeln à 3 Folgen)
+  mkdir -p hls-long img
+  ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=480x270:rate=24" -f lavfi -i "sine=frequency=330:sample_rate=44100" -t 180 \
+    -c:v libx264 -preset veryfast -b:v 300k -g 48 -pix_fmt yuv420p -c:a aac -b:a 64k \
+    -f hls -hls_time 4 -hls_playlist_type vod -hls_segment_filename "hls-long/seg%03d.ts" hls-long/index.m3u8
+  ffmpeg -loglevel error -y -f lavfi -i "testsrc2=size=1280x720" -frames:v 1 img/film.jpg
+  ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=1280x720" -frames:v 1 img/serie.jpg
+  cat > film.html <<'HTML'
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Der Testfilm</title><meta property="og:title" content="Der Testfilm"><meta property="og:image" content="/img/film.jpg"><meta property="og:description" content="Drei Minuten Farbbalken in ruhigem Tempo. Ein Film über Geduld.">
+<style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}#p{height:200px;background:#222;color:#aaa;display:grid;place-items:center}</style></head>
+<body><h1>Der Testfilm</h1><div id="p">Player</div>
+<script>setTimeout(function(){var items=[{title:'Der Testfilm',sources:[{file:'/hls-long/index.m3u8',type:'hls'}]}];var api={getPlaylist:function(){return items},getPlaylistItem:function(){return items[0]},on:function(){return api}};window.jwplayer=function(){return api};},1500);</script>
+</body></html>
+HTML
+  for s in 1 2; do for e in 1 2 3; do
+    mkdir -p serie/staffel-$s
+    cat > serie/staffel-$s/episode-$e.html <<HTML
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Testserie – Staffel $s, Folge $e</title><meta property="og:title" content="Testserie – Staffel $s, Folge $e"><meta property="og:image" content="/img/serie.jpg"><meta property="og:description" content="Eine Serie aus Testbildern.">
+<style>body{font-family:sans-serif;margin:16px;background:#f4f1ea}#p{height:200px;background:#222;color:#aaa;display:grid;place-items:center}</style></head>
+<body><h1>Testserie – Staffel $s, Folge $e</h1><div id="p">Player</div>
+<script>setTimeout(function(){var items=[{title:'Testserie – Staffel $s, Folge $e',sources:[{file:'/hls/master.m3u8',type:'hls'}]}];var api={getPlaylist:function(){return items},getPlaylistItem:function(){return items[0]},on:function(){return api}};window.jwplayer=function(){return api};},1500);</script>
+</body></html>
+HTML
+  done; done
 fi
 
 echo "Testseite in $DIR – im Emulator: http://10.0.2.2:$PORT/"
