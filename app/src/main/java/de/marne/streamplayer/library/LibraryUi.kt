@@ -1,5 +1,6 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.catalog.Tmdb
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -76,7 +77,7 @@ fun WideTile(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box {
-            Thumb(image, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 22.dp)
+            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 22.dp)
             if (badge != null) {
                 Row(
                     Modifier.align(Alignment.TopStart).padding(8.dp)
@@ -119,7 +120,7 @@ fun PosterTile(
 ) {
     Column(Modifier.width(width).combinedClickable(onClick = onClick)) {
         Box {
-            Thumb(image, Modifier.fillMaxWidth().aspectRatio(2f / 3f), radius = 18.dp)
+            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(2f / 3f), radius = 18.dp)
             if (watched) {
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(8.dp).clip(RoundedCornerShape(50)).background(Palette.ink).padding(4.dp)
@@ -156,7 +157,7 @@ fun HeroCard(
 ) {
     GCard(tone = "ink", padding = 0.dp, radius = 28.dp, onClick = onOpen) {
         Column {
-            Thumb(image, Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 0.dp)
+            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 0.dp)
             Column(Modifier.padding(22.dp)) {
                 Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.onInk.copy(alpha = 0.7f))
                 VSpace(6.dp)

@@ -466,7 +466,7 @@ private fun ImagesSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
         if (uri != null) {
             if (target == "poster") Share.embedImage(context, uri)?.let { change(t.copy(poster = it)) }
-            else Share.embedImage(context, uri, maxW = 1280, maxH = 720)?.let { change(t.copy(backdrop = it)) }
+            else Share.embedImage(context, uri, maxW = 1920, maxH = 1080)?.let { change(t.copy(backdrop = it)) }
         }
     }
     Text(

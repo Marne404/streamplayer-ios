@@ -176,13 +176,23 @@ object Share {
 
     fun playerInstalled(context: Context) = players.any { p -> runCatching { context.packageManager.getPackageInfo(p, 0) }.isSuccess }
 
-    /** Eigenes Bild in den Katalog einbetten: verkleinert, als data:-URI. Übersteht so jede Weitergabe. */
-    fun embedImage(context: Context, uri: Uri, maxW: Int = 500, maxH: Int = 750): String? = runCatching {
-        val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return null
+    /**
+     * Eigenes Bild in den Katalog einbetten: verkleinert, als data:-URI. Übersteht so jede Weitergabe.
+     * 1000×1500 statt früher 500×750: ein Poster wird im Player auch über die volle Breite gezeigt
+     * (Hero, Detailseite) und war dort sichtbar unscharf. Kostet je Cover etwa 200–300 KB im Katalog.
+     */
+    fun embedImage(context: Context, uri: Uri, maxW: Int = 1000, maxH: Int = 1500): String? = runCatching {
+        // Erst Maße, dann grob vorverkleinert dekodieren – ein großes Kamerafoto sprengt sonst den Speicher.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxW && bounds.outHeight / (sample * 2) >= maxH) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bmp = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
         val scale = minOf(1f, maxW.toFloat() / bmp.width, maxH.toFloat() / bmp.height)
         val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
         val out = ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 82, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, 86, out)
         "data:image/jpeg;base64," + Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
     }.getOrNull()
 

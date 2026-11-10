@@ -66,6 +66,7 @@ import de.marne.streamplayer.browser.BrowserController
 import de.marne.streamplayer.browser.BrowserScreen
 import de.marne.streamplayer.browser.WatchController
 import de.marne.streamplayer.library.ResolveInfo
+import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.ui.Format
 import de.marne.streamplayer.library.ResolveScreen
 import android.app.ActivityOptions
@@ -325,8 +326,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             ).joinToString(" · "),
             subtitle = ep?.title,
             // Nur echte Bilder ihrer Art: ein Breitbild als „Poster“ gequetscht sah doppelt aus.
-            image = ep?.still ?: t.backdrop ?: t.tmdb?.backdrop,
-            poster = t.customPoster ?: t.poster ?: t.tmdb?.poster,
+            image = Tmdb.large(ep?.still ?: t.backdrop ?: t.tmdb?.backdrop),
+            poster = Tmdb.large(t.customPoster ?: t.poster ?: t.tmdb?.poster),
             download = download,
         )
         nav.closeInstant = false

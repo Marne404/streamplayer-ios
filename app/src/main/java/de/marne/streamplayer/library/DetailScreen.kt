@@ -1,5 +1,6 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.catalog.Tmdb
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -96,12 +97,12 @@ fun DetailScreen(t: LibTitle, progress: Map<String, Progress>, actions: DetailAc
         }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
-                Thumb(t.wide ?: t.offline.values.firstOrNull(), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 24.dp)
+                Thumb(Tmdb.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 24.dp)
                 VSpace(20.dp)
                 // Cover und Titel nebeneinander, wie in einer Mediathek.
                 Row(verticalAlignment = Alignment.Bottom) {
                     if (t.cover != null && t.cover != t.wide) {
-                        Thumb(t.cover, Modifier.size(width = 92.dp, height = 138.dp), radius = 14.dp)
+                        Thumb(Tmdb.large(t.cover), Modifier.size(width = 92.dp, height = 138.dp), radius = 14.dp)
                         HSpace(16.dp)
                     }
                     Column(Modifier.weight(1f)) {

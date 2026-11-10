@@ -62,13 +62,20 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
     /** Eigenes Cover aus der Galerie: verkleinert nach filesDir/posters kopieren. */
     suspend fun saveCustomPoster(source: Uri, titleId: String): String? = withContext(Dispatchers.IO) {
         runCatching {
-            val bmp = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it) } ?: return@runCatching null
-            val scale = minOf(1f, 1000f / maxOf(bmp.width, bmp.height))
+            // Erst nur die Maße lesen, dann grob vorverkleinert dekodieren: ein 50-MP-Foto in voller
+            // Größe braucht 200 MB Speicher. Die Zweierpotenz bleibt über dem Ziel, fein skaliert wird danach.
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 1800) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = context.contentResolver.openInputStream(source)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return@runCatching null
+            val scale = minOf(1f, 1800f / maxOf(bmp.width, bmp.height))
             val scaled = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
             val dir = File(context.filesDir, "posters").apply { mkdirs() }
             dir.listFiles { f -> f.name.startsWith("$titleId-custom") }?.forEach { it.delete() }
             val f = File(dir, "$titleId-custom-${System.currentTimeMillis()}.jpg")
-            f.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+            f.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 90, it) }
             Uri.fromFile(f).toString()
         }.getOrNull()
     }

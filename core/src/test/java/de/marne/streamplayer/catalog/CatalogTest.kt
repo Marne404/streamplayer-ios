@@ -94,7 +94,7 @@ class CatalogTest {
             "poster_path":"/p.jpg","backdrop_path":"/b.jpg","overview":"Ein Lehrer …"}]}""")
         val r = Tmdb.parseSearch(search, Tmdb.Kind.TV).single()
         assertEquals(2008, r.year)
-        assertEquals("https://image.tmdb.org/t/p/w500/p.jpg", r.poster)
+        assertEquals("https://image.tmdb.org/t/p/w780/p.jpg", r.poster)
         assertEquals("https://image.tmdb.org/t/p/w1280/b.jpg", r.backdrop)
 
         val details = Tmdb.parseDetails(JSONObject("""{"id":1396,"name":"Breaking Bad","episode_run_time":[47],
@@ -109,5 +109,16 @@ class CatalogTest {
         val movie = Tmdb.parseDetails(JSONObject("""{"id":27205,"title":"Inception","release_date":"2010-07-15","runtime":148,"poster_path":null}"""), Tmdb.Kind.MOVIE)
         assertEquals(148, movie.runtimeMin)
         assertNull(movie.result.poster)
+    }
+
+    // Anlass: Standbilder (w300) und alte Poster (w500) waren über die volle Breite sichtbar unscharf.
+    @Test fun tmdbLargeImages() {
+        assertEquals("https://image.tmdb.org/t/p/original/a.jpg", Tmdb.large("https://image.tmdb.org/t/p/w300/a.jpg"))
+        assertEquals("https://image.tmdb.org/t/p/w780/b.jpg", Tmdb.large("https://image.tmdb.org/t/p/w500/b.jpg"))
+        assertEquals("https://image.tmdb.org/t/p/w1280/c.jpg", Tmdb.large("https://image.tmdb.org/t/p/w1280/c.jpg"))
+        // Fremde Adressen und eingebettete Bilder bleiben unangetastet – auch wenn „/w300/“ darin vorkommt.
+        assertEquals("https://example.to/w300/d.jpg", Tmdb.large("https://example.to/w300/d.jpg"))
+        assertEquals("file:///data/posters/x.jpg", Tmdb.large("file:///data/posters/x.jpg"))
+        assertNull(Tmdb.large(null))
     }
 }
