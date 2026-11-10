@@ -1,6 +1,11 @@
 package de.marne.streamplayer.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -28,7 +33,6 @@ import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.RowDivider
-import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.VSpace
 import de.marne.streamplayer.ui.tr
 
@@ -47,13 +51,22 @@ fun MineScreen(state: LibState, actions: LibActions) {
 
     LazyColumn(Modifier.fillMaxSize().background(Palette.bg), contentPadding = PaddingValues(bottom = 40.dp)) {
         item {
-            Row(Modifier.statusBarsPadding().padding(start = 20.dp, end = 12.dp, top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-                de.marne.streamplayer.account.ProfileAvatar(state.profile, 56.dp)
-                Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                    Text(tr("MEIN BEREICH", "MY STUFF"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                    Text(state.profile.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // Profil links (antippen = wechseln), Einstellungen rechts – beides wohnt jetzt hier.
+            Row(Modifier.statusBarsPadding().padding(start = 20.dp, end = 8.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).clickable(onClick = actions.profiles).padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    de.marne.streamplayer.account.ProfileAvatar(state.profile, 56.dp)
+                    Column(Modifier.padding(start = 16.dp)) {
+                        Text(state.profile.name, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr("Profil wechseln", "Switch profile"), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                            de.marne.streamplayer.ui.design.GIcon(Ic.expandMore, tint = Palette.muted, size = 16.dp)
+                        }
+                    }
                 }
-                QuietButton(tr("Wechseln", "Switch"), color = Palette.text, onClick = actions.profiles)
+                androidx.compose.material3.IconButton(onClick = actions.settings) { de.marne.streamplayer.ui.design.GIcon(Ic.settings) }
             }
         }
         item { StatsCard(stats, Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp)) }
@@ -71,12 +84,12 @@ fun MineScreen(state: LibState, actions: LibActions) {
         }
         if (myList.isNotEmpty()) {
             shelf(tr("Meine Liste", "My List"), key = "m-list", onAll = { actions.grid(GridSpec("list")) }) {
-                items(myList, key = { "ml" + it.id }) { TitlePoster(it, state, actions) }
+                items(myList, key = { "ml" + it.id }) { TitlePoster(it, state, actions, origin = "mine") }
             }
         } else {
             item {
                 Column(Modifier.padding(horizontal = 20.dp)) {
-                    SectionTitle(tr("Meine Liste", "My List"))
+                    SectionHeading(tr("Meine Liste", "My List"))
                     Text(
                         tr(
                             "Noch leer. Tippe bei einem Titel auf „Meine Liste“, dann liegt er hier – auch auf deinen anderen Geräten.",
@@ -87,9 +100,14 @@ fun MineScreen(state: LibState, actions: LibActions) {
                 }
             }
         }
+        // Eigene Sammlungen: Karten mit einer Collage der ersten vier Cover, am Ende „Neue Sammlung“.
+        shelf(tr("Sammlungen", "Collections"), key = "m-collections", onAll = null) {
+            items(state.collections, key = { "mcol" + it.id }) { c -> CollectionCard(c, state) { actions.grid(GridSpec("collection", c.id)) } }
+            item(key = "mcol-new") { NewCollectionCard(actions.newCollection) }
+        }
         item {
             Column(Modifier.padding(horizontal = 20.dp)) {
-                SectionTitle(tr("Bibliothek", "Library"))
+                SectionHeading(tr("Bibliothek", "Library"))
                 ListGroup {
                     ListRow(
                         "Downloads", icon = Ic.download,
@@ -157,5 +175,45 @@ private fun Fact(value: String, label: String) {
     Column {
         Text(value, style = MaterialTheme.typography.titleMedium, color = Palette.onInk)
         Text(label, style = MaterialTheme.typography.labelMedium, color = Palette.onInk.copy(alpha = 0.7f))
+    }
+}
+
+/** Sammlung als Karte: bis zu vier Cover als Collage, darunter Name und Anzahl. */
+@Composable
+private fun CollectionCard(c: de.marne.streamplayer.account.TitleCollection, state: LibState, onClick: () -> Unit) {
+    val press = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val covers = c.items.mapNotNull(state::byId).take(4).map { it.cover ?: it.wide }
+    Column(Modifier.width(148.dp).pressScale(press, 0.96f).clickable(interactionSource = press, indication = null, onClick = onClick)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).background(Palette.surface2),
+        ) {
+            if (covers.isEmpty()) de.marne.streamplayer.ui.design.GIcon(Ic.bookmark, tint = Palette.faint, size = 28.dp, modifier = Modifier.align(Alignment.Center))
+            // Ein Cover füllt die Karte; erst ab zwei wird es eine Collage (sonst stünde eine leere Hälfte da).
+            else if (covers.size == 1) de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.Tmdb.largeModel(covers[0]), Modifier.fillMaxSize(), radius = 0.dp)
+            else Column {
+                (if (covers.size == 2) listOf(covers) else covers.chunked(2)).forEach { row ->
+                    Row(Modifier.weight(1f)) {
+                        row.forEach { m -> de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.Tmdb.largeModel(m), Modifier.weight(1f).fillMaxSize(), radius = 0.dp) }
+                        if (row.size == 1) Box(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        VSpace(8.dp)
+        Text(c.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(if (c.items.size == 1) tr("1 Titel", "1 title") else tr("${c.items.size} Titel", "${c.items.size} titles"), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+    }
+}
+
+@Composable
+private fun NewCollectionCard(onClick: () -> Unit) {
+    Column(Modifier.width(148.dp).clickable(onClick = onClick)) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1f).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp))
+                .border(1.5.dp, Palette.line, androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+            contentAlignment = Alignment.Center,
+        ) { de.marne.streamplayer.ui.design.GIcon(Ic.add, tint = Palette.muted, size = 30.dp) }
+        VSpace(8.dp)
+        Text(tr("Neue Sammlung", "New collection"), style = MaterialTheme.typography.titleSmall, color = Palette.muted)
     }
 }

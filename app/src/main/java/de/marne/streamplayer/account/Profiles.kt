@@ -33,17 +33,21 @@ data class Profile(
     val list: List<String> = emptyList(),
     /** Profilsperre wie bei Netflix: Hash der vierstelligen PIN ([PinHash]), null = offen. */
     val lock: String? = null,
+    /** Eigene Sammlungen („Weihnachten“, „Mit den Kindern“). Gehören dem Profil wie „Meine Liste“. */
+    val collections: List<TitleCollection> = emptyList(),
 ) {
     val locked: Boolean get() = lock != null
 
     fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("color", color).put("createdAt", createdAt)
         .put("list", JSONArray(list)).put("lock", lock)
+        .put("collections", JSONArray().apply { collections.forEach { put(it.toJson()) } })
 
     companion object {
         fun fromJson(o: JSONObject) = Profile(
             o.getString("id"), o.optString("name", "Profil"), o.optInt("color"), o.optLong("createdAt"),
             o.optJSONArray("list")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
             if (o.isNull("lock")) null else o.optString("lock").takeIf { it.isNotEmpty() },
+            o.optJSONArray("collections")?.let { a -> List(a.length()) { TitleCollection.fromJson(a.getJSONObject(it)) } }.orEmpty(),
         )
         /** Das erste Profil übernimmt den Fortschritt aus der Zeit vor den Profilen. */
         const val DEFAULT_ID = "main"
@@ -125,6 +129,33 @@ class ProfileStore(context: Context) {
                 else p.copy(list = listOf(titleId) + p.list)
             }
         }
+    }
+
+    // --- Eigene Sammlungen (des aktiven Profils) ---
+
+    private fun editActive(change: (Profile) -> Profile) {
+        val id = _activeId.value
+        _profiles.update { list -> list.map { if (it.id == id) change(it) else it } }
+    }
+
+    /** Neue Sammlung, optional gleich mit einem ersten Titel. Gibt ihre ID zurück. */
+    fun createCollection(name: String, firstTitle: String? = null): String {
+        val c = TitleCollection(UUID.randomUUID().toString(), name.trim().ifEmpty { "…" }, listOfNotNull(firstTitle), System.currentTimeMillis())
+        editActive { it.copy(collections = it.collections + c) }
+        return c.id
+    }
+
+    fun renameCollection(id: String, name: String) = editActive { p ->
+        p.copy(collections = p.collections.map { if (it.id == id) it.copy(name = name.trim().ifEmpty { it.name }) else it })
+    }
+
+    fun deleteCollection(id: String) = editActive { p -> p.copy(collections = p.collections.filterNot { it.id == id }) }
+
+    /** Titel in die Sammlung (vorn) oder wieder heraus. */
+    fun toggleInCollection(id: String, titleId: String) = editActive { p ->
+        p.copy(collections = p.collections.map { c ->
+            if (c.id != id) c else if (titleId in c.items) c.copy(items = c.items - titleId) else c.copy(items = listOf(titleId) + c.items)
+        })
     }
 
     /** PIN setzen (4 Ziffern) oder mit null die Sperre aufheben. */
@@ -217,4 +248,17 @@ object PinHash {
     }
 
     private fun b64(b: ByteArray) = java.util.Base64.getEncoder().withoutPadding().encodeToString(b)
+}
+
+/** Eine eigene Sammlung: Name und Titel-IDs, die zuletzt hinzugefügten vorn. */
+data class TitleCollection(val id: String, val name: String, val items: List<String>, val createdAt: Long) {
+    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("items", JSONArray(items)).put("createdAt", createdAt)
+
+    companion object {
+        fun fromJson(o: JSONObject) = TitleCollection(
+            o.getString("id"), o.optString("name"),
+            o.optJSONArray("items")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
+            o.optLong("createdAt"),
+        )
+    }
 }

@@ -7,14 +7,16 @@ import de.marne.streamplayer.download.DownloadItem
 sealed interface Route {
     val key: String
 
-    data class Detail(val id: String) : Route { override val key get() = "detail:$id" }
+    /** [origin]: Schlüssel des Covers, aus dem die Seite aufgeht (sharedCover) – null ohne Flug. */
+    data class Detail(val id: String, val origin: String? = null) : Route { override val key get() = "detail:$id" }
     data class Grid(val spec: GridSpec) : Route { override val key get() = "grid:${spec.kind}:${spec.arg}" }
     data object Downloads : Route { override val key get() = "downloads" }
+    data object Settings : Route { override val key get() = "settings" }
 }
 
 /**
  * Was eine Übersicht zeigt. [kind]: genre (arg = Name), foryou, because (arg = Titel-ID), continue,
- * list, new, top, series, movies, offline, watched, all, nogenre.
+ * list, new, top, series, movies, offline, watched, all, nogenre, collection (arg = Sammlungs-ID).
  */
 data class GridSpec(val kind: String, val arg: String? = null)
 
@@ -28,6 +30,8 @@ class LibState(
 ) {
     val myList: List<String> get() = profile.list
     fun inList(t: LibTitle) = t.id in profile.list
+    val collections: List<de.marne.streamplayer.account.TitleCollection> get() = profile.collections
+    fun collectionsWith(t: LibTitle) = profile.collections.filter { t.id in it.items }
     fun byId(id: String) = titles.firstOrNull { it.id == id }
 }
 
@@ -35,6 +39,13 @@ class LibState(
 class LibActions(
     /** Detailseite öffnen. */
     val open: (LibTitle) -> Unit,
+    /** Detailseite öffnen, das Cover [origin] fliegt hinein (siehe sharedCover). */
+    val show: (LibTitle, String) -> Unit,
+    /** Blatt „Zu Sammlung hinzufügen“. */
+    val collect: (LibTitle) -> Unit,
+    /** Neue, leere Sammlung anlegen (Name abfragen). */
+    val newCollection: () -> Unit,
+    val settings: () -> Unit,
     /** Kurzansicht (Blatt) wie bei Netflix: Abspielen, Meine Liste, „Details & Folgen“. */
     val preview: (LibTitle) -> Unit,
     /** Abspielen; bei Serien ohne Folge: die nächste fällige. */

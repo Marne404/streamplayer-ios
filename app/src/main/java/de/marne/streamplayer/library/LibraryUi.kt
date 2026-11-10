@@ -118,6 +118,7 @@ fun PosterTile(
     progress: Float? = null,
     watched: Boolean = false,
     badge: String? = null,
+    sharedKey: String? = null,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ) {
@@ -127,7 +128,7 @@ fun PosterTile(
             .combinedClickable(interactionSource = press, indication = null, onClick = onClick, onLongClick = onLongClick)
     ) {
         Box {
-            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(2f / 3f), radius = 18.dp)
+            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(2f / 3f).sharedCover(sharedKey, 18.dp), radius = 18.dp)
             if (badge != null) {
                 Text(
                     badge, style = MaterialTheme.typography.labelSmall, color = Palette.onInk,

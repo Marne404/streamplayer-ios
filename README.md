@@ -171,25 +171,38 @@ erscheinen.
 
 ## Mediathek
 
-Seit 1.7.0 ist die Bibliothek wie Netflix aufgebaut. Das Kleid bleibt Ivory & Ink. Unten gibt es
-vier Tabs: **Start**, **Entdecken**, **Meins** und **Einstellungen**. Detailseiten und Übersichten
-legen sich als Stapel über den aktuellen Tab. Zurück nimmt die oberste Seite weg, ein Tabwechsel
-leert den Stapel (`AppNav.stack`, `Route`).
+Seit 1.7.0 ist die Bibliothek wie Netflix aufgebaut, seit 1.9.0 mit neuem Layout. Das Kleid
+bleibt Ivory & Ink. Unten schwebt eine Leiste mit drei Zielen: **Start**, **Entdecken** und **Meins**.
+Eine Markierung gleitet unter das gewählte Ziel, nur dieses ist beschriftet. Die Einstellungen
+sind eine Seite unter „Meins“ (Zahnrad). Detailseiten und Übersichten legen sich als Stapel über
+den Tab (`AppNav.stack`, `Route`).
 
-- **Start:** Ganz oben steht „Für <Profil>“ mit Lupe und Profilbild. Darunter folgen Filter
-  (Serien, Filme, Kategorien), die die ganze Seite filtern. Dann kommt eine große Empfehlung, das
-  Poster mit Genres und den Knöpfen „Abspielen“ und „Meine Liste“. Dahinter liegt derselbe Titel
-  unscharf als Abglanz. Danach folgen die Regale:
-  - Weiterschauen
-  - Meine Liste
-  - Für dich
-  - Top 10 (große Serifen-Ziffern)
-  - Weil du „…“ geschaut hast
-  - Neu in der Bibliothek
-  - Genre-Regale
-  - Offline
-
-  Jedes Regal hat „Alle“, das führt zur Übersicht.
+- **Start:**
+  - Oben steht eine **Bühne** (`HeroStage`): bis zu sechs Empfehlungen randlos und groß zum
+    Durchwischen, mit langsamem Kamerazoom, Genres, Fakten und „Abspielen“ / „Meine Liste“ / Info.
+    Alle 8 s geht es weiter.
+  - Darüber liegt ein flacher Kopf (Gruß, Suche, Profil, Filter Serien/Filme/Kategorien).
+  - Darunter folgen die Regale, jeweils mit ruhiger Überschrift und Pfeil zu „Alle“:
+    - Weiterschauen
+    - Meine Liste
+    - die eigenen **Sammlungen**
+    - Für dich (als breite **Kino-Karten**)
+    - Top 10
+    - Weil du „…“ geschaut hast
+    - Neu
+    - Genres (das erste als Kino-Reihe)
+    - Offline
+- **Tippen und langes Drücken:** Tippen auf ein Cover öffnet die Detailseite. Dabei fliegt das
+  Cover in das Detailbild und beim Zurück wieder an seinen Platz (`sharedCover`,
+  `SharedTransitionLayout`; die Seiten blenden nur, damit sich nur ein Ding bewegt). Langes
+  Drücken öffnet die Kurzansicht. Bei „Weiterschauen“ spielt Tippen weiter.
+- **Sammlungen** gehören zum Profil (`Profile.collections`) und werden mit ihm abgeglichen.
+  - Anlegen: auf der Detailseite oder in der Kurzansicht über „Sammlung“ (dort auch gleich
+    „Neue Sammlung“), oder in „Meins“ über die Karte „+“.
+  - Jede Sammlung hat eine Übersicht mit Stift (umbenennen, löschen).
+- **Detailseite:** Die Aktionen haben feste Plätze: Meine Liste, Sammlung, Gesehen, Laden.
+  Bearbeiten (Cover, Name, TMDB, Seite, Entfernen) liegt hinter dem Stift oben rechts, statt in
+  einem Drei-Punkte-Menü. Folgen: Tippen spielt sie, langes Drücken öffnet ihre Optionen.
 - **Kurzansicht:** Ein Tipp auf ein Poster öffnet ein Blatt mit Abspielen, Meine Liste,
   Gesehen und Laden. „Details & Folgen“ führt weiter. Langer Druck öffnet direkt die Detailseite.
 - **Entdecken:** Die Suche läuft über Titel, Originaltitel, Besetzung, Regie, Genre und Jahr.

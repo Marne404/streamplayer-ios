@@ -63,7 +63,7 @@ import java.time.format.DateTimeFormatter
  * Zeilen mit Schalter schalten auf der ganzen Fläche – den kleinen Schalter allein trifft man schlecht.
  */
 @Composable
-fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast: (String) -> Unit, onProfiles: () -> Unit) {
+fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast: (String) -> Unit, onProfiles: () -> Unit, onBack: (() -> Unit)? = null) {
     val app = App.instance
     val theme by settings.theme.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
@@ -84,6 +84,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
         Modifier.fillMaxSize().background(Palette.bg),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 40.dp),
     ) {
+        // Seit 1.9 eine Seite unter „Meins“: mit Zurück.
+        if (onBack != null) item { androidx.compose.material3.IconButton(onClick = onBack) { de.marne.streamplayer.ui.design.GIcon(Ic.back) } }
         item { ScreenHeader(title = tr("Wie soll es laufen?", "How should it run?"), eyebrow = tr("Einstellungen", "Settings")) }
 
         item { SectionTitle(tr("Konto", "Account")) }

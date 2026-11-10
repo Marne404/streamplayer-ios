@@ -50,6 +50,7 @@ private fun headline(spec: GridSpec, state: LibState): Pair<String, String> {
         "offline" -> "Offline" to tr("Ohne Netz", "No connection needed")
         "watched" -> tr("Gesehen", "Watched") to state.profile.name
         "nogenre" -> tr("Ohne Genre", "No genre") to tr("Bibliothek", "Library")
+        "collection" -> (state.collections.firstOrNull { it.id == spec.arg }?.name ?: "…") to tr("Sammlung", "Collection")
         else -> tr("Alle Titel", "All titles") to tr("Bibliothek", "Library")
     }
 }
@@ -73,6 +74,7 @@ fun gridTitles(spec: GridSpec, state: LibState): List<LibTitle> {
         "offline" -> t.filter { it.offline.isNotEmpty() }
         "watched" -> t.filter { Recommend.seen(it, p) == Recommend.Seen.DONE }
         "nogenre" -> t.filter { it.genres.isEmpty() }
+        "collection" -> state.collections.firstOrNull { it.id == spec.arg }?.items?.mapNotNull(state::byId).orEmpty()
         else -> t.sortedBy { it.title.lowercase() }
     }
 }
@@ -83,6 +85,10 @@ fun gridTitles(spec: GridSpec, state: LibState): List<LibTitle> {
  */
 @Composable
 fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
+    var editing by remember { mutableStateOf(false) }
+    if (editing) state.collections.firstOrNull { it.id == spec.arg }?.let { c ->
+        CollectionEditDialog(c, onDismiss = { editing = false }, onDeleted = { editing = false; actions.back() })
+    }
     var kind by rememberSaveable(spec) { mutableStateOf<TitleKind?>(null) }
     // „Natürlich“ = die Reihenfolge, die das Regal selbst hat; die anderen Sortierungen ordnen um.
     var sort by rememberSaveable(spec) { mutableStateOf<Recommend.Sort?>(null) }
@@ -125,7 +131,10 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                GridHead(title, eyebrow, if (shown.size == 1) tr("1 Titel", "1 title") else tr("${shown.size} Titel", "${shown.size} titles"), actions.back)
+                GridHead(
+                    title, eyebrow, if (shown.size == 1) tr("1 Titel", "1 title") else tr("${shown.size} Titel", "${shown.size} titles"), actions.back,
+                    onEdit = if (spec.kind == "collection") ({ editing = true }) else null,
+                )
                 if (mixed) KindChips(kind, { kind = it }, Modifier.padding(bottom = 10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Recommend.Sort.entries) { s ->
@@ -136,12 +145,13 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
                 VSpace(14.dp)
             }
         }
-        items(shown, key = { it.id }) { t -> TitlePoster(t, state, actions, width = 400.dp) }
+        items(shown, key = { it.id }) { t -> TitlePoster(t, state, actions, width = 400.dp, origin = "grid-${spec.kind}${spec.arg.orEmpty()}") }
         if (shown.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     when (spec.kind) {
                         "list" -> tr("Noch nichts vorgemerkt. Bei einem Titel auf „Meine Liste“ tippen.", "Nothing saved yet. Tap “My List” on any title.")
+                        "collection" -> tr("Noch leer. Bei einem Titel auf „Sammlung“ tippen.", "Empty so far. Tap “Collection” on any title.")
                         "watched" -> tr("Noch nichts fertig geschaut.", "Nothing finished yet.")
                         else -> tr("Hier ist nichts.", "Nothing here.")
                     },
@@ -153,9 +163,13 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
 }
 
 @Composable
-private fun GridHead(title: String, eyebrow: String, count: String, onBack: () -> Unit) {
+private fun GridHead(title: String, eyebrow: String, count: String, onBack: () -> Unit, onEdit: (() -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().statusBarsPadding()) {
-        IconButton(onClick = onBack, modifier = Modifier.padding(top = 4.dp)) { GIcon(Ic.back) }
+        Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { GIcon(Ic.back) }
+            androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+            if (onEdit != null) IconButton(onClick = onEdit) { GIcon(Ic.edit) }
+        }
         Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted, modifier = Modifier.padding(top = 4.dp))
         VSpace(6.dp)
         Row(verticalAlignment = Alignment.Bottom) {
@@ -163,4 +177,30 @@ private fun GridHead(title: String, eyebrow: String, count: String, onBack: () -
         }
         Text(count, style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(top = 4.dp, bottom = 18.dp))
     }
+}
+
+/** Sammlung umbenennen oder löschen. Löschen nimmt nur die Sammlung weg, nicht die Titel. */
+@Composable
+private fun CollectionEditDialog(c: de.marne.streamplayer.account.TitleCollection, onDismiss: () -> Unit, onDeleted: () -> Unit) {
+    val app = de.marne.streamplayer.App.instance
+    var name by remember { mutableStateOf(c.name) }
+    var confirm by remember { mutableStateOf(false) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.bg,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+        title = { Text(if (confirm) tr("„${c.name}“ löschen?", "Delete “${c.name}”?") else tr("Sammlung bearbeiten", "Edit collection"), style = MaterialTheme.typography.headlineSmall) },
+        text = {
+            if (confirm) Text(tr("Die Titel bleiben in der Bibliothek.", "The titles stay in your library."), color = Palette.muted)
+            else Column {
+                de.marne.streamplayer.ui.design.IvoryField(name, { name = it.take(40) }, tr("Name", "Name"))
+                de.marne.streamplayer.ui.design.QuietButton(tr("Sammlung löschen", "Delete collection"), color = Palette.wine) { confirm = true }
+            }
+        },
+        confirmButton = {
+            if (confirm) de.marne.streamplayer.ui.design.QuietButton(tr("Löschen", "Delete"), color = Palette.wine) { app.profiles.deleteCollection(c.id); onDeleted() }
+            else de.marne.streamplayer.ui.design.QuietButton(tr("Speichern", "Save"), color = Palette.text) { app.profiles.renameCollection(c.id, name); onDismiss() }
+        },
+        dismissButton = { de.marne.streamplayer.ui.design.QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onDismiss) },
+    )
 }

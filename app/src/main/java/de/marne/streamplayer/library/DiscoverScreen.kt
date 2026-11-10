@@ -45,7 +45,6 @@ import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.RowDivider
-import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.VSpace
 import de.marne.streamplayer.ui.tr
 
@@ -99,14 +98,14 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
         }
 
         if (genres.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(tr("Kategorien", "Categories")) }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeading(tr("Kategorien", "Categories")) }
             items(genres, key = { "g" + it.first }) { (g, n) ->
                 GenreCard(g, n, genreImages[g], Modifier.fillMaxWidth()) { actions.grid(GridSpec("genre", g)) }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                SectionTitle(tr("Stöbern", "Browse"))
+                SectionHeading(tr("Stöbern", "Browse"))
                 val t = state.titles
                 ListGroup {
                     ListRow(tr("Alle Titel", "All titles"), icon = Ic.library, value = t.size.toString(), onClick = { actions.grid(GridSpec("all")) })

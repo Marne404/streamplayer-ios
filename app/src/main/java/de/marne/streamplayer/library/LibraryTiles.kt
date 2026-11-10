@@ -93,7 +93,7 @@ fun isNew(t: LibTitle, progress: Map<String, Progress>): Boolean =
 
 /** Poster mit allem, was aus dem Zustand folgt: Fortschritt (Film), Haken (fertig), „NEU“. */
 @Composable
-fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 116.dp, showMeta: Boolean = true) {
+fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 116.dp, showMeta: Boolean = true, origin: String = "x") {
     val seen = Recommend.seen(t, state.progress)
     val p = if (t.kind == TitleKind.MOVIE) state.progress[Keys.movie(t)] else null
     PosterTile(
@@ -104,8 +104,10 @@ fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 1
         progress = p?.takeIf { !it.finished }?.fraction,
         watched = seen == Recommend.Seen.DONE,
         badge = if (isNew(t, state.progress)) tr("NEU", "NEW") else null,
-        onLongClick = { actions.open(t) },
-        onClick = { actions.preview(t) },
+        // Antippen öffnet die Seite (das Cover fliegt hinein), langes Drücken die Kurzansicht.
+        sharedKey = coverKey(origin, t.id),
+        onLongClick = { actions.preview(t) },
+        onClick = { actions.show(t, coverKey(origin, t.id)) },
     )
 }
 
@@ -115,7 +117,7 @@ fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 1
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TopTenTile(rank: Int, t: LibTitle, onClick: () -> Unit, onLongClick: () -> Unit) {
+fun TopTenTile(rank: Int, t: LibTitle, onClick: () -> Unit, onLongClick: () -> Unit, sharedKey: String? = null) {
     val press = remember { MutableInteractionSource() }
     Box(
         Modifier.width(if (rank >= 10) 196.dp else 168.dp).pressScale(press, 0.96f)
@@ -132,7 +134,7 @@ fun TopTenTile(rank: Int, t: LibTitle, onClick: () -> Unit, onLongClick: () -> U
         )
         Thumb(
             Tmdb.largeModel(t.cover ?: t.offline.values.firstOrNull()),
-            Modifier.align(Alignment.CenterEnd).width(108.dp).aspectRatio(2f / 3f),
+            Modifier.align(Alignment.CenterEnd).width(108.dp).aspectRatio(2f / 3f).sharedCover(sharedKey, 16.dp),
             radius = 16.dp,
         )
     }
@@ -181,7 +183,7 @@ fun LazyListScope.shelf(
 ) {
     item(key = "shelf-$key") {
         Column(Modifier.animateItem()) {
-            SectionTitle(name, modifier = Modifier.padding(horizontal = 20.dp), action = if (onAll != null) tr("Alle", "See all") else null, onAction = onAll)
+            ShelfTitle(name, onAll)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(spacing),

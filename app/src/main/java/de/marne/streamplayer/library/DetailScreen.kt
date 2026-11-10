@@ -65,6 +65,9 @@ import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Serif
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.navigationBarsPadding
 import de.marne.streamplayer.ui.tr
 
 /** Was nur die Detailseite kann: Titel bearbeiten, Cover, TMDB, Seite öffnen, entfernen. */
@@ -83,8 +86,10 @@ class DetailActions(
  * die Reiter „Folgen“ und „Ähnliche“, Filme nur „Ähnliche“.
  */
 @Composable
-fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: DetailActions) {
+fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: DetailActions, origin: String? = null) {
     var renaming by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf(false) }
+    var episodeMenu by remember { mutableStateOf<Episode?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
     val progress = state.progress
     val next = remember(t, progress) { Shelves.nextFor(t, progress) }
@@ -99,7 +104,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 48.dp)) {
-            item(key = "hero") { DetailHero(t) }
+            item(key = "hero") { DetailHero(t, origin) }
             item(key = "info") { Info(t, state, actions, next, seen) }
 
             if (t.kind == TitleKind.SERIES) {
@@ -126,16 +131,21 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                         }
                     }
                     items(episodes.filter { it.season == season }, key = { "e${it.season}:${it.number}" }) { e ->
-                        EpisodeRow(t, e, progress[Keys.episode(t, e)], t.offline[Keys.episode(t, e)] != null, actions, detail)
+                        EpisodeRow(t, e, progress[Keys.episode(t, e)], t.offline[Keys.episode(t, e)] != null, actions, onMenu = { episodeMenu = e })
                     }
                 } else similarGrid(similar, state, actions)
             } else if (similar.isNotEmpty()) {
-                item(key = "simtitle") { SectionTitle(tr("Ähnliche Titel", "More like this"), modifier = Modifier.padding(horizontal = 20.dp)) }
+                item(key = "simtitle") { ShelfTitle(tr("Ähnliche Titel", "More like this"), null) }
                 similarGrid(similar, state, actions)
             }
         }
 
-        DetailTopBar(t, solid, actions, detail, onRename = { renaming = true }, onRemove = { confirmRemove = true })
+        DetailTopBar(t, solid, actions, onEdit = { editing = true })
+    }
+
+    if (editing) EditSheet(t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true })
+    episodeMenu?.let { e ->
+        EpisodeSheet(t, e, progress[Keys.episode(t, e)], t.offline[Keys.episode(t, e)] != null, actions, detail, onDismiss = { episodeMenu = null })
     }
 
     if (renaming) TextDialog(tr("Umbenennen", "Rename"), t.title, tr("Titel", "Title"), onDismiss = { renaming = false }) {
@@ -154,9 +164,12 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
 
 /** Randloses Bild; oben abgedunkelt für Statusleiste und Knöpfe, unten in den Grund verlaufend. */
 @Composable
-private fun DetailHero(t: LibTitle) {
+private fun DetailHero(t: LibTitle, origin: String?) {
     Box(Modifier.fillMaxWidth().aspectRatio(16f / 11f)) {
-        Thumb(Tmdb.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxSize(), radius = 0.dp)
+        // Das angetippte Cover landet hier: dieselbe Ebene, die wandert und wächst (sharedCover).
+        Box(Modifier.fillMaxSize().sharedCover(origin, 0.dp)) {
+            Thumb(Tmdb.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxSize(), radius = 0.dp)
+        }
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.3f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Palette.bg)))
     }
@@ -190,10 +203,7 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
         }
         if (t.kind == TitleKind.MOVIE) {
             val offline = t.offline[Keys.movie(t)] != null
-            if (!offline && t.pageUrl != null) {
-                VSpace(10.dp)
-                SecondaryButton(tr("Laden", "Download"), icon = Ic.download) { actions.download(t, null) }
-            } else if (offline) {
+            if (offline) {
                 VSpace(10.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     GIcon(Ic.check, tint = Palette.green, size = 16.dp)
@@ -202,13 +212,16 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
             }
         }
         VSpace(14.dp)
+        // Immer dieselben vier Plätze in derselben Reihenfolge – man findet sie blind.
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             ActionIcon(if (state.inList(t)) Ic.check else Ic.add, tr("Meine Liste", "My List"), active = state.inList(t)) { actions.toggleList(t) }
+            ActionIcon(Ic.bookmark, tr("Sammlung", "Collection"), active = state.collectionsWith(t).isNotEmpty()) { actions.collect(t) }
             ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                 actions.markWatched(t, seen != Recommend.Seen.DONE)
             }
-            if (t.kind == TitleKind.SERIES && next != null) {
-                ActionIcon(Ic.download, tr("Folge laden", "Download episode")) { actions.download(t, next.first) }
+            val canLoad = if (t.kind == TitleKind.MOVIE) t.offline[Keys.movie(t)] == null && t.pageUrl != null else next != null
+            if (canLoad) ActionIcon(Ic.download, if (t.kind == TitleKind.MOVIE) tr("Laden", "Download") else tr("Folge laden", "Episode")) {
+                actions.download(t, if (t.kind == TitleKind.MOVIE) null else next?.first)
             }
         }
 
@@ -292,7 +305,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: 
     val rows = similar.chunked(3)
     items(rows.size, key = { "sim$it" }) { i ->
         Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            rows[i].forEach { s -> Box(Modifier.weight(1f)) { TitlePoster(s, state, actions, width = 400.dp) } }
+            rows[i].forEach { s -> Box(Modifier.weight(1f)) { TitlePoster(s, state, actions, width = 400.dp, origin = "sim") } }
             repeat(3 - rows[i].size) { Spacer(Modifier.weight(1f)) }
         }
     }
@@ -303,10 +316,14 @@ private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: 
  * rechts Laden; darunter der Inhalt in drei Zeilen.
  */
 @Composable
-private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, actions: LibActions, detail: DetailActions) {
-    val key = Keys.episode(t, e)
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, actions: LibActions, onMenu: () -> Unit) {
     val watched = p?.finished == true
-    Column(Modifier.fillMaxWidth().clickable { actions.play(t, e) }.padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp)) {
+    // Antippen spielt, langes Drücken öffnet die Optionen – kein Drei-Punkte-Menü je Zeile.
+    Column(
+        Modifier.fillMaxWidth().combinedClickable(onClick = { actions.play(t, e) }, onLongClick = onMenu)
+            .padding(start = 20.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(132.dp).aspectRatio(16f / 9f)) {
                 Thumb(Tmdb.largeModel(e.still ?: t.wide), Modifier.fillMaxSize(), radius = 12.dp)
@@ -340,10 +357,6 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
             }
             if (offline) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { GIcon(Ic.check, tint = Palette.green, size = 20.dp) }
             else IconButton(onClick = { actions.download(t, e) }) { GIcon(Ic.download, tint = Palette.muted, size = 20.dp) }
-            RowMenu(buildList {
-                add(MenuAction(if (watched) tr("Als ungesehen markieren", "Mark as unwatched") else tr("Als gesehen markieren", "Mark as watched")) { actions.setWatched(key, !watched) })
-                add(MenuAction(tr("Seite öffnen", "Open page")) { detail.openPage(e.url) })
-            })
         }
         e.overview?.let {
             VSpace(8.dp)
@@ -354,7 +367,7 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
 
 /** Zurück und Menü schweben über dem Bild; beim Scrollen wird daraus eine ruhige Kopfzeile mit Titel. */
 @Composable
-private fun DetailTopBar(t: LibTitle, solid: Boolean, actions: LibActions, detail: DetailActions, onRename: () -> Unit, onRemove: () -> Unit) {
+private fun DetailTopBar(t: LibTitle, solid: Boolean, actions: LibActions, onEdit: () -> Unit) {
     val alpha by animateFloatAsState(if (solid) 1f else 0f, tween(220, easing = SpringEase), label = "bar")
     Row(
         Modifier.fillMaxWidth().background(Palette.bg.copy(alpha = alpha)).statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -366,14 +379,7 @@ private fun DetailTopBar(t: LibTitle, solid: Boolean, actions: LibActions, detai
             else Spacer(Modifier.fillMaxWidth())
         }
         CircleButton(solid) {
-            RowMenu(buildList {
-                add(MenuAction(tr("Cover ändern", "Change cover")) { detail.changeCover(t) })
-                if (t.customPoster != null) add(MenuAction(tr("Eigenes Cover entfernen", "Remove custom cover")) { detail.resetCover(t) })
-                detail.refreshTmdb?.let { r -> add(MenuAction(tr("TMDB neu laden", "Reload from TMDB")) { r(t) }) }
-                add(MenuAction(tr("Umbenennen", "Rename")) { onRename() })
-                t.pageUrl?.let { url -> add(MenuAction(tr("Seite öffnen", "Open page")) { detail.openPage(url) }) }
-                add(MenuAction(tr("Entfernen", "Remove"), destructive = true) { onRemove() })
-            })
+            IconButton(onClick = onEdit) { GIcon(Ic.edit) }
         }
     }
 }
@@ -396,4 +402,84 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
         confirmButton = { QuietButton(tr("Speichern", "Save"), color = Palette.text) { onConfirm(text) } },
         dismissButton = { QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onDismiss) },
     )
+}
+
+/** Bearbeiten an einem Ort: Cover, Name, TMDB, Seite, Entfernen – statt eines Drei-Punkte-Menüs. */
+@Composable
+private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit) {
+    val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun then(block: () -> Unit) {
+        scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); block() }
+    }
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss, sheetState = sheet, containerColor = Palette.bg, contentColor = Palette.text,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp), tonalElevation = 0.dp,
+        dragHandle = { de.marne.streamplayer.ui.design.SheetHandle() },
+    ) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding()) {
+            Text(tr("BEARBEITEN", "EDIT"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            VSpace(6.dp)
+            Text(t.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            VSpace(18.dp)
+            de.marne.streamplayer.ui.design.ListGroup {
+                de.marne.streamplayer.ui.design.ListRow(tr("Cover ändern", "Change cover"), icon = Ic.image, onClick = { then { detail.changeCover(t) } })
+                if (t.customPoster != null) {
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(tr("Eigenes Cover entfernen", "Remove custom cover"), icon = Ic.minus, showChevron = false, onClick = { then { detail.resetCover(t) } })
+                }
+                de.marne.streamplayer.ui.design.RowDivider()
+                de.marne.streamplayer.ui.design.ListRow(tr("Umbenennen", "Rename"), icon = Ic.editNote, onClick = { then(onRename) })
+                detail.refreshTmdb?.let { r ->
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(tr("TMDB neu laden", "Reload from TMDB"), icon = Ic.refresh, showChevron = false, onClick = { then { r(t) } })
+                }
+                t.pageUrl?.let { url ->
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(tr("Seite öffnen", "Open page"), icon = Ic.openNew, onClick = { then { detail.openPage(url) } })
+                }
+            }
+            VSpace(12.dp)
+            de.marne.streamplayer.ui.design.ListGroup {
+                de.marne.streamplayer.ui.design.ListRow(tr("Aus der Bibliothek entfernen", "Remove from library"), icon = Ic.delete, titleColor = Palette.wine, showChevron = false, onClick = { then(onRemove) })
+            }
+        }
+    }
+}
+
+/** Optionen einer Folge (langes Drücken): abspielen, laden, gesehen, Seite. */
+@Composable
+private fun EpisodeSheet(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, actions: LibActions, detail: DetailActions, onDismiss: () -> Unit) {
+    val watched = p?.finished == true
+    val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun then(block: () -> Unit) {
+        scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); block() }
+    }
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss, sheetState = sheet, containerColor = Palette.bg, contentColor = Palette.text,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp), tonalElevation = 0.dp,
+        dragHandle = { de.marne.streamplayer.ui.design.SheetHandle() },
+    ) {
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding()) {
+            Text(e.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            VSpace(6.dp)
+            Text(e.title ?: tr("Folge ${e.number}", "Episode ${e.number}"), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            VSpace(18.dp)
+            de.marne.streamplayer.ui.design.ListGroup {
+                de.marne.streamplayer.ui.design.ListRow(tr("Abspielen", "Play"), icon = Ic.play, showChevron = false, onClick = { then { actions.play(t, e) } })
+                if (!offline) {
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(tr("Laden", "Download"), icon = Ic.download, showChevron = false, onClick = { then { actions.download(t, e) } })
+                }
+                de.marne.streamplayer.ui.design.RowDivider()
+                de.marne.streamplayer.ui.design.ListRow(
+                    if (watched) tr("Als ungesehen markieren", "Mark as unwatched") else tr("Als gesehen markieren", "Mark as watched"),
+                    icon = Ic.checkCircle, showChevron = false, onClick = { then { actions.setWatched(Keys.episode(t, e), !watched) } },
+                )
+                de.marne.streamplayer.ui.design.RowDivider()
+                de.marne.streamplayer.ui.design.ListRow(tr("Seite öffnen", "Open page"), icon = Ic.openNew, onClick = { then { detail.openPage(e.url) } })
+            }
+        }
+    }
 }

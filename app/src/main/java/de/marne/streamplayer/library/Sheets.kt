@@ -1,6 +1,15 @@
 package de.marne.streamplayer.library
 
 import androidx.compose.foundation.layout.Arrangement
+import de.marne.streamplayer.ui.design.QuietButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -91,6 +100,7 @@ fun QuickSheet(t: LibTitle, state: LibState, actions: LibActions, onDismiss: () 
             VSpace(12.dp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ActionIcon(if (state.inList(t)) Ic.check else Ic.add, tr("Meine Liste", "My List"), active = state.inList(t)) { actions.toggleList(t) }
+                ActionIcon(Ic.bookmark, tr("Sammlung", "Collection"), active = state.collectionsWith(t).isNotEmpty()) { then { actions.collect(t) } }
                 ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                     actions.markWatched(t, seen != Recommend.Seen.DONE)
                 }
@@ -167,4 +177,87 @@ fun CategorySheet(state: LibState, kind: TitleKind?, actions: LibActions, onDism
             }
         }
     }
+}
+
+/**
+ * „Zu Sammlung hinzufügen“: alle eigenen Sammlungen mit Haken; ein Tipp nimmt den Titel auf oder
+ * heraus. Unten eine neue anlegen – sie bekommt den Titel gleich mit.
+ */
+@Composable
+fun CollectionSheet(t: LibTitle, state: LibState, onDismiss: () -> Unit) {
+    val app = de.marne.streamplayer.App.instance
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var naming by remember { mutableStateOf(false) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheet,
+        containerColor = Palette.bg,
+        contentColor = Palette.text,
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
+        tonalElevation = 0.dp,
+        dragHandle = { SheetHandle() },
+    ) {
+        LazyColumn(Modifier.heightIn(max = 560.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            item {
+                Text(tr("SAMMLUNGEN", "COLLECTIONS"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                VSpace(6.dp)
+                Text(tr("„${t.title}“ sammeln.", "Add “${t.title}” to…"), style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                VSpace(18.dp)
+            }
+            item {
+                ListGroup {
+                    state.collections.forEachIndexed { i, c ->
+                        if (i > 0) RowDivider()
+                        val inside = t.id in c.items
+                        ListRow(
+                            title = c.name,
+                            subtitle = if (c.items.size == 1) tr("1 Titel", "1 title") else tr("${c.items.size} Titel", "${c.items.size} titles"),
+                            icon = Ic.bookmark,
+                            showChevron = false,
+                            onClick = { app.profiles.toggleInCollection(c.id, t.id) },
+                            trailing = { CheckDot(inside) },
+                        )
+                    }
+                    if (state.collections.isNotEmpty()) RowDivider()
+                    ListRow(tr("Neue Sammlung", "New collection"), icon = Ic.add, showChevron = false, onClick = { naming = true })
+                }
+            }
+        }
+    }
+    if (naming) CollectionNameDialog(tr("Neue Sammlung", "New collection"), "", onDismiss = { naming = false }) { name ->
+        app.profiles.createCollection(name, t.id)
+        naming = false
+    }
+}
+
+/** Runder Haken, der sich füllt (Federschlag) – statt eines Kontrollkästchens. */
+@Composable
+fun CheckDot(checked: Boolean) {
+    val s by androidx.compose.animation.core.animateFloatAsState(if (checked) 1f else 0f, androidx.compose.animation.core.tween(320, easing = BouncyEase), label = "check")
+    Box(
+        Modifier.size(26.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .border(1.5.dp, if (checked) Palette.ink else Palette.line, androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.size(26.dp).graphicsLayer { scaleX = s; scaleY = s; alpha = s.coerceIn(0f, 1f) }
+                .clip(androidx.compose.foundation.shape.CircleShape).background(Palette.ink),
+            contentAlignment = Alignment.Center,
+        ) { GIcon(Ic.check, tint = Palette.onInk, size = 16.dp) }
+    }
+}
+
+/** Name für eine Sammlung: neu oder umbenennen. */
+@Composable
+fun CollectionNameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var name by remember { mutableStateOf(initial) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Palette.bg,
+        shape = RoundedCornerShape(28.dp),
+        title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
+        text = { de.marne.streamplayer.ui.design.IvoryField(name, { name = it.take(40) }, tr("z. B. Filmabend", "e.g. Movie night")) },
+        confirmButton = { QuietButton(tr("Speichern", "Save"), color = if (name.isNotBlank()) Palette.text else Palette.faint) { if (name.isNotBlank()) onConfirm(name) } },
+        dismissButton = { QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onDismiss) },
+    )
 }

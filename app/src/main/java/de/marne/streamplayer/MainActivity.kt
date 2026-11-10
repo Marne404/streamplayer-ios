@@ -23,6 +23,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -153,7 +161,11 @@ class AppNav {
         tab = t
     }
 
-    fun openDetail(id: String) = push(Route.Detail(id))
+    fun openDetail(id: String, origin: String? = null) = push(Route.Detail(id, origin))
+
+    /** „Zu Sammlung hinzufügen“ für diesen Titel; und ob gerade eine neue Sammlung benannt wird. */
+    var collectFor by mutableStateOf<String?>(null)
+    var naming by mutableStateOf(false)
     /** Geteilter Link: null = kein Sheet. */
     var linkUrl by mutableStateOf<String?>(null)
     /** Geteilte/geöffnete Katalog-Datei, wird beim nächsten Durchlauf importiert. */
@@ -288,7 +300,7 @@ class MainActivity : ComponentActivity() {
         const val TAB_HOME = 0
         const val TAB_DISCOVER = 1
         const val TAB_MINE = 2
-        const val TAB_SETTINGS = 3
+        // Einstellungen sind seit 1.9 kein Tab mehr, sondern eine Seite unter „Meins“ (Zahnrad).
     }
 }
 
@@ -299,7 +311,6 @@ private val tabs = listOf(
     TabSpec({ tr("Start", "Home") }, Ic.library, Ic.libraryFilled),
     TabSpec({ tr("Entdecken", "Discover") }, Ic.search, Ic.search),
     TabSpec({ tr("Meins", "My Stuff") }, Ic.bookmark, Ic.bookmarkFilled),
-    TabSpec({ tr("Einstellungen", "Settings") }, Ic.settings, Ic.settingsFilled),
 )
 
 @Composable
@@ -577,6 +588,10 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val libActions = remember {
         LibActions(
             open = { nav.previewId = null; nav.openDetail(it.id) },
+            show = { t, origin -> nav.previewId = null; nav.openDetail(t.id, origin) },
+            collect = { nav.collectFor = it.id },
+            newCollection = { nav.naming = true },
+            settings = { nav.push(Route.Settings) },
             preview = { nav.previewId = it.id },
             play = { t, e -> if (e != null) resolve(t, e, false) else playTitle(t) },
             playContinue = { c -> resolve(c.title, c.episode, false) },
@@ -673,10 +688,11 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                             onClearBrowsingData = browser::clearBrowsingData,
                             onToast = { toast(it) },
                             onProfiles = { nav.profileManage = true; nav.profilePicker = true },
+                            onBack = libActions.back,
                         )
                     }
                 }
-                NavBar(nav.tab, activeCount = downloads.count { it.active }) { t ->
+                FloatingNav(nav.tab, activeCount = downloads.count { it.active }) { t ->
                     // Nochmal auf den aktiven Tab: zurück zu seinem Anfang.
                     if (t == nav.tab) { nav.forward = false; nav.stack.clear() } else nav.selectTab(t)
                 }
@@ -738,6 +754,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
 
         nav.previewId?.let { id ->
             libState.byId(id)?.let { t -> QuickSheet(t, libState, libActions, onDismiss = { nav.previewId = null }) }
+        }
+        nav.collectFor?.let { id ->
+            libState.byId(id)?.let { t -> de.marne.streamplayer.library.CollectionSheet(t, libState, onDismiss = { nav.collectFor = null }) }
+        }
+        if (nav.naming) de.marne.streamplayer.library.CollectionNameDialog(tr("Neue Sammlung", "New collection"), "", onDismiss = { nav.naming = false }) { name ->
+            val id = app.profiles.createCollection(name)
+            nav.naming = false
+            nav.push(Route.Grid(de.marne.streamplayer.library.GridSpec("collection", id)))
         }
         if (nav.categories) CategorySheet(libState, nav.categoriesKind, libActions, onDismiss = { nav.categories = false })
 
@@ -820,13 +844,21 @@ private fun LibraryHost(
     val route = nav.stack.lastOrNull()
     val target = (route?.key ?: "tab:${nav.tab}") to route
     val spring = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+    // Ein Rahmen für alle Seiten: darin kann ein Cover von einer Seite in die nächste fliegen.
+    androidx.compose.animation.SharedTransitionLayout {
+    val sharedScope = this
     androidx.compose.animation.AnimatedContent(
         targetState = target,
         contentKey = { it.first },
         transitionSpec = {
             val tabs = initialState.second == null && targetState.second == null
+            // Detail mit Cover-Flug: die Seiten blenden nur, bewegen tut sich allein das Cover –
+            // zwei bewegte Dinge (Seite schiebt, Cover fliegt) sähe man als Durcheinander.
+            val flight = (targetState.second as? Route.Detail)?.origin != null && nav.forward ||
+                (initialState.second as? Route.Detail)?.origin != null && !nav.forward
             when {
                 tabs -> androidx.compose.animation.fadeIn(tween(320, easing = spring)) togetherWith androidx.compose.animation.fadeOut(tween(200))
+                flight -> androidx.compose.animation.fadeIn(tween(360, delayMillis = 60, easing = spring)) togetherWith androidx.compose.animation.fadeOut(tween(240, easing = spring))
                 nav.forward -> (androidx.compose.animation.slideInHorizontally(tween(420, easing = spring)) { it / 3 } + androidx.compose.animation.fadeIn(tween(320))) togetherWith
                     (androidx.compose.animation.slideOutHorizontally(tween(420, easing = spring)) { -it / 10 } + androidx.compose.animation.fadeOut(tween(220)))
                 else -> (androidx.compose.animation.slideInHorizontally(tween(380, easing = spring)) { -it / 10 } + androidx.compose.animation.fadeIn(tween(280))) togetherWith
@@ -835,20 +867,77 @@ private fun LibraryHost(
         },
         label = "page",
     ) { (key, r) ->
+        androidx.compose.runtime.CompositionLocalProvider(
+            de.marne.streamplayer.library.LocalSharedScope provides sharedScope,
+            de.marne.streamplayer.library.LocalPageScope provides this,
+        ) {
         holder.SaveableStateProvider(key) {
             when (r) {
                 is Route.Detail -> {
                     val t = state.byId(r.id)
-                    if (t != null) DetailScreen(t, state, actions, detail)
+                    if (t != null) DetailScreen(t, state, actions, detail, r.origin)
                     else LaunchedEffect(Unit) { nav.pop() } // entfernt, während die Seite offen war
                 }
                 is Route.Grid -> GridScreen(r.spec, state, actions)
                 Route.Downloads -> DownloadsScreen(state.downloads, downloadActions, onBack = actions.back)
+                Route.Settings -> settings()
                 null -> when (nav.tab) {
-                    MainActivity.TAB_HOME -> HomeScreen(state, actions)
                     MainActivity.TAB_DISCOVER -> DiscoverScreen(state, actions, nav.focusSearch) { nav.focusSearch = false }
                     MainActivity.TAB_MINE -> MineScreen(state, actions)
-                    else -> settings()
+                    else -> HomeScreen(state, actions)
+                }
+            }
+        }
+        }
+    }
+    }
+}
+
+/**
+ * Schwebende Leiste: drei Ziele in einer Kapsel, eine Markierung gleitet unter das gewählte –
+ * ein Objekt, das wandert, statt dass an zwei Stellen etwas an- und ausgeht. Federt beim Ankommen.
+ */
+@Composable
+private fun FloatingNav(selected: Int, activeCount: Int, onSelect: (Int) -> Unit) {
+    val bouncy = androidx.compose.animation.core.CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+    val shape = RoundedCornerShape(30.dp)
+    Box(Modifier.fillMaxWidth().background(Palette.bg).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, top = 6.dp, bottom = 10.dp)) {
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.fillMaxWidth().height(60.dp)
+                .shadow(14.dp, shape, ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f), spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.12f))
+                .clip(shape).background(Palette.surface).border(1.dp, Palette.line, shape),
+        ) {
+            val w = maxWidth / tabs.size
+            val x by androidx.compose.animation.core.animateDpAsState(w * selected, tween(420, easing = bouncy), label = "navPill")
+            Box(Modifier.padding(6.dp).width(w - 12.dp).fillMaxSize().offset(x = x).clip(RoundedCornerShape(24.dp)).background(Palette.surface3))
+            Row(Modifier.fillMaxSize()) {
+                tabs.forEachIndexed { i, t ->
+                    val isSel = i == selected
+                    val tint by androidx.compose.animation.animateColorAsState(if (isSel) Palette.text else Palette.muted, tween(220), label = "navTint")
+                    Row(
+                        Modifier.weight(1f).fillMaxSize().clip(RoundedCornerShape(24.dp))
+                            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { onSelect(i) },
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box {
+                            Icon(painterResource(if (isSel) t.iconSelected else t.icon), contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+                            if (i == MainActivity.TAB_MINE && activeCount > 0) {
+                                // Messing markiert Fortschritt: die Zahl laufender Downloads.
+                                Box(Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-6).dp).size(16.dp).clip(CircleShape).background(Palette.brass), contentAlignment = Alignment.Center) {
+                                    Text("$activeCount", style = MaterialTheme.typography.labelSmall, color = Palette.onInk)
+                                }
+                            }
+                        }
+                        // Beschriftung nur beim gewählten Ziel: ruhiger, und die Kapsel bleibt schmal.
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = isSel,
+                            enter = androidx.compose.animation.fadeIn(tween(220)) + androidx.compose.animation.expandHorizontally(tween(320, easing = bouncy)),
+                            exit = androidx.compose.animation.fadeOut(tween(160)) + androidx.compose.animation.shrinkHorizontally(tween(220)),
+                        ) {
+                            Text(t.label(), style = MaterialTheme.typography.labelLarge, color = tint, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+                        }
+                    }
                 }
             }
         }

@@ -348,7 +348,11 @@ private fun PosterFan() {
     val density = LocalDensity.current
     data class Card(@DrawableRes val icon: Int, val color: Color, val side: Int)
     val cards = listOf(Card(Ic.tv, ProfileColors[3], -1), Card(Ic.movie, ProfileColors[2], 1), Card(Ic.play, ProfileColors[0], 0))
-    Box(Modifier.fillMaxWidth().height(230.dp), contentAlignment = Alignment.Center) {
+    // Der Fächer braucht gut 340 dp. Auf schmalen Bildschirmen (oder mit großer Anzeigegröße) wurde er
+    // links und rechts abgeschnitten – also mit der verfügbaren Breite verkleinern statt beschneiden.
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth().height(230.dp)) {
+    val fit = (maxWidth / 352.dp).coerceAtMost(1f)
+    Box(Modifier.fillMaxSize().graphicsLayer { scaleX = fit; scaleY = fit }, contentAlignment = Alignment.Center) {
         cards.forEachIndexed { i, c ->
             Box(
                 Modifier
@@ -372,6 +376,7 @@ private fun PosterFan() {
                 GIcon(c.icon, tint = OnProfile.copy(alpha = 0.9f), size = 44.dp)
             }
         }
+    }
     }
 }
 
