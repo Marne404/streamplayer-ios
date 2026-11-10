@@ -32,24 +32,25 @@ import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.OutlinePill
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /** Überschrift und Unterzeile einer Übersicht. */
 private fun headline(spec: GridSpec, state: LibState): Pair<String, String> {
     val genre = spec.arg?.substringBefore('|')
     return when (spec.kind) {
         "genre" -> genre.orEmpty() to "Genre"
-        "foryou" -> "Für dich" to "Empfehlungen"
-        "because" -> "Ähnlich wie „${spec.arg?.let(state::byId)?.title ?: "…"}“" to "Weil du es geschaut hast"
-        "continue" -> "Weiterschauen" to state.profile.name
-        "list" -> "Meine Liste" to state.profile.name
-        "new" -> "Neu dazu" to "Bibliothek"
-        "top" -> "Am besten bewertet" to "Nach TMDB"
-        "series" -> "Serien" to "Bibliothek"
-        "movies" -> "Filme" to "Bibliothek"
-        "offline" -> "Offline" to "Ohne Netz"
-        "watched" -> "Gesehen" to state.profile.name
-        "nogenre" -> "Ohne Genre" to "Bibliothek"
-        else -> "Alle Titel" to "Bibliothek"
+        "foryou" -> tr("Für dich", "For You") to tr("Empfehlungen", "Recommendations")
+        "because" -> (spec.arg?.let(state::byId)?.title ?: "…").let { tr("Ähnlich wie „$it“", "Similar to “$it”") } to tr("Weil du es geschaut hast", "Because you watched it")
+        "continue" -> tr("Weiterschauen", "Continue Watching") to state.profile.name
+        "list" -> tr("Meine Liste", "My List") to state.profile.name
+        "new" -> tr("Neu dazu", "Recently added") to tr("Bibliothek", "Library")
+        "top" -> tr("Am besten bewertet", "Top rated") to tr("Nach TMDB", "On TMDB")
+        "series" -> tr("Serien", "Shows") to tr("Bibliothek", "Library")
+        "movies" -> tr("Filme", "Movies") to tr("Bibliothek", "Library")
+        "offline" -> "Offline" to tr("Ohne Netz", "No connection needed")
+        "watched" -> tr("Gesehen", "Watched") to state.profile.name
+        "nogenre" -> tr("Ohne Genre", "No genre") to tr("Bibliothek", "Library")
+        else -> tr("Alle Titel", "All titles") to tr("Bibliothek", "Library")
     }
 }
 
@@ -96,7 +97,7 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            item(span = { GridItemSpan(maxLineSpan) }) { GridHead(title, eyebrow, "${cont.size} angefangen", actions.back) }
+            item(span = { GridItemSpan(maxLineSpan) }) { GridHead(title, eyebrow, tr("${cont.size} angefangen", "${cont.size} in progress"), actions.back) }
             items(cont, key = { it.key }) { c ->
                 WideTile(
                     image = c.episode?.still ?: c.title.wide, title = c.title.title, meta = continueMeta(c), width = 400.dp,
@@ -124,7 +125,7 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                GridHead(title, eyebrow, if (shown.size == 1) "1 Titel" else "${shown.size} Titel", actions.back)
+                GridHead(title, eyebrow, if (shown.size == 1) tr("1 Titel", "1 title") else tr("${shown.size} Titel", "${shown.size} titles"), actions.back)
                 if (mixed) KindChips(kind, { kind = it }, Modifier.padding(bottom = 10.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(Recommend.Sort.entries) { s ->
@@ -140,9 +141,9 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     when (spec.kind) {
-                        "list" -> "Noch nichts vorgemerkt. Bei einem Titel auf „Meine Liste“ tippen."
-                        "watched" -> "Noch nichts fertig geschaut."
-                        else -> "Hier ist nichts."
+                        "list" -> tr("Noch nichts vorgemerkt. Bei einem Titel auf „Meine Liste“ tippen.", "Nothing saved yet. Tap “My List” on any title.")
+                        "watched" -> tr("Noch nichts fertig geschaut.", "Nothing finished yet.")
+                        else -> tr("Hier ist nichts.", "Nothing here.")
                     },
                     style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(top = 12.dp),
                 )

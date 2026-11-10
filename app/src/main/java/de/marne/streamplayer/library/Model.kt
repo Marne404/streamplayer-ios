@@ -3,6 +3,7 @@ package de.marne.streamplayer.library
 import de.marne.streamplayer.catalog.EpisodeOverride
 import de.marne.streamplayer.catalog.Episodes
 import de.marne.streamplayer.catalog.SeasonSpec
+import de.marne.streamplayer.ui.tr
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -19,7 +20,7 @@ data class Episode(
     val overview: String? = null,
     val runtimeMin: Int? = null,
 ) {
-    val label: String get() = if (season == 0) "Special $number" else "S$season · F$number"
+    val label: String get() = if (season == 0) "Special $number" else tr("S$season · F$number", "S$season · E$number")
 }
 
 /** Was TMDB über eine Folge weiß. */
@@ -114,7 +115,7 @@ data class LibTitle(
     val episodeCount: Int get() = seasons.sumOf { it.episodes }
 
     fun seasonLabel(number: Int): String =
-        seasons.firstOrNull { it.number == number }?.title ?: if (number == 0) "Specials" else "Staffel $number"
+        seasons.firstOrNull { it.number == number }?.title ?: if (number == 0) "Specials" else tr("Staffel $number", "Season $number")
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("kind", kind.name); put("title", title); put("pageUrl", pageUrl)

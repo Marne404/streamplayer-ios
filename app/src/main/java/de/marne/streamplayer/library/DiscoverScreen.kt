@@ -47,6 +47,7 @@ import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /**
  * „Entdecken“: Suche über Titel, Besetzung, Genres und Jahr; ohne Suche Kategorien als Karten
@@ -79,9 +80,9 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
     ) {
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column(Modifier.statusBarsPadding().padding(top = 16.dp)) {
-                Text("ENTDECKEN", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                Text(tr("ENTDECKEN", "DISCOVER"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                 VSpace(6.dp)
-                Text("Was läuft heute?", style = MaterialTheme.typography.headlineLarge)
+                Text(tr("Was läuft heute?", "What’s on tonight?"), style = MaterialTheme.typography.headlineLarge)
                 VSpace(18.dp)
                 SearchField(query, { query = it }, focus, onDone = { focusManager.clearFocus() })
                 VSpace(if (query.isBlank()) 6.dp else 18.dp)
@@ -90,7 +91,7 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
         if (query.isNotBlank()) {
             if (results.isEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text("Nichts zu „$query“ in deiner Bibliothek.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+                    Text(tr("Nichts zu „$query“ in deiner Bibliothek.", "Nothing for “$query” in your library."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
                 }
             }
             items(results, key = { "s" + it.id }) { TitlePoster(it, state, actions, width = 400.dp) }
@@ -98,32 +99,32 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
         }
 
         if (genres.isNotEmpty()) {
-            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle("Kategorien") }
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionTitle(tr("Kategorien", "Categories")) }
             items(genres, key = { "g" + it.first }) { (g, n) ->
                 GenreCard(g, n, genreImages[g], Modifier.fillMaxWidth()) { actions.grid(GridSpec("genre", g)) }
             }
         }
         item(span = { GridItemSpan(maxLineSpan) }) {
             Column {
-                SectionTitle("Stöbern")
+                SectionTitle(tr("Stöbern", "Browse"))
                 val t = state.titles
                 ListGroup {
-                    ListRow("Alle Titel", icon = Ic.library, value = t.size.toString(), onClick = { actions.grid(GridSpec("all")) })
+                    ListRow(tr("Alle Titel", "All titles"), icon = Ic.library, value = t.size.toString(), onClick = { actions.grid(GridSpec("all")) })
                     RowDivider()
-                    ListRow("Serien", icon = Ic.tv, value = t.count { it.kind == TitleKind.SERIES }.toString(), onClick = { actions.grid(GridSpec("series")) })
+                    ListRow(tr("Serien", "Shows"), icon = Ic.tv, value = t.count { it.kind == TitleKind.SERIES }.toString(), onClick = { actions.grid(GridSpec("series")) })
                     RowDivider()
-                    ListRow("Filme", icon = Ic.movie, value = t.count { it.kind == TitleKind.MOVIE }.toString(), onClick = { actions.grid(GridSpec("movies")) })
+                    ListRow(tr("Filme", "Movies"), icon = Ic.movie, value = t.count { it.kind == TitleKind.MOVIE }.toString(), onClick = { actions.grid(GridSpec("movies")) })
                     RowDivider()
-                    ListRow("Neu dazu", icon = Ic.sparkle, onClick = { actions.grid(GridSpec("new")) })
+                    ListRow(tr("Neu dazu", "Recently added"), icon = Ic.sparkle, onClick = { actions.grid(GridSpec("new")) })
                     val rated = t.count { it.rating != null }
                     if (rated > 0) {
                         RowDivider()
-                        ListRow("Am besten bewertet", icon = Ic.bookmark, value = rated.toString(), onClick = { actions.grid(GridSpec("top")) })
+                        ListRow(tr("Am besten bewertet", "Top rated"), icon = Ic.bookmark, value = rated.toString(), onClick = { actions.grid(GridSpec("top")) })
                     }
                     val without = t.count { it.genres.isEmpty() }
                     if (without > 0 && genres.isNotEmpty()) {
                         RowDivider()
-                        ListRow("Ohne Genre", icon = Ic.info, value = without.toString(), onClick = { actions.grid(GridSpec("nogenre")) })
+                        ListRow(tr("Ohne Genre", "No genre"), icon = Ic.info, value = without.toString(), onClick = { actions.grid(GridSpec("nogenre")) })
                     }
                 }
             }
@@ -140,7 +141,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, focus: FocusR
     ) {
         GIcon(Ic.search, tint = Palette.muted, size = 20.dp)
         Box(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            if (value.isEmpty()) Text("Titel, Person, Genre, Jahr", style = MaterialTheme.typography.bodyLarge, color = Palette.faint)
+            if (value.isEmpty()) Text(tr("Titel, Person, Genre, Jahr", "Titles, people, genres, years"), style = MaterialTheme.typography.bodyLarge, color = Palette.faint)
             BasicTextField(
                 value, onChange,
                 singleLine = true,

@@ -1,5 +1,6 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.ui.tr
 import java.text.Normalizer
 import kotlin.math.sqrt
 
@@ -185,7 +186,17 @@ object Recommend {
 
     // --- Sortieren für Übersichten ---
 
-    enum class Sort(val label: String) { RECOMMENDED("Empfohlen"), NEW("Neu"), AZ("A–Z"), RATING("Bewertung"), YEAR("Jahr") }
+    enum class Sort {
+        RECOMMENDED, NEW, AZ, RATING, YEAR;
+
+        val label: String get() = when (this) {
+            RECOMMENDED -> tr("Empfohlen", "Recommended")
+            NEW -> tr("Neu", "Newest")
+            AZ -> "A–Z"
+            RATING -> tr("Bewertung", "Rating")
+            YEAR -> tr("Jahr", "Year")
+        }
+    }
 
     fun sort(list: List<LibTitle>, sort: Sort, progress: Map<String, Progress>, myList: List<String>, all: List<LibTitle>): List<LibTitle> = when (sort) {
         Sort.RECOMMENDED -> {

@@ -57,6 +57,7 @@ import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -103,47 +104,47 @@ fun HomeScreen(state: LibState, actions: LibActions) {
             if (state.enrich.running) {
                 item(key = "enrich") {
                     Row(Modifier.padding(start = 20.dp, top = 20.dp)) {
-                        Pill("TMDB ergänzt · ${state.enrich.done} von ${state.enrich.total}", icon = Ic.sparkle)
+                        Pill(tr("TMDB ergänzt · ${state.enrich.done} von ${state.enrich.total}", "Adding TMDB info · ${state.enrich.done} of ${state.enrich.total}"), icon = Ic.sparkle)
                     }
                 }
             }
             if (cont.isNotEmpty()) {
-                shelf("Weiterschauen, ${state.profile.name}", key = "continue", onAll = if (cont.size > 3) ({ actions.grid(GridSpec("continue")) }) else null) {
+                shelf(tr("Weiterschauen, ${state.profile.name}", "Continue Watching for ${state.profile.name}"), key = "continue", onAll = if (cont.size > 3) ({ actions.grid(GridSpec("continue")) }) else null) {
                     items(cont, key = { it.key }) { c ->
                         WideTile(
                             image = c.episode?.still ?: c.title.wide, title = c.title.title, meta = continueMeta(c), width = 232.dp,
                             progress = c.progress?.takeIf { !it.finished }?.fraction,
-                            badgeIcon = Ic.play, badge = if (c.isNextUp) "Nächste Folge" else null,
+                            badgeIcon = Ic.play, badge = if (c.isNextUp) tr("Nächste Folge", "Next episode") else null,
                             onClick = { actions.playContinue(c) }, onLongClick = { actions.preview(c.title) },
                         )
                     }
                 }
             }
             if (myList.isNotEmpty()) {
-                shelf("Meine Liste", key = "mylist", onAll = { actions.grid(GridSpec("list")) }) {
+                shelf(tr("Meine Liste", "My List"), key = "mylist", onAll = { actions.grid(GridSpec("list")) }) {
                     items(myList, key = { "l" + it.id }) { TitlePoster(it, state, actions) }
                 }
             }
             val fy = forYou.filter { it.id != hero?.id && it.id !in contIds }.take(15)
             if (fy.isNotEmpty()) {
-                shelf("Für dich", key = "foryou", onAll = { actions.grid(GridSpec("foryou")) }) {
+                shelf(tr("Für dich", "For You"), key = "foryou", onAll = { actions.grid(GridSpec("foryou")) }) {
                     items(fy, key = { "f" + it.id }) { TitlePoster(it, state, actions) }
                 }
             }
             if (top.size >= 3) {
-                shelf("Top 10 in deiner Bibliothek", key = "top", onAll = { actions.grid(GridSpec("top")) }, spacing = 4.dp) {
+                shelf(tr("Top 10 in deiner Bibliothek", "Top 10 in your library"), key = "top", onAll = { actions.grid(GridSpec("top")) }, spacing = 4.dp) {
                     itemsIndexed(top, key = { _, t -> "t" + t.id }) { i, t ->
                         TopTenTile(i + 1, t, onClick = { actions.preview(t) }, onLongClick = { actions.open(t) })
                     }
                 }
             }
             because?.let { (anchor, similar) ->
-                shelf("Weil du „${anchor.title}“ geschaut hast", key = "because", onAll = { actions.grid(GridSpec("because", anchor.id)) }) {
+                shelf(tr("Weil du „${anchor.title}“ geschaut hast", "Because you watched “${anchor.title}”"), key = "because", onAll = { actions.grid(GridSpec("because", anchor.id)) }) {
                     items(similar, key = { "b" + it.id }) { TitlePoster(it, state, actions) }
                 }
             }
             if (titles.size >= 8) {
-                shelf("Neu in der Bibliothek", key = "new", onAll = { actions.grid(GridSpec("new")) }) {
+                shelf(tr("Neu in der Bibliothek", "New in your library"), key = "new", onAll = { actions.grid(GridSpec("new")) }) {
                     items(newest, key = { "n" + it.id }) { TitlePoster(it, state, actions) }
                 }
             }
@@ -153,14 +154,17 @@ fun HomeScreen(state: LibState, actions: LibActions) {
                 }
             }
             if (offline.isNotEmpty()) {
-                shelf("Offline verfügbar", key = "offline", onAll = { actions.grid(GridSpec("offline")) }) {
+                shelf(tr("Offline verfügbar", "Available offline"), key = "offline", onAll = { actions.grid(GridSpec("offline")) }) {
                     items(offline, key = { "o" + it.id }) { TitlePoster(it, state, actions) }
                 }
             }
             if (genreRows.isEmpty() && state.titles.none { it.genres.isNotEmpty() }) {
                 item(key = "hint") {
                     Text(
-                        "Mit einem TMDB-Schlüssel (Einstellungen → Mediathek) kommen Genres, Bewertungen und Empfehlungen dazu.",
+                        tr(
+                            "Mit einem TMDB-Schlüssel (Einstellungen → Mediathek) kommen Genres, Bewertungen und Empfehlungen dazu.",
+                            "Add a TMDB key (Settings → Library) to get genres, ratings and recommendations.",
+                        ),
                         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 32.dp),
                     )
@@ -187,7 +191,7 @@ private fun HomeHeader(
         Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(greeting().uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                Text("Für ${state.profile.name}", style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tr("Für ${state.profile.name}", "For ${state.profile.name}"), style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = actions.search) { GIcon(Ic.search) }
             IconButton(onClick = actions.profiles) { de.marne.streamplayer.account.ProfileAvatar(state.profile, 32.dp) }
@@ -207,7 +211,7 @@ private fun CategoryPill(onClick: () -> Unit) {
         Modifier.clip(shape).border(1.dp, Palette.line, shape).clickable(onClick = onClick).padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Kategorien", style = MaterialTheme.typography.labelMedium)
+        Text(tr("Kategorien", "Categories"), style = MaterialTheme.typography.labelMedium)
         GIcon(Ic.expandMore, size = 16.dp, modifier = Modifier.padding(start = 2.dp))
     }
 }
@@ -262,7 +266,7 @@ private fun HomeHero(t: LibTitle?, state: LibState, actions: LibActions, topInse
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     ImageButton(label, Ic.play, primary = true, modifier = Modifier.weight(1f)) { actions.play(t, null) }
-                    ImageButton("Meine Liste", if (inList) Ic.check else Ic.add, primary = false, modifier = Modifier.weight(1f)) { actions.toggleList(t) }
+                    ImageButton(tr("Meine Liste", "My List"), if (inList) Ic.check else Ic.add, primary = false, modifier = Modifier.weight(1f)) { actions.toggleList(t) }
                 }
             }
         }
@@ -273,33 +277,36 @@ private fun HomeHero(t: LibTitle?, state: LibState, actions: LibActions, topInse
 fun playLabel(t: LibTitle, progress: Map<String, Progress>): String {
     if (t.kind == TitleKind.MOVIE) {
         val p = progress[Keys.movie(t)]
-        return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) "Fortsetzen" else "Abspielen"
+        return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) tr("Fortsetzen", "Resume") else tr("Abspielen", "Play")
     }
-    val next = Shelves.nextFor(t, progress) ?: return "Von vorn"
+    val next = Shelves.nextFor(t, progress) ?: return tr("Von vorn", "Play from start")
     val (e, p) = next
-    return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) "Weiter · ${e.label}"
-    else if (progress.keys.any { it.startsWith("e:${t.id}:") }) e.label else "Abspielen"
+    return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) tr("Weiter · ${e.label}", "Resume · ${e.label}")
+    else if (progress.keys.any { it.startsWith("e:${t.id}:") }) e.label else tr("Abspielen", "Play")
 }
 
 @Composable
 private fun EmptyLibrary(actions: LibActions) {
     Column(Modifier.padding(horizontal = 20.dp)) {
         VSpace(24.dp)
-        Text("Noch leer.", style = MaterialTheme.typography.headlineSmall)
+        Text(tr("Noch leer.", "Nothing here yet."), style = MaterialTheme.typography.headlineSmall)
         VSpace(6.dp)
         Text(
-            "Filme und Serien kommen als Katalog-Datei. Bauen lässt sie sich im Streamplayer Creator; von dort mit „Teilen“ direkt hierher.",
+            tr(
+                "Filme und Serien kommen als Katalog-Datei. Bauen lässt sie sich im Streamplayer Creator; von dort mit „Teilen“ direkt hierher.",
+                "Movies and shows come as a catalog file. Build one in Streamplayer Creator, then use “Share” to send it straight here.",
+            ),
             style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
         )
         VSpace(28.dp)
-        PrimaryButton("Katalog importieren", icon = Ic.importFile, onClick = actions.import)
+        PrimaryButton(tr("Katalog importieren", "Import catalog"), icon = Ic.importFile, onClick = actions.import)
         VSpace(4.dp)
-        QuietButton("Im Browser suchen", color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally), onClick = actions.browser)
+        QuietButton(tr("Im Browser suchen", "Search in browser"), color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally), onClick = actions.browser)
     }
 }
 
 private fun greeting(): String = when (LocalTime.now().hour) {
-    in 5..10 -> "Guten Morgen"
-    in 11..17 -> "Guten Tag"
-    else -> "Guten Abend"
+    in 5..10 -> tr("Guten Morgen", "Good morning")
+    in 11..17 -> tr("Guten Tag", "Good afternoon")
+    else -> tr("Guten Abend", "Good evening")
 }

@@ -20,6 +20,7 @@ import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.SheetHandle
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 class LinkActions(
     val dismiss: () -> Unit,
@@ -43,17 +44,20 @@ fun LinkSheet(url: String, actions: LinkActions) {
         dragHandle = { SheetHandle() },
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding()) {
-            Text("GETEILTER LINK", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+            Text(tr("GETEILTER LINK", "SHARED LINK"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
             VSpace(6.dp)
-            Text("Gleich ansehen?", style = MaterialTheme.typography.headlineSmall)
+            Text(tr("Gleich ansehen?", "Watch now?"), style = MaterialTheme.typography.headlineSmall)
             VSpace(6.dp)
             Text(url, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
             VSpace(24.dp)
-            PrimaryButton("Ansehen", icon = Ic.play) { actions.watchNow(url) }
-            QuietButton("Im Browser öffnen", color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally)) { actions.openInBrowser(url) }
+            PrimaryButton(tr("Ansehen", "Watch"), icon = Ic.play) { actions.watchNow(url) }
+            QuietButton(tr("Im Browser öffnen", "Open in browser"), color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally)) { actions.openInBrowser(url) }
             VSpace(4.dp)
             Text(
-                "Dauerhaft in die Bibliothek kommen Filme und Serien über Kataloge aus dem Streamplayer Creator.",
+                tr(
+                    "Dauerhaft in die Bibliothek kommen Filme und Serien über Kataloge aus dem Streamplayer Creator.",
+                    "To keep movies and shows in your library, add them through catalogs from Streamplayer Creator.",
+                ),
                 style = MaterialTheme.typography.bodySmall, color = Palette.muted,
             )
         }

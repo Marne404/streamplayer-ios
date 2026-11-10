@@ -39,16 +39,17 @@ import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /** „noch 12 Min.“ */
 fun remaining(p: Progress): String {
     val min = (p.remainingMs / 60_000).coerceAtLeast(1)
-    return if (min >= 60) "noch ${min / 60} Std. ${min % 60} Min." else "noch $min Min."
+    return if (min >= 60) tr("noch ${min / 60} Std. ${min % 60} Min.", "${min / 60} h ${min % 60} min left") else tr("noch $min Min.", "$min min left")
 }
 
 /** Metazeile eines Weiterschauen-Eintrags: „S1 · F4 · noch 12 Min.“ / „Nächste Folge · S1 · F5“ */
 fun continueMeta(c: ContinueItem): String = buildList {
-    if (c.isNextUp) add("Nächste Folge")
+    if (c.isNextUp) add(tr("Nächste Folge", "Next episode"))
     c.episode?.let { add(it.label) }
     c.progress?.takeIf { !it.finished && it.positionMs > 0 }?.let { add(remaining(it)) }
 }.joinToString(" · ")
@@ -205,8 +206,8 @@ fun titleMeta(t: LibTitle, withHost: Boolean = true): String = buildList {
     t.shownYear?.let { add(it.toString()) }
     if (t.kind == TitleKind.SERIES) {
         val real = t.seasons.count { it.number > 0 }
-        if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
-        if (t.episodeCount > 0) add("${t.episodeCount} Folgen")
+        if (real > 0) add(if (real == 1) tr("1 Staffel", "1 season") else tr("$real Staffeln", "$real seasons"))
+        if (t.episodeCount > 0) add(if (t.episodeCount == 1) tr("1 Folge", "1 episode") else tr("${t.episodeCount} Folgen", "${t.episodeCount} episodes"))
     } else {
         t.runtimeMs?.let { add(minutesText(it) ?: Format.duration(it)) }
         if (t.offline.isNotEmpty()) add("offline")
@@ -216,5 +217,5 @@ fun titleMeta(t: LibTitle, withHost: Boolean = true): String = buildList {
 
 /** Kurz für Poster-Kacheln: „2008 · 5 Staffeln“ / „2010 · 2:28:00“ */
 fun shortMeta(t: LibTitle): String =
-    if (t.kind == TitleKind.MOVIE) listOfNotNull(t.shownYear?.toString(), t.runtimeMs?.let { "${it / 60_000} Min." }).joinToString(" · ")
+    if (t.kind == TitleKind.MOVIE) listOfNotNull(t.shownYear?.toString(), t.runtimeMs?.let { tr("${it / 60_000} Min.", "${it / 60_000} min") }).joinToString(" · ")
     else titleMeta(t, withHost = false).split(" · ").take(2).joinToString(" · ")

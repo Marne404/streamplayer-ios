@@ -36,6 +36,7 @@ import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.SheetHandle
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.launch
 
 /**
@@ -89,18 +90,18 @@ fun QuickSheet(t: LibTitle, state: LibState, actions: LibActions, onDismiss: () 
             }
             VSpace(12.dp)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                ActionIcon(if (state.inList(t)) Ic.check else Ic.add, "Meine Liste", active = state.inList(t)) { actions.toggleList(t) }
-                ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) "Gesehen" else "Als gesehen", active = seen == Recommend.Seen.DONE) {
+                ActionIcon(if (state.inList(t)) Ic.check else Ic.add, tr("Meine Liste", "My List"), active = state.inList(t)) { actions.toggleList(t) }
+                ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                     actions.markWatched(t, seen != Recommend.Seen.DONE)
                 }
                 if (t.kind == TitleKind.MOVIE && t.offline.isEmpty() && t.pageUrl != null) {
-                    ActionIcon(Ic.download, "Laden") { then { actions.download(t, null) } }
+                    ActionIcon(Ic.download, tr("Laden", "Download")) { then { actions.download(t, null) } }
                 }
             }
             VSpace(8.dp)
             Hairline()
             ListRow(
-                title = if (t.kind == TitleKind.SERIES) "Folgen & Details" else "Details & mehr",
+                title = if (t.kind == TitleKind.SERIES) tr("Folgen & Details", "Episodes & details") else tr("Details & mehr", "Details & more"),
                 icon = if (t.kind == TitleKind.SERIES) Ic.tv else Ic.movie,
                 onClick = { then { actions.open(t) } },
             )
@@ -129,10 +130,10 @@ fun CategorySheet(state: LibState, kind: TitleKind?, actions: LibActions, onDism
     ) {
         LazyColumn(Modifier.heightIn(max = 620.dp), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
             item {
-                Text("KATEGORIEN", style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+                Text(tr("KATEGORIEN", "CATEGORIES"), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
                 VSpace(6.dp)
                 Text(
-                    when (kind) { TitleKind.SERIES -> "Serien nach Genre."; TitleKind.MOVIE -> "Filme nach Genre."; null -> "Wonach ist dir?" },
+                    when (kind) { TitleKind.SERIES -> tr("Serien nach Genre.", "Shows by genre."); TitleKind.MOVIE -> tr("Filme nach Genre.", "Movies by genre."); null -> tr("Wonach ist dir?", "What are you in the mood for?") },
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 VSpace(18.dp)
@@ -141,7 +142,7 @@ fun CategorySheet(state: LibState, kind: TitleKind?, actions: LibActions, onDism
                 ListGroup {
                     val allSpec = when (kind) { TitleKind.SERIES -> GridSpec("series"); TitleKind.MOVIE -> GridSpec("movies"); null -> GridSpec("all") }
                     ListRow(
-                        title = when (kind) { TitleKind.SERIES -> "Alle Serien"; TitleKind.MOVIE -> "Alle Filme"; null -> "Alle Titel" },
+                        title = when (kind) { TitleKind.SERIES -> tr("Alle Serien", "All shows"); TitleKind.MOVIE -> tr("Alle Filme", "All movies"); null -> tr("Alle Titel", "All titles") },
                         icon = Ic.library, value = titles.size.toString(),
                         onClick = { then { actions.grid(allSpec) } },
                     )
@@ -156,7 +157,10 @@ fun CategorySheet(state: LibState, kind: TitleKind?, actions: LibActions, onDism
                 if (genres.isEmpty()) {
                     VSpace(12.dp)
                     Text(
-                        "Noch keine Genres. Sie kommen von TMDB – Schlüssel unter Einstellungen → Mediathek.",
+                        tr(
+                            "Noch keine Genres. Sie kommen von TMDB – Schlüssel unter Einstellungen → Mediathek.",
+                            "No genres yet. They come from TMDB – add a key under Settings → Library.",
+                        ),
                         style = MaterialTheme.typography.bodySmall, color = Palette.muted,
                     )
                 }

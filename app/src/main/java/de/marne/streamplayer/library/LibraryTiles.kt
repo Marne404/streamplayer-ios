@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.ui.Lang
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.OutlinePill
@@ -51,7 +52,7 @@ import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Serif
 import de.marne.streamplayer.ui.design.Thumb
-import java.util.Locale
+import de.marne.streamplayer.ui.tr
 
 internal val SpringEase = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
 internal val BouncyEase = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
@@ -63,8 +64,8 @@ fun Modifier.pressScale(source: MutableInteractionSource, pressed: Float = 0.96f
     graphicsLayer { scaleX = s; scaleY = s }
 }
 
-/** „★ 7,9“ – deutsches Komma, eine Stelle. */
-fun ratingText(r: Double): String = "★ " + String.format(Locale.GERMANY, "%.1f", r)
+/** „★ 7,9“ – Komma bzw. Punkt je nach Sprache, eine Stelle. */
+fun ratingText(r: Double): String = "★ " + String.format(Lang.locale, "%.1f", r)
 
 /** „Krimi · Drama · Thriller“ */
 fun genreLine(t: LibTitle, max: Int = 3): String = t.genres.take(max).joinToString(" · ")
@@ -75,7 +76,7 @@ fun factLine(t: LibTitle): String = buildList {
     t.rating?.let { add(ratingText(it)) }
     if (t.kind == TitleKind.SERIES) {
         val real = t.seasons.count { it.number > 0 }
-        if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
+        if (real > 0) add(if (real == 1) tr("1 Staffel", "1 season") else tr("$real Staffeln", "$real seasons"))
     } else t.runtimeMs?.let { minutesText(it) }?.let(::add)
 }.joinToString(" · ")
 
@@ -83,7 +84,7 @@ fun factLine(t: LibTitle): String = buildList {
 fun minutesText(ms: Long): String? {
     val min = (ms / 60_000).toInt()
     if (min <= 0) return null
-    return if (min >= 60) "${min / 60} Std. ${min % 60} Min." else "$min Min."
+    return if (min >= 60) tr("${min / 60} Std. ${min % 60} Min.", "${min / 60} h ${min % 60} min") else tr("$min Min.", "$min min")
 }
 
 /** Neu = in den letzten sieben Tagen dazugekommen und noch nicht angefangen. */
@@ -102,7 +103,7 @@ fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 1
         width = width,
         progress = p?.takeIf { !it.finished }?.fraction,
         watched = seen == Recommend.Seen.DONE,
-        badge = if (isNew(t, state.progress)) "NEU" else null,
+        badge = if (isNew(t, state.progress)) tr("NEU", "NEW") else null,
         onLongClick = { actions.open(t) },
         onClick = { actions.preview(t) },
     )
@@ -149,7 +150,7 @@ fun GenreCard(name: String, count: Int, image: Any?, modifier: Modifier = Modifi
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.05f), 1f to Color.Black.copy(alpha = 0.78f))))
         Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
             Text(name, style = MaterialTheme.typography.titleLarge.copy(fontFamily = Serif), color = Color(0xFFF4F1EA), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (count == 1) "1 Titel" else "$count Titel", style = MaterialTheme.typography.labelMedium, color = Color(0xFFF4F1EA).copy(alpha = 0.75f))
+            Text(if (count == 1) tr("1 Titel", "1 title") else tr("$count Titel", "$count titles"), style = MaterialTheme.typography.labelMedium, color = Color(0xFFF4F1EA).copy(alpha = 0.75f))
         }
     }
 }
@@ -164,8 +165,8 @@ fun KindChips(selected: TitleKind?, onSelect: (TitleKind?) -> Unit, modifier: Mo
                 contentAlignment = Alignment.Center,
             ) { GIcon(Ic.close, size = 16.dp) }
         }
-        OutlinePill("Serien", selected = selected == TitleKind.SERIES, onClick = { onSelect(if (selected == TitleKind.SERIES) null else TitleKind.SERIES) })
-        OutlinePill("Filme", selected = selected == TitleKind.MOVIE, onClick = { onSelect(if (selected == TitleKind.MOVIE) null else TitleKind.MOVIE) })
+        OutlinePill(tr("Serien", "Shows"), selected = selected == TitleKind.SERIES, onClick = { onSelect(if (selected == TitleKind.SERIES) null else TitleKind.SERIES) })
+        OutlinePill(tr("Filme", "Movies"), selected = selected == TitleKind.MOVIE, onClick = { onSelect(if (selected == TitleKind.MOVIE) null else TitleKind.MOVIE) })
         trailing()
     }
 }
@@ -180,7 +181,7 @@ fun LazyListScope.shelf(
 ) {
     item(key = "shelf-$key") {
         Column(Modifier.animateItem()) {
-            SectionTitle(name, modifier = Modifier.padding(horizontal = 20.dp), action = if (onAll != null) "Alle" else null, onAction = onAll)
+            SectionTitle(name, modifier = Modifier.padding(horizontal = 20.dp), action = if (onAll != null) tr("Alle", "See all") else null, onAction = onAll)
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(spacing),

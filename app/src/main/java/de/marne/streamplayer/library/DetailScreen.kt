@@ -65,6 +65,7 @@ import de.marne.streamplayer.ui.design.SectionTitle
 import de.marne.streamplayer.ui.design.Serif
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 
 /** Was nur die Detailseite kann: Titel bearbeiten, Cover, TMDB, Seite öffnen, entfernen. */
 class DetailActions(
@@ -103,7 +104,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
 
             if (t.kind == TitleKind.SERIES) {
                 item(key = "tabs") {
-                    Tabs(listOf("Folgen", "Ähnliche"), tab, { tab = it }, Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp))
+                    Tabs(listOf(tr("Folgen", "Episodes"), tr("Ähnliche", "More like this")), tab, { tab = it }, Modifier.padding(start = 20.dp, end = 20.dp, top = 28.dp))
                 }
                 if (tab == 0) {
                     if (seasonNumbers.size > 1) {
@@ -116,7 +117,10 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                     if (episodes.isEmpty()) {
                         item(key = "noeps") {
                             Text(
-                                "Keine Folgen. Im Katalog fehlen Staffeln – oder TMDB liefert sie nach, sobald ein Schlüssel eingetragen ist.",
+                                tr(
+                                    "Keine Folgen. Im Katalog fehlen Staffeln – oder TMDB liefert sie nach, sobald ein Schlüssel eingetragen ist.",
+                                    "No episodes. The catalog has no seasons – or TMDB fills them in once a key is set.",
+                                ),
                                 style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(20.dp),
                             )
                         }
@@ -126,7 +130,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                     }
                 } else similarGrid(similar, state, actions)
             } else if (similar.isNotEmpty()) {
-                item(key = "simtitle") { SectionTitle("Ähnliche Titel", modifier = Modifier.padding(horizontal = 20.dp)) }
+                item(key = "simtitle") { SectionTitle(tr("Ähnliche Titel", "More like this"), modifier = Modifier.padding(horizontal = 20.dp)) }
                 similarGrid(similar, state, actions)
             }
         }
@@ -134,17 +138,17 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         DetailTopBar(t, solid, actions, detail, onRename = { renaming = true }, onRemove = { confirmRemove = true })
     }
 
-    if (renaming) TextDialog("Umbenennen", t.title, "Titel", onDismiss = { renaming = false }) {
+    if (renaming) TextDialog(tr("Umbenennen", "Rename"), t.title, tr("Titel", "Title"), onDismiss = { renaming = false }) {
         renaming = false
         detail.rename(t, it)
     }
     if (confirmRemove) AlertDialog(
         onDismissRequest = { confirmRemove = false },
         containerColor = Palette.surface,
-        title = { Text("Aus der Bibliothek entfernen?", style = MaterialTheme.typography.headlineSmall) },
-        text = { Text("Fortschritt geht verloren. Geladene Dateien bleiben unter Downloads.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
-        confirmButton = { QuietButton("Entfernen", color = Palette.wine) { confirmRemove = false; detail.remove(t) } },
-        dismissButton = { QuietButton("Behalten", color = Palette.muted) { confirmRemove = false } },
+        title = { Text(tr("Aus der Bibliothek entfernen?", "Remove from library?"), style = MaterialTheme.typography.headlineSmall) },
+        text = { Text(tr("Fortschritt geht verloren. Geladene Dateien bleiben unter Downloads.", "Your progress will be lost. Downloaded files stay in Downloads."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
+        confirmButton = { QuietButton(tr("Entfernen", "Remove"), color = Palette.wine) { confirmRemove = false; detail.remove(t) } },
+        dismissButton = { QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirmRemove = false } },
     )
 }
 
@@ -162,7 +166,7 @@ private fun DetailHero(t: LibTitle) {
 private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<Episode, Progress?>?, seen: Recommend.Seen) {
     val p = state.progress
     Column(Modifier.padding(horizontal = 20.dp)) {
-        Text((if (t.kind == TitleKind.SERIES) "Serie" else "Film").uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
+        Text((if (t.kind == TitleKind.SERIES) tr("Serie", "Show") else tr("Film", "Movie")).uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
         VSpace(6.dp)
         Text(t.title, style = MaterialTheme.typography.headlineLarge, maxLines = 3, overflow = TextOverflow.Ellipsis)
         VSpace(8.dp)
@@ -188,29 +192,29 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
             val offline = t.offline[Keys.movie(t)] != null
             if (!offline && t.pageUrl != null) {
                 VSpace(10.dp)
-                SecondaryButton("Laden", icon = Ic.download) { actions.download(t, null) }
+                SecondaryButton(tr("Laden", "Download"), icon = Ic.download) { actions.download(t, null) }
             } else if (offline) {
                 VSpace(10.dp)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     GIcon(Ic.check, tint = Palette.green, size = 16.dp)
-                    Text("Offline verfügbar", style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(start = 6.dp))
+                    Text(tr("Offline verfügbar", "Available offline"), style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(start = 6.dp))
                 }
             }
         }
         VSpace(14.dp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-            ActionIcon(if (state.inList(t)) Ic.check else Ic.add, "Meine Liste", active = state.inList(t)) { actions.toggleList(t) }
-            ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) "Gesehen" else "Als gesehen", active = seen == Recommend.Seen.DONE) {
+            ActionIcon(if (state.inList(t)) Ic.check else Ic.add, tr("Meine Liste", "My List"), active = state.inList(t)) { actions.toggleList(t) }
+            ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                 actions.markWatched(t, seen != Recommend.Seen.DONE)
             }
             if (t.kind == TitleKind.SERIES && next != null) {
-                ActionIcon(Ic.download, "Folge laden") { actions.download(t, next.first) }
+                ActionIcon(Ic.download, tr("Folge laden", "Download episode")) { actions.download(t, next.first) }
             }
         }
 
         t.tmdb?.tagline?.let {
             VSpace(18.dp)
-            Text("„$it“", style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Serif, fontStyle = FontStyle.Italic), color = Palette.text)
+            Text(tr("„$it“", "“$it”"), style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Serif, fontStyle = FontStyle.Italic), color = Palette.text)
         }
         t.text?.let {
             VSpace(12.dp)
@@ -220,8 +224,8 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
         val creators = t.tmdb?.creators.orEmpty()
         if (cast.isNotEmpty() || creators.isNotEmpty()) {
             VSpace(12.dp)
-            if (cast.isNotEmpty()) Credit("Mit", cast.take(5).joinToString(", "))
-            if (creators.isNotEmpty()) Credit(if (t.kind == TitleKind.SERIES) "Idee" else "Regie", creators.joinToString(", "))
+            if (cast.isNotEmpty()) Credit(tr("Mit", "Starring"), cast.take(5).joinToString(", "))
+            if (creators.isNotEmpty()) Credit(if (t.kind == TitleKind.SERIES) tr("Idee", "Created by") else tr("Regie", "Director"), creators.joinToString(", "))
         }
     }
 }
@@ -234,8 +238,8 @@ private fun FactsRow(t: LibTitle) {
             t.shownYear?.let { add(it.toString()) }
             if (t.kind == TitleKind.SERIES) {
                 val real = t.seasons.count { it.number > 0 }
-                if (real > 0) add(if (real == 1) "1 Staffel" else "$real Staffeln")
-                if (t.episodeCount > 0) add("${t.episodeCount} Folgen")
+                if (real > 0) add(if (real == 1) tr("1 Staffel", "1 season") else tr("$real Staffeln", "$real seasons"))
+                if (t.episodeCount > 0) add(if (t.episodeCount == 1) tr("1 Folge", "1 episode") else tr("${t.episodeCount} Folgen", "${t.episodeCount} episodes"))
             } else t.runtimeMs?.let { minutesText(it) }?.let(::add)
             t.host?.let(::add)
         }
@@ -276,7 +280,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: 
     if (similar.isEmpty()) {
         item(key = "nosim") {
             Text(
-                "Noch nichts Ähnliches – dafür braucht es Genres von TMDB und ein paar Titel mehr.",
+                tr(
+                    "Noch nichts Ähnliches – dafür braucht es Genres von TMDB und ein paar Titel mehr.",
+                    "Nothing similar yet – that takes genres from TMDB and a few more titles.",
+                ),
                 style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(20.dp),
             )
         }
@@ -318,14 +325,14 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
             }
             Column(Modifier.weight(1f).padding(start = 14.dp)) {
                 Text(
-                    e.title?.let { "${e.number}. $it" } ?: "Folge ${e.number}",
+                    e.title?.let { "${e.number}. $it" } ?: tr("Folge ${e.number}", "Episode ${e.number}"),
                     style = MaterialTheme.typography.titleSmall, color = if (watched) Palette.muted else Palette.text,
                     maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
                 val meta = buildList {
-                    e.runtimeMin?.let { add("$it Min.") }
+                    e.runtimeMin?.let { add(tr("$it Min.", "$it min")) }
                     when {
-                        watched -> add("gesehen")
+                        watched -> add(tr("gesehen", "watched"))
                         p != null && p.positionMs > 0 -> add(remaining(p))
                     }
                 }.joinToString(" · ")
@@ -334,8 +341,8 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
             if (offline) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { GIcon(Ic.check, tint = Palette.green, size = 20.dp) }
             else IconButton(onClick = { actions.download(t, e) }) { GIcon(Ic.download, tint = Palette.muted, size = 20.dp) }
             RowMenu(buildList {
-                add(MenuAction(if (watched) "Als ungesehen markieren" else "Als gesehen markieren") { actions.setWatched(key, !watched) })
-                add(MenuAction("Seite öffnen") { detail.openPage(e.url) })
+                add(MenuAction(if (watched) tr("Als ungesehen markieren", "Mark as unwatched") else tr("Als gesehen markieren", "Mark as watched")) { actions.setWatched(key, !watched) })
+                add(MenuAction(tr("Seite öffnen", "Open page")) { detail.openPage(e.url) })
             })
         }
         e.overview?.let {
@@ -360,12 +367,12 @@ private fun DetailTopBar(t: LibTitle, solid: Boolean, actions: LibActions, detai
         }
         CircleButton(solid) {
             RowMenu(buildList {
-                add(MenuAction("Cover ändern") { detail.changeCover(t) })
-                if (t.customPoster != null) add(MenuAction("Eigenes Cover entfernen") { detail.resetCover(t) })
-                detail.refreshTmdb?.let { r -> add(MenuAction("TMDB neu laden") { r(t) }) }
-                add(MenuAction("Umbenennen") { onRename() })
-                t.pageUrl?.let { url -> add(MenuAction("Seite öffnen") { detail.openPage(url) }) }
-                add(MenuAction("Entfernen", destructive = true) { onRemove() })
+                add(MenuAction(tr("Cover ändern", "Change cover")) { detail.changeCover(t) })
+                if (t.customPoster != null) add(MenuAction(tr("Eigenes Cover entfernen", "Remove custom cover")) { detail.resetCover(t) })
+                detail.refreshTmdb?.let { r -> add(MenuAction(tr("TMDB neu laden", "Reload from TMDB")) { r(t) }) }
+                add(MenuAction(tr("Umbenennen", "Rename")) { onRename() })
+                t.pageUrl?.let { url -> add(MenuAction(tr("Seite öffnen", "Open page")) { detail.openPage(url) }) }
+                add(MenuAction(tr("Entfernen", "Remove"), destructive = true) { onRemove() })
             })
         }
     }
@@ -386,7 +393,7 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
         containerColor = Palette.surface,
         title = { Text(title, style = MaterialTheme.typography.headlineSmall) },
         text = { IvoryField(text, { text = it }, placeholder) },
-        confirmButton = { QuietButton("Speichern", color = Palette.text) { onConfirm(text) } },
-        dismissButton = { QuietButton("Abbrechen", color = Palette.muted, onClick = onDismiss) },
+        confirmButton = { QuietButton(tr("Speichern", "Save"), color = Palette.text) { onConfirm(text) } },
+        dismissButton = { QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onDismiss) },
     )
 }

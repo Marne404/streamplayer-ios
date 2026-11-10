@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import de.marne.streamplayer.catalog.CatalogJson
+import de.marne.streamplayer.ui.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -18,15 +19,15 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
 
     data class Result(val added: Int, val updated: Int, val name: String?, val problems: List<String> = emptyList()) {
         val summary: String get() = buildList {
-            if (added > 0) add("$added neu")
-            if (updated > 0) add("$updated aktualisiert")
-            if (problems.isNotEmpty()) add("${problems.size} übersprungen (${problems.first()})")
-        }.joinToString(", ").ifEmpty { "Nichts Neues" }
+            if (added > 0) add(tr("$added neu", "$added new"))
+            if (updated > 0) add(tr("$updated aktualisiert", "$updated updated"))
+            if (problems.isNotEmpty()) add(tr("${problems.size} übersprungen (${problems.first()})", "${problems.size} skipped (${problems.first()})"))
+        }.joinToString(", ").ifEmpty { tr("Nichts Neues", "Nothing new") }
     }
 
     suspend fun import(uri: Uri): Result = withContext(Dispatchers.IO) {
         val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-            ?: throw IllegalStateException("Datei lässt sich nicht lesen.")
+            ?: throw IllegalStateException(tr("Datei lässt sich nicht lesen.", "Can’t read the file."))
         importText(text)
     }
 

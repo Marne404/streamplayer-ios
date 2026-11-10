@@ -83,6 +83,7 @@ import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.StatusLine
 import de.marne.streamplayer.ui.design.VSpace
+import de.marne.streamplayer.ui.tr
 import kotlin.math.exp
 
 /** Was der Ladebildschirm zeigt, solange der Stream gesucht wird. */
@@ -356,14 +357,17 @@ private fun Content(
                     when (k) {
                         0 -> Searching(state, i.download, visible, onCancel)
                         1 -> Failed(
-                            "Kein Video gefunden.",
-                            "Manche Seiten zeigen es erst nach einem Tipp. Öffne die Seite und starte es selbst.",
+                            tr("Kein Video gefunden.", "No video found."),
+                            tr(
+                                "Manche Seiten zeigen es erst nach einem Tipp. Öffne die Seite und starte es selbst.",
+                                "Some sites only show it after a tap. Open the page and start it yourself.",
+                            ),
                             null, onShowPage, onCancel,
                         )
                         else -> Failed(
-                            "Geschützt.",
+                            tr("Geschützt.", "Protected."),
                             null,
-                            "Kopierschutz (DRM). Geht nur auf der Seite selbst.",
+                            tr("Kopierschutz (DRM). Geht nur auf der Seite selbst.", "Copy protection (DRM). Only plays on the site itself."),
                             onShowPage, onCancel,
                         )
                     }
@@ -379,7 +383,7 @@ private const val INTRO_TOTAL = 150 + 4 * 30 + DUR_MOVE
 private fun ColumnScope.Searching(state: WatchController.State, download: Boolean, visible: Boolean, onCancel: () -> Unit) {
     val (phase, step) = when (state) {
         is WatchController.State.Searching -> state.phase to state.step
-        is WatchController.State.Ready -> 4 to if (download) "Download startet …" else "Gleich geht's los."
+        is WatchController.State.Ready -> 4 to if (download) tr("Download startet …", "Starting download …") else tr("Gleich geht's los.", "Starting soon.")
         else -> 0 to ""
     }
     val haptic = LocalHapticFeedback.current
@@ -402,7 +406,7 @@ private fun ColumnScope.Searching(state: WatchController.State, download: Boolea
         ) { s ->
             Text(s, style = MaterialTheme.typography.bodyMedium, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        QuietButton("Abbrechen", color = Palette.muted, onClick = onCancel)
+        QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onCancel)
     }
 }
 
@@ -466,6 +470,6 @@ private fun ColumnScope.Failed(headline: String, body: String?, protectedNote: S
         StatusLine(Ic.shieldLock, it, Palette.wine)
     }
     VSpace(24.dp)
-    PrimaryButton("Seite anzeigen", icon = Ic.browser, onClick = onShowPage)
-    QuietButton("Abbrechen", color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally), onClick = onCancel)
+    PrimaryButton(tr("Seite anzeigen", "Show page"), icon = Ic.browser, onClick = onShowPage)
+    QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, modifier = Modifier.align(Alignment.CenterHorizontally), onClick = onCancel)
 }
