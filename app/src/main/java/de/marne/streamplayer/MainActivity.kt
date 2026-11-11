@@ -274,7 +274,7 @@ class MainActivity : ComponentActivity() {
                 val data = intent.data ?: return
                 // Einladung zu einer geteilten Bibliothek: streamplayer://join/<code>
                 if (data.scheme == "streamplayer" && data.host == "join") {
-                    data.lastPathSegment?.let { nav.browserOpen = false; nav.joinCode = it }
+                    (de.marne.streamplayer.account.Sharing.codeIn(data.toString()) ?: data.lastPathSegment)?.let { nav.browserOpen = false; nav.joinCode = it }
                     return
                 }
                 if (data.scheme == "http" || data.scheme == "https") openLink(data.toString()) else importCatalog(data)

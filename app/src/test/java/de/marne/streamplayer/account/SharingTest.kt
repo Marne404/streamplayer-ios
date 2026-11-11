@@ -21,6 +21,18 @@ class SharingTest {
         assertNull(Sharing.codeIn("hallo, wie gehts?"))
     }
 
+    /** Anlass (1.13.2): Beim Abtippen ging die Einladung verloren – Groß/Klein, Leerzeichen dazwischen. */
+    @Test fun neueCodesSindAbtippbar() {
+        repeat(50) { assertTrue(Sharing.newCode().all { it.isUpperCase() || it.isDigit() }) }
+        val code = Sharing.newCode()
+        val typed = code.lowercase().chunked(4).joinToString(" ")
+        // Erkannt wird der getippte Code; join() versucht ihn dann auch in Großbuchstaben.
+        assertEquals(code, Sharing.codeIn(typed)?.uppercase())
+        assertEquals(code, Sharing.codeIn(code.chunked(4).joinToString("-")))
+        // Alte Codes mit Kleinbuchstaben bleiben gültig.
+        assertEquals("cjwUabcdefghijkmnpqrst", Sharing.codeIn("Code: cjwUabcdefghijkmnpqrst"))
+    }
+
     @Test fun geteilterTitelOhneDownloadsUndGeraetebilder() {
         val t = LibTitle(
             id = "t1", kind = TitleKind.MOVIE, title = "Film", pageUrl = "https://x/film",
