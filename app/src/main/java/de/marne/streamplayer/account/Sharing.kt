@@ -46,8 +46,8 @@ class Sharing(private val cloud: Cloud, private val library: LibraryStore) {
         // Den gemerkten Code nur weitergeben, wenn es die Einladung am Server wirklich noch gibt –
         // sonst bekäme der Freund einen Code, der nirgends hinführt.
         val known = l.invite?.takeIf { c ->
-            runCatching { db.collection("invites").document(c).get(Source.SERVER).await() }.getOrNull()
-                ?.let { it.exists() && it.getString("shareId") == l.id } ?: true // ohne Netz: nicht wegwerfen
+            val snap = try { db.collection("invites").document(c).get(Source.SERVER).await() } catch (e: FirebaseFirestoreException) { null }
+            snap?.let { it.exists() && it.getString("shareId") == l.id } ?: true // ohne Netz: nicht wegwerfen
         }
         val code = known ?: newCode().also { c ->
             db.collection("invites").document(c).set(mapOf("shareId" to l.id, "owner" to u.uid, "createdAt" to FieldValue.serverTimestamp())).await()
@@ -112,7 +112,7 @@ class Sharing(private val cloud: Cloud, private val library: LibraryStore) {
         if (invite.getString("owner") == u.uid) throw ShareException(tr("Das ist deine eigene Bibliothek.", "That's your own library."))
         val member = db.collection("shared").document(sid).collection("members").document(u.uid)
         // Schon Mitglied (etwa nach Neuinstallation): nicht noch einmal anlegen – das wäre ein Ändern, und das dürfen nur Neue nicht.
-        val already = runCatching { member.get(Source.SERVER).await().exists() }.getOrDefault(false)
+        val already = try { member.get(Source.SERVER).await().exists() } catch (e: FirebaseFirestoreException) { false }
         if (!already) firestore {
             member.set(mapOf("code" to invite.id, "name" to myName(u), "joinedAt" to FieldValue.serverTimestamp())).await()
         }

@@ -824,13 +824,21 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             }
             return@LaunchedEffect
         }
-        runCatching { app.sharing.join(code) }
-            .onSuccess { l ->
+        // Nicht in diesem Effekt warten: Er hat eben seinen eigenen Schlüssel (joinCode) geleert und
+        // wird deshalb gleich neu gestartet – das brach das Beitreten mittendrin ab („The coroutine
+        // scope left the composition“, vorher als „Einladung gibt es nicht“ gemeldet).
+        scope.launch {
+            try {
+                val l = app.sharing.join(code)
                 app.settings.setActiveLibrary(app.profiles.active.id, l.id)
                 nav.selectTab(MainActivity.TAB_HOME)
                 toast(tr("„${l.label}“ von ${l.owner ?: "deinem Freund"} ist da – nur zum Ansehen.", "“${l.label}” from ${l.owner ?: "your friend"} is here – view only."))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                toast(e.message ?: tr("Beitreten hat nicht geklappt.", "Couldn't join."))
             }
-            .onFailure { toast(it.message ?: tr("Beitreten hat nicht geklappt.", "Couldn't join.")) }
+        }
     }
     // Ein Freund hat das Teilen beendet oder einen entfernt.
     val revoked by app.sync.revoked.collectAsStateWithLifecycle()
