@@ -95,6 +95,28 @@ fun Modifier.sharedCover(key: String?, radius: Dp): Modifier = if (key == null) 
 
 fun coverKey(origin: String, id: String) = "cover-$origin-$id"
 
+/**
+ * Für Bedienelemente, die über einem Cover-Ziel liegen (Zurück, Stift). Das fliegende Cover wird
+ * über allem gezeichnet; ohne das hier lägen die Knöpfe den ganzen Flug darunter und sprängen bei
+ * der Landung schlagartig hervor. So liegen sie während des Flugs darüber und blenden erst ein,
+ * wenn das Bild fast angekommen ist (Hülle zuerst, Inhalt danach) – und gehen schneller, als sie kamen.
+ */
+fun Modifier.overFlight(): Modifier = composed {
+    val shared = LocalSharedScope.current
+    val page = LocalPageScope.current
+    if (shared == null || page == null) this
+    else with(shared) {
+        with(page) {
+            this@composed
+                .renderInSharedTransitionScopeOverlay(zIndexInOverlay = 1f)
+                .animateEnterExit(
+                    enter = fadeIn(tween(260, delayMillis = 220, easing = SpringEase)),
+                    exit = fadeOut(tween(140, easing = SpringEase)),
+                )
+        }
+    }
+}
+
 // ---------- Regal-Überschrift ----------
 
 /**
@@ -203,39 +225,41 @@ private fun HeroPage(t: LibTitle, page: Int, pager: PagerState, state: LibState,
     // clipToBounds: der Pager beschneidet seine Seiten nicht – ohne zeichnete der Zoom (und eine erste
     // Parallaxe) das Bild der Nachbarseite über Titel und Knöpfe der aktuellen.
     Box(Modifier.fillMaxSize().clipToBounds().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { actions.show(t, key) }) {
+        // Alles auf dem Bild – Verlauf, Text, Knöpfe – steckt in der fliegenden Ebene: Beim Zurück
+        // landet es mit dem Bild und blendet darin auf, statt nach der Landung hervorzuspringen.
         Box(Modifier.fillMaxSize().sharedCover(key, 0.dp)) {
             Thumb(
                 Tmdb.largeModel(t.wide ?: t.cover),
                 Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom },
                 radius = 0.dp,
             )
-        }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Palette.bg.copy(alpha = 0.7f), 0.22f to Color.Transparent, 0.5f to Color.Transparent, 0.82f to Palette.bg.copy(alpha = 0.92f), 1f to Palette.bg)))
-        Column(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 30.dp)
-                .graphicsLayer {
-                    // Der Text weicht beim Wischen etwas schneller aus als das Bild – er gehört zur Seite.
-                    val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
-                    alpha = 1f - offset.absoluteValue.coerceIn(0f, 1f)
-                },
-        ) {
-            val g = genreLine(t, 3)
-            if (g.isNotEmpty()) Text(g.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.brass, maxLines = 1)
-            VSpace(6.dp)
-            Text(t.title, style = MaterialTheme.typography.displaySmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            val facts = factLine(t)
-            if (facts.isNotEmpty()) {
-                VSpace(4.dp)
-                Text(facts, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1)
-            }
-            VSpace(18.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                StageButton(playLabel(t, state.progress), Ic.play, primary = true, modifier = Modifier.weight(1f)) { actions.play(t, null) }
-                StageButton(tr("Meine Liste", "My List"), if (state.inList(t)) Ic.check else Ic.add, primary = false, modifier = Modifier.weight(1f)) { actions.toggleList(t) }
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(Palette.surface2).clickable { actions.preview(t) },
-                    contentAlignment = Alignment.Center,
-                ) { GIcon(Ic.info, size = 22.dp) }
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Palette.bg.copy(alpha = 0.7f), 0.22f to Color.Transparent, 0.5f to Color.Transparent, 0.82f to Palette.bg.copy(alpha = 0.92f), 1f to Palette.bg)))
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 30.dp)
+                    .graphicsLayer {
+                        // Der Text weicht beim Wischen etwas schneller aus als das Bild – er gehört zur Seite.
+                        val offset = (pager.currentPage - page) + pager.currentPageOffsetFraction
+                        alpha = 1f - offset.absoluteValue.coerceIn(0f, 1f)
+                    },
+            ) {
+                val g = genreLine(t, 3)
+                if (g.isNotEmpty()) Text(g.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.brass, maxLines = 1)
+                VSpace(6.dp)
+                Text(t.title, style = MaterialTheme.typography.displaySmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val facts = factLine(t)
+                if (facts.isNotEmpty()) {
+                    VSpace(4.dp)
+                    Text(facts, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1)
+                }
+                VSpace(18.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    StageButton(playLabel(t, state.progress), Ic.play, primary = true, modifier = Modifier.weight(1f)) { actions.play(t, null) }
+                    StageButton(tr("Meine Liste", "My List"), if (state.inList(t)) Ic.check else Ic.add, primary = false, modifier = Modifier.weight(1f)) { actions.toggleList(t) }
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(Palette.surface2).clickable { actions.preview(t) },
+                        contentAlignment = Alignment.Center,
+                    ) { GIcon(Ic.info, size = 22.dp) }
+                }
             }
         }
     }

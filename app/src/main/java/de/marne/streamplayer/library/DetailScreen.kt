@@ -167,11 +167,13 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
 private fun DetailHero(t: LibTitle, origin: String?) {
     Box(Modifier.fillMaxWidth().aspectRatio(16f / 11f)) {
         // Das angetippte Cover landet hier: dieselbe Ebene, die wandert und wächst (sharedCover).
+        // Die Verläufe gehören zum Bild und fliegen mit: daneben lägen sie unter dem fliegenden
+        // Cover und erschienen erst bei der Landung – als harter Schatten, der aufploppt.
         Box(Modifier.fillMaxSize().sharedCover(origin, 0.dp)) {
             Thumb(Tmdb.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxSize(), radius = 0.dp)
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.3f to Color.Transparent)))
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Palette.bg)))
         }
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.3f to Color.Transparent)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Palette.bg)))
     }
 }
 
@@ -370,7 +372,7 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
 private fun DetailTopBar(t: LibTitle, solid: Boolean, actions: LibActions, onEdit: () -> Unit) {
     val alpha by animateFloatAsState(if (solid) 1f else 0f, tween(220, easing = SpringEase), label = "bar")
     Row(
-        Modifier.fillMaxWidth().background(Palette.bg.copy(alpha = alpha)).statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.overFlight().fillMaxWidth().background(Palette.bg.copy(alpha = alpha)).statusBarsPadding().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircleButton(solid) { IconButton(onClick = actions.back) { GIcon(Ic.back) } }

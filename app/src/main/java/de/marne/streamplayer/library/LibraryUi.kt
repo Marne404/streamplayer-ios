@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -127,8 +128,10 @@ fun PosterTile(
         Modifier.width(width).pressScale(press, 0.96f)
             .combinedClickable(interactionSource = press, indication = null, onClick = onClick, onLongClick = onLongClick)
     ) {
-        Box {
-            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(2f / 3f).sharedCover(sharedKey, 18.dp), radius = 18.dp)
+        // Pille, Haken und Fortschritt gehören zum Cover: Sie fliegen mit und blenden darin aus bzw.
+        // ein. Neben dem Cover lägen sie während des Flugs unter ihm und sprängen bei der Landung auf.
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).sharedCover(sharedKey, 18.dp)) {
+            Thumb(Tmdb.largeModel(image), Modifier.fillMaxSize(), radius = 18.dp)
             if (badge != null) {
                 Text(
                     badge, style = MaterialTheme.typography.labelSmall, color = Palette.onInk,
