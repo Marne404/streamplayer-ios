@@ -1,0 +1,16 @@
+name = "streamplayer-stats"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Nutzungsstatistik des Players (nur Zahlen), gelesen von der Admin-App (admin/).
+# Der Admin-Schlüssel liegt als Secret ADMIN_TOKEN (wrangler secret put ADMIN_TOKEN), nie hier.
+# Deployen: cd stats && npx wrangler deploy. Schema: siehe schema.sql.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "streamplayer-stats"
+database_id = "1ca7527a-81e3-4d1b-831c-d69ca91bdeba"
+
+# Täglich alte Tage löschen (index.js, cleanup): gebraucht werden 30, behalten 90.
+[triggers]
+crons = ["17 3 * * *"]

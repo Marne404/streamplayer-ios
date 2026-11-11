@@ -30,3 +30,7 @@ update/publish.log
 
 # Arbeitsordner paralleler Agenten
 .claude/worktrees/
+
+# Statistik-Worker: lokale Datenbank und Schlüssel von wrangler dev
+stats/.wrangler/
+stats/.dev.vars
