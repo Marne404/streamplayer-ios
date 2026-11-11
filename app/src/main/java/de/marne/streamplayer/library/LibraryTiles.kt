@@ -93,7 +93,7 @@ fun isNew(t: LibTitle, progress: Map<String, Progress>): Boolean =
 
 /** Poster mit allem, was aus dem Zustand folgt: Fortschritt (Film), Haken (fertig), „NEU“. */
 @Composable
-fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 116.dp, showMeta: Boolean = true, origin: String = "x") {
+fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 116.dp, showMeta: Boolean = true, origin: String = "x", showNew: Boolean = true) {
     val seen = Recommend.seen(t, state.progress)
     val p = if (t.kind == TitleKind.MOVIE) state.progress[Keys.movie(t)] else null
     PosterTile(
@@ -104,7 +104,8 @@ fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 1
         progress = p?.takeIf { !it.finished }?.fraction,
         watched = seen == Recommend.Seen.DONE,
         offline = t.offline.isNotEmpty(),
-        badge = if (isNew(t, state.progress)) tr("NEU", "NEW") else null,
+        // In „Neu in der Bibliothek“ sagt das schon die Überschrift – nicht auf jedem Cover noch einmal.
+        badge = if (showNew && isNew(t, state.progress)) tr("NEU", "NEW") else null,
         // Antippen öffnet die Seite (das Cover fliegt hinein), langes Drücken die Kurzansicht.
         sharedKey = coverKey(origin, t.id),
         onLongClick = { actions.preview(t) },

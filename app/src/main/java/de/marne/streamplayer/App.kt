@@ -105,9 +105,20 @@ class App : Application(), SingletonImageLoader.Factory {
                 add(OkHttpNetworkFetcherFactory(callFactory = { http }))
                 add(VideoFrameDecoder.Factory())
             }
+            // Bilder bleiben auf dem Gerät: Cover, Banner und Standbilder kommen nach dem ersten Mal
+            // ohne Netz (auch unterwegs). Größer als Coils Standard (2 %, höchstens 250 MB), damit
+            // „Alle Bilder vorab laden“ eine große Bibliothek ganz fasst. Gleicher Ordner wie bisher.
+            .diskCache {
+                coil3.disk.DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache").absolutePath.let { okio.Path.Companion.run { it.toPath() } })
+                    .maxSizeBytes(ARTWORK_CACHE_BYTES)
+                    .build()
+            }
             .build()
 
     companion object {
+        /** Platz für Bilder auf dem Gerät. */
+        const val ARTWORK_CACHE_BYTES = 1_500L * 1024 * 1024
         lateinit var instance: App
             private set
     }

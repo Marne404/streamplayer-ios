@@ -191,6 +191,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                         }
                     },
                 )
+                RowDivider()
+                ArtworkRow(onToast)
             }
         }
 
@@ -438,5 +440,74 @@ private fun TmdbSheet(settings: Settings, onDone: (String?) -> Unit) {
                 }
             }
         }
+    }
+}
+
+
+/**
+ * Bilder vorab laden: alle Cover und Banner (auf Wunsch auch Folgenbilder) auf das Gerät holen,
+ * damit sie unterwegs ohne Netz da sind. Zeigt Fortschritt und belegten Platz; leeren geht auch.
+ */
+@Composable
+private fun ArtworkRow(onToast: (String) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val app = de.marne.streamplayer.App.instance
+    val run by de.marne.streamplayer.library.Artwork.run.collectAsStateWithLifecycle()
+    var ask by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var episodes by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    // Platz neu messen, wenn ein Lauf fertig ist oder geleert wurde.
+    val bytes = androidx.compose.runtime.remember(run?.running, run?.done == run?.total, ask) { de.marne.streamplayer.library.Artwork.cacheBytes(context) }
+    val r = run
+    ListRow(
+        title = tr("Alle Bilder vorab laden", "Download all artwork"),
+        subtitle = when {
+            r != null && r.running -> tr("${r.done} von ${r.total} …", "${r.done} of ${r.total} …")
+            r != null && r.total > 0 -> tr("Fertig: ${r.done - r.failed} von ${r.total}", "Done: ${r.done - r.failed} of ${r.total}") + " · " + de.marne.streamplayer.ui.Format.bytes(bytes)
+            else -> tr("Cover und Banner auch ohne Netz · ${de.marne.streamplayer.ui.Format.bytes(bytes)} belegt", "Covers and banners offline too · ${de.marne.streamplayer.ui.Format.bytes(bytes)} used")
+        },
+        icon = Ic.image,
+        showChevron = false,
+        onClick = { if (r?.running == true) de.marne.streamplayer.library.Artwork.cancel() else ask = true },
+        trailing = if (r?.running == true) ({ QuietButton(tr("Stopp", "Stop"), color = Palette.muted) { de.marne.streamplayer.library.Artwork.cancel() } }) else null,
+    )
+    if (ask) {
+        val titles = app.library.titles.value
+        val base = de.marne.streamplayer.library.Artwork.urls(titles, false).size
+        val withEps = de.marne.streamplayer.library.Artwork.urls(titles, true).size
+        val metered = runCatching { context.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered }.getOrDefault(false)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = false },
+            containerColor = Palette.surface,
+            title = { Text(tr("Bilder vorab laden", "Download artwork"), style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Column {
+                    Text(
+                        tr("$base Cover und Banner. Schon geladene kommen aus dem Speicher und kosten nichts.", "$base covers and banners. Ones already stored cost nothing.") +
+                            if (metered) tr(" Du bist gerade nicht im WLAN.", " You're not on Wi-Fi right now.") else "",
+                        style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                    )
+                    if (withEps > base) {
+                        VSpace(12.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr("Auch Folgenbilder (+${withEps - base})", "Episode images too (+${withEps - base})"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            IvorySwitch(episodes) { episodes = it }
+                        }
+                    }
+                    VSpace(12.dp)
+                    QuietButton(tr("Bild-Speicher leeren", "Clear artwork storage"), color = Palette.wine) {
+                        de.marne.streamplayer.library.Artwork.clear(context)
+                        ask = false
+                        onToast(tr("Bild-Speicher geleert.", "Artwork storage cleared."))
+                    }
+                }
+            },
+            confirmButton = {
+                QuietButton(tr("Laden", "Download"), color = Palette.text) {
+                    ask = false
+                    de.marne.streamplayer.library.Artwork.start(context, titles, episodes)
+                }
+            },
+            dismissButton = { QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted) { ask = false } },
+        )
     }
 }

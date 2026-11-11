@@ -147,7 +147,7 @@ fun HomeScreen(state: LibState, actions: LibActions) {
             }
             if (titles.size >= 8) {
                 shelf(tr("Neu in der Bibliothek", "New in your library"), key = "new", onAll = { actions.grid(GridSpec("new")) }) {
-                    items(newest, key = { "n" + it.id }) { TitlePoster(it, state, actions, origin = "new") }
+                    items(newest, key = { "n" + it.id }) { TitlePoster(it, state, actions, origin = "new", showNew = false) }
                 }
             }
             genreRows.forEachIndexed { i, (genre, list) ->
@@ -176,7 +176,9 @@ fun HomeScreen(state: LibState, actions: LibActions) {
             }
         }
 
-        HomeHeader(state, kind, { kind = it }, solid, actions, Modifier.onSizeChanged { headerPx = it.height })
+        // Über dem fliegenden Cover und erst kurz vor der Landung eingeblendet (overFlight): sonst lag
+        // der Kopf beim Zurückkommen von der Detailseite unter dem Cover und sprang bei der Landung auf.
+        HomeHeader(state, kind, { kind = it }, solid, actions, Modifier.overFlight().onSizeChanged { headerPx = it.height })
     }
 }
 

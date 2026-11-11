@@ -149,7 +149,7 @@ fun GridScreen(spec: GridSpec, state: LibState, actions: LibActions) {
                 VSpace(14.dp)
             }
         }
-        items(shown, key = { it.id }) { t -> TitlePoster(t, state, actions, width = 400.dp, origin = "grid-${spec.kind}${spec.arg.orEmpty()}") }
+        items(shown, key = { it.id }) { t -> TitlePoster(t, state, actions, width = 400.dp, origin = "grid-${spec.kind}${spec.arg.orEmpty()}", showNew = spec.kind != "new") }
         if (shown.isEmpty()) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
