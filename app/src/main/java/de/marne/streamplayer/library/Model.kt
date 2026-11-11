@@ -87,16 +87,24 @@ data class LibTitle(
 
     val host: String? get() = (pageUrl ?: template)?.let { runCatching { java.net.URI(it.replace("{", "").replace("}", "")).host?.removePrefix("www.") }.getOrNull() }
 
+    /**
+     * Bild und Text stammen von der Webseite (og:image, Seitenbeschreibung) statt aus TMDB oder
+     * vom Nutzer: ein Bild aus dem Netz, das nicht von TMDB ist. Dann gewinnt TMDB, sobald es einen
+     * Treffer gibt. Anlass: Banner kam von TMDB, Cover und Beschreibung blieben die der Seite.
+     * Eigene Bilder (Datei, data:) und TMDB-Bilder aus dem Katalog gewinnen weiter.
+     */
+    val siteInfo: Boolean get() = (poster ?: backdrop)?.let(::isSiteImage) == true
+
     /** Hochformat-Cover für Regale. */
-    val cover: String? get() = customPoster ?: poster ?: tmdb?.poster ?: backdrop ?: tmdb?.backdrop
+    val cover: String? get() = customPoster ?: (if (siteInfo) tmdb?.poster ?: poster else poster ?: tmdb?.poster) ?: backdrop ?: tmdb?.backdrop
 
     /** Breitbild für Hero und Detailseite. */
-    val wide: String? get() = backdrop ?: tmdb?.backdrop ?: poster ?: tmdb?.poster ?: customPoster
+    val wide: String? get() = (if (siteInfo) tmdb?.backdrop ?: backdrop else backdrop ?: tmdb?.backdrop) ?: poster ?: tmdb?.poster ?: customPoster
 
     /** Alte Stellen fragen nach einem Bild: das breite. */
     val image: String? get() = wide
 
-    val text: String? get() = description ?: tmdb?.overview
+    val text: String? get() = if (siteInfo) tmdb?.overview ?: description else description ?: tmdb?.overview
     val genres: List<String> get() = tmdb?.genres.orEmpty()
     /** Nur mit genug Stimmen: eine 10,0 aus zwei Bewertungen ist keine Empfehlung. */
     val rating: Double? get() = tmdb?.rating?.takeIf { (tmdb.votes ?: 0) >= 20 }
@@ -213,6 +221,9 @@ data class LibTitle(
         private fun JSONArray.strings(): List<String> = List(length()) { optString(it) }.filter { it.isNotEmpty() }
     }
 }
+
+/** Bild aus dem Netz, aber nicht von TMDB – also von der Webseite. */
+internal fun isSiteImage(url: String) = url.startsWith("http") && "image.tmdb.org" !in url
 
 /** Schlüssel für Fortschritt und Offline-Dateien. */
 object Keys {

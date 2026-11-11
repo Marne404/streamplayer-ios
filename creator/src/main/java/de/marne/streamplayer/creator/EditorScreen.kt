@@ -242,7 +242,9 @@ private fun TmdbSection(t: CatalogTitle, change: (CatalogTitle) -> Unit) {
                 if (i > 0) RowDivider(inset = 92.dp)
                 Row(
                     Modifier.fillMaxWidth().clickable {
-                        change(t.copy(tmdb = TmdbRef(r.id, query.takeIf { it != t.title }), year = t.year ?: r.year, title = t.title.ifBlank { r.title }))
+                        // Verknüpft = Bilder und Text von TMDB, nicht die der Seite (Anlass: Banner kam von TMDB,
+                        // Cover und Beschreibung blieben die der Seite). Ein eigenes Bild (data:) bleibt.
+                        change(fromTmdb(t, r).copy(tmdb = TmdbRef(r.id, query.takeIf { it != t.title }), year = t.year ?: r.year, title = t.title.ifBlank { r.title }))
                         results = emptyList()
                     }.padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -502,6 +504,20 @@ private fun ImageSlot(label: String, image: String?, modifier: Modifier, onPick:
         else QuietButton("From gallery", color = Palette.text, onClick = onPick)
     }
 }
+
+/** Bilder und Beschreibung aus einem TMDB-Treffer; ein eigenes Cover (data:) bleibt. */
+fun fromTmdb(t: CatalogTitle, r: Tmdb.Result): CatalogTitle = t.copy(
+    poster = t.poster?.takeIf { it.startsWith("data:") } ?: r.poster ?: t.poster,
+    backdrop = r.backdrop ?: t.backdrop,
+    description = r.overview?.take(1200) ?: t.description,
+)
+
+/** Mit TMDB verknüpft, aber Cover noch von der Seite: Bilder und Text sollten von TMDB kommen. */
+fun hasSiteInfo(t: CatalogTitle): Boolean =
+    t.tmdb?.id != null && t.poster?.let { it.startsWith("http") && "image.tmdb.org" !in it } == true
+
+/** Ohne TMDB-Verknüpfung: von Hand zuordnen. */
+fun needsTmdb(t: CatalogTitle): Boolean = t.tmdb?.id == null
 
 /** Neuer Titel mit eindeutiger ID. */
 fun newTitle(type: CatalogType): CatalogTitle {

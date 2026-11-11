@@ -33,6 +33,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import de.marne.streamplayer.ui.design.OutlinePill
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -174,8 +175,21 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
     val store = CreatorApp.instance.store
     val catalog by store.catalog.collectAsState()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val series = catalog.titles.filter { it.type == CatalogType.SERIES }.sortedBy { it.title.lowercase() }
-    val movies = catalog.titles.filter { it.type == CatalogType.MOVIE }.sortedBy { it.title.lowercase() }
+    // Filter: alles, ohne TMDB (von Hand zuordnen), oder verknüpft, aber Cover/Text noch von der Seite.
+    var filter by rememberSaveable { mutableStateOf("all") }
+    val unlinked = catalog.titles.count(::needsTmdb)
+    val siteInfo = catalog.titles.count(::hasSiteInfo)
+    // Nichts mehr übrig im gewählten Filter (alles zugeordnet): wieder alles zeigen.
+    val active = if (filter == "notmdb" && unlinked == 0 || filter == "site" && siteInfo == 0) "all" else filter
+    val shown = when (active) {
+        "notmdb" -> catalog.titles.filter(::needsTmdb)
+        "site" -> catalog.titles.filter(::hasSiteInfo)
+        else -> catalog.titles
+    }
+    val series = shown.filter { it.type == CatalogType.SERIES }.sortedBy { it.title.lowercase() }
+    val movies = shown.filter { it.type == CatalogType.MOVIE }.sortedBy { it.title.lowercase() }
+    val scope = rememberCoroutineScope()
+    var filling by remember { mutableStateOf<String?>(null) }
     val playerThere = remember { Share.playerInstalled(context) }
 
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -228,6 +242,46 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
                     action = "Open",
                     onAction = { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
                 )
+            }
+        }
+        if (unlinked > 0 || siteInfo > 0) {
+            item {
+                VSpace(20.dp)
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                    item { OutlinePill("All", selected = active == "all", onClick = { filter = "all" }) }
+                    if (unlinked > 0) item { OutlinePill("No TMDB · $unlinked", selected = active == "notmdb", onClick = { filter = "notmdb" }) }
+                    if (siteInfo > 0) item { OutlinePill("Site cover · $siteInfo", selected = active == "site", onClick = { filter = "site" }) }
+                }
+                when (active) {
+                    "notmdb" -> {
+                        VSpace(10.dp)
+                        Text("Not linked to TMDB – the Player can't find cover, text and episodes. Tap a title → TMDB → search and pick.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                    }
+                    "site" -> {
+                        VSpace(10.dp)
+                        Text("Linked to TMDB, but cover and description still come from the website.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                        VSpace(10.dp)
+                        SecondaryButton(filling ?: "Take cover & text from TMDB ($siteInfo)", icon = Ic.refresh, enabled = filling == null) {
+                            val app = CreatorApp.instance
+                            if (app.prefs.tmdbKey.value.isBlank()) { toast("Add a TMDB key in Settings first."); return@SecondaryButton }
+                            val todo = catalog.titles.filter(::hasSiteInfo)
+                            scope.launch {
+                                var done = 0
+                                for (t in todo) {
+                                    filling = "${done + 1} of ${todo.size} …"
+                                    val kind = if (t.type == CatalogType.SERIES) de.marne.streamplayer.catalog.Tmdb.Kind.TV else de.marne.streamplayer.catalog.Tmdb.Kind.MOVIE
+                                    runCatching { app.tmdb.details(kind, t.tmdb!!.id!!) }.getOrNull()?.let { d ->
+                                        // Neu aus dem Speicher holen: der Titel kann inzwischen bearbeitet sein.
+                                        app.store.catalog.value.titles.firstOrNull { it.id == t.id }?.let { cur -> app.store.put(fromTmdb(cur, d.result)); done++ }
+                                    }
+                                    kotlinx.coroutines.delay(250) // TMDB nicht hetzen
+                                }
+                                filling = null
+                                toast(if (done == todo.size) "$done titles updated." else "$done of ${todo.size} updated – the rest TMDB didn't answer.")
+                            }
+                        }
+                    }
+                }
             }
         }
         if (series.isNotEmpty()) {

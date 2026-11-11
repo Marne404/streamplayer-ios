@@ -487,7 +487,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         val old = existing(d)
         val t = if (old != null && old.type != d.title.type) {
             // Art hat sich geändert (Ein-Folgen-„Serie“ → Film): neu übernehmen, eigene Angaben behalten.
-            d.title.copy(id = old.id, title = name, year = old.year ?: d.title.year, poster = old.poster ?: d.title.poster, description = old.description ?: d.title.description)
+            d.title.copy(id = old.id, title = name, year = old.year ?: d.title.year, poster = old.poster?.takeIf { it.startsWith("data:") } ?: d.title.poster, description = d.title.description ?: old.description)
         } else if (old != null) {
             val titles = old.seasons.associate { it.number to it.title }
             old.copy(
@@ -496,8 +496,11 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
                 url = d.title.url ?: old.url,
                 tmdb = old.tmdb ?: d.title.tmdb,
                 year = old.year ?: d.title.year,
-                poster = old.poster ?: d.title.poster,
-                description = old.description ?: d.title.description,
+                // Jetzt bei TMDB gefunden: Cover, Banner und Text von dort statt der alten von der Seite.
+                // Ein eigenes Bild (data:) bleibt.
+                poster = if (d.linked != null) old.poster?.takeIf { it.startsWith("data:") } ?: d.title.poster ?: old.poster else old.poster ?: d.title.poster,
+                backdrop = if (d.linked != null) d.title.backdrop ?: old.backdrop else old.backdrop ?: d.title.backdrop,
+                description = if (d.linked != null) d.title.description ?: old.description else old.description ?: d.title.description,
             )
         } else {
             d.title.copy(id = store.uniqueId(CatalogJson.slug(name, d.title.year)), title = name)
