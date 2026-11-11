@@ -35,6 +35,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -61,6 +63,7 @@ import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.PrimaryButton
+import de.marne.streamplayer.ui.design.SecondaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.ScreenHeader
@@ -80,12 +83,16 @@ fun ImportScreen(onBack: () -> Unit, onEdit: (String) -> Unit, toast: (String) -
     val state by session.state.collectAsState()
     val waiting by session.browser.waiting.collectAsState()
     val webView by session.browser.view.collectAsState()
+    val bulk by session.bulk.state.collectAsState()
+    val bulkRunning = bulk?.running == true
+    // Angehaltene Liste: „Other import“ zeigt wieder das Eingabefeld (Liste bleibt gespeichert).
+    var otherImport by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         // Die WebView liegt während der Analyse unter der Warte-Ansicht: Viele Seiten bauen ihre
         // Listen erst auf, wenn sie wirklich ausgelegt sind. Sichtbar wird sie nur zur Bestätigung.
         val wv = webView
-        val busy = state is ImportSession.State.Running || (state as? ImportSession.State.Batch)?.running == true
+        val busy = state is ImportSession.State.Running || (state as? ImportSession.State.Batch)?.running == true || bulkRunning
         if (busy && wv != null) {
             Column(Modifier.fillMaxSize()) {
                 if (waiting) ChallengeHeader()
@@ -95,7 +102,8 @@ fun ImportScreen(onBack: () -> Unit, onEdit: (String) -> Unit, toast: (String) -
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                 }
-                if (waiting) ChallengeFooter(onContinue = session.browser::proceed, onCancel = session::stop)
+                // Große Liste: „Abbrechen“ hält sie an (der Stand bleibt), statt nur diesen Link zu verwerfen.
+                if (waiting) ChallengeFooter(onContinue = session.browser::proceed, onCancel = { if (bulkRunning) session.bulk.pause() else session.stop() })
             }
         }
 
@@ -111,7 +119,8 @@ fun ImportScreen(onBack: () -> Unit, onEdit: (String) -> Unit, toast: (String) -
                 is ImportSession.State.Running -> if (!waiting) Working(s, onCancel = session::cancel) else Box(Modifier)
                 is ImportSession.State.Done -> Result(s, onBack, onEdit, toast)
                 is ImportSession.State.Batch -> if (!waiting) BatchView(s, onBack, toast) else Box(Modifier)
-                else -> Input((s as? ImportSession.State.Failed)?.message, onBack)
+                else -> if (bulk != null && s !is ImportSession.State.Failed && (bulkRunning || !otherImport)) { if (!waiting) BulkView(bulk!!, onBack, toast, onOther = { otherImport = true }) else Box(Modifier) }
+                else Input((s as? ImportSession.State.Failed)?.message, onBack)
             }
         }
     }
@@ -626,3 +635,118 @@ private fun SeasonsPart(d: Draft, open: (String) -> Unit) {
 }
 
 private fun seasonName(s: SeasonSpec) = if (s.number == 0) "Specials" else "Season ${s.number}"
+
+
+/**
+ * Große Linkliste: vorbereiten (wie viele, was schon da ist, wie lange), laufen lassen, anhalten,
+ * fortsetzen, Fehler erneut versuchen oder teilen. Läuft im Hintergrund weiter.
+ */
+@Composable
+private fun BulkView(b: BulkImport.State, onBack: () -> Unit, toast: (String) -> Unit, onOther: () -> Unit) {
+    val context = LocalContext.current
+    val bulk = CreatorApp.instance.imports.bulk
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val notify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { bulk.start(context) }
+    fun start() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) notify.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        else bulk.start(context)
+    }
+    val fresh = b.done == b.skipped && !b.running && b.halt == null
+    val finished = b.waiting == 0
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 4.dp, bottom = 48.dp)) {
+        item {
+            IconButton(onClick = onBack) { GIcon(Ic.back) }
+            ScreenHeader(
+                title = when {
+                    fresh -> "%,d links.".format(b.total)
+                    finished -> "Done."
+                    b.running -> "Importing …"
+                    else -> "Paused."
+                },
+                eyebrow = "Big link list",
+                subtitle = if (fresh) "Each link becomes a title and goes straight into the catalog – no review one by one." else null,
+            )
+        }
+        item {
+            VSpace(20.dp)
+            if (!fresh) {
+                Bar(if (b.total == 0) 0f else b.done.toFloat() / b.total, height = 6.dp)
+                VSpace(10.dp)
+                Text("${"%,d".format(b.done)} of ${"%,d".format(b.total)}" + (b.etaMs?.let { " · about ${duration(it)} left" } ?: ""), style = MaterialTheme.typography.titleSmall)
+                b.current?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                b.halt?.let { VSpace(6.dp); StatusLine(Ic.info, it, Palette.muted) }
+                VSpace(16.dp)
+            }
+            ListGroup {
+                if (!fresh) {
+                    ListRow("Added", icon = Ic.add, value = "%,d".format(b.added))
+                    RowDivider()
+                    ListRow("Updated", icon = Ic.refresh, value = "%,d".format(b.updated))
+                    RowDivider()
+                    ListRow("Failed", icon = Ic.error, value = "%,d".format(b.failed))
+                    RowDivider()
+                }
+                // Vor dem Start umschaltbar: Bekannte überspringen oder doch lesen (holt neue Staffeln).
+                // Wie viele bekannt sind, steht fest (Abgleich mit dem Katalog beim Vorbereiten).
+                var skip by remember { mutableStateOf(true) }
+                val known = remember(b.total) { b.links.count { it.status == BulkImport.SKIPPED } }
+                if (fresh && known > 0) ListRow(
+                    "Skip titles already in the catalog",
+                    subtitle = "%,d of them are already there".format(known),
+                    icon = Ic.check, showChevron = false,
+                    trailing = { de.marne.streamplayer.ui.design.IvorySwitch(skip) { skip = it; bulk.setSkipKnown(it) } },
+                ) else ListRow("Skipped (already in the catalog)", icon = Ic.check, value = "%,d".format(b.skipped))
+            }
+        }
+        item {
+            VSpace(20.dp)
+            when {
+                b.running -> SecondaryButton("Pause", icon = Ic.pause) { bulk.pause() }
+                !finished -> {
+                    if (fresh) Text(
+                        "Takes about ${duration(b.waiting * 5_000L)} with the usual pause between pages. Keeps running in the background; you can close the app. Titles without a TMDB match are under the filter “No TMDB” afterwards.",
+                        style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                    )
+                    VSpace(12.dp)
+                    PrimaryButton(if (fresh) "Start" else "Resume", icon = Ic.play) { start() }
+                }
+            }
+            if (!b.running && b.failed > 0) {
+                VSpace(10.dp)
+                SecondaryButton("Try failed again (${b.failed})", icon = Ic.refresh) { bulk.retryFailed() }
+                VSpace(8.dp)
+                QuietButton("Share failed links", color = Palette.text) {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, bulk.failedText())
+                    context.startActivity(android.content.Intent.createChooser(send, "Failed links"))
+                }
+            }
+            if (!b.running) {
+                VSpace(8.dp)
+                QuietButton("Import something else", color = Palette.text, onClick = onOther)
+                QuietButton(if (finished) "Close list" else "Discard list", color = if (finished) Palette.muted else Palette.wine) {
+                    bulk.clear()
+                    toast(if (finished) "List closed. Everything imported stays in the catalog." else "List discarded. Everything imported so far stays.")
+                }
+            }
+        }
+        if (!b.running && b.failed > 0) {
+            item { SectionTitle("Failed") }
+            item {
+                ListGroup {
+                    b.links.filter { it.status == BulkImport.FAILED }.take(50).forEachIndexed { i, l ->
+                        if (i > 0) RowDivider(inset = 18.dp)
+                        ListRow(l.url.substringAfter("://"), subtitle = l.error, titleMaxLines = 1, showChevron = false)
+                    }
+                }
+                if (b.failed > 50) Text("… and ${b.failed - 50} more – share the list to see all.", style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+    }
+}
+
+private fun duration(ms: Long): String {
+    val min = (ms / 60_000).coerceAtLeast(1)
+    return if (min < 60) "$min min" else "${min / 60} h ${min % 60} min"
+}

@@ -174,6 +174,7 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
     val context = LocalContext.current
     val store = CreatorApp.instance.store
     val catalog by store.catalog.collectAsState()
+    val bulk by CreatorApp.instance.imports.bulk.state.collectAsState()
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     // Filter: alles, ohne TMDB (von Hand zuordnen), oder verknüpft, aber Cover/Text noch von der Seite.
     var filter by rememberSaveable { mutableStateOf("all") }
@@ -230,6 +231,20 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
                 Box(Modifier.weight(1f)) { SecondaryButton("Show", icon = Ic.tv) { create(CatalogType.SERIES) } }
                 HSpace(12.dp)
                 Box(Modifier.weight(1f)) { SecondaryButton("Movie", icon = Ic.movie) { create(CatalogType.MOVIE) } }
+            }
+        }
+        // Große Liste in Arbeit (oder angehalten): Stand hier sichtbar, ein Tipp öffnet sie.
+        bulk?.let { b ->
+            item {
+                VSpace(16.dp)
+                ListGroup {
+                    ListRow(
+                        "Big link list",
+                        subtitle = "%,d of %,d · %,d added · %,d failed".format(b.done, b.total, b.added, b.failed) + if (b.running) "" else " · paused",
+                        icon = Ic.importFile,
+                        onClick = onImport,
+                    )
+                }
             }
         }
         if (catalog.titles.isEmpty()) {

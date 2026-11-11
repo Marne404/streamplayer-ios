@@ -90,6 +90,11 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     val nameOverride = MutableStateFlow<String?>(null)
 
     val browser = BrowserFetcher(app)
+    /** Große Linklisten (über [LinkList.MAX]): eigener, gespeicherter Ablauf. */
+    val bulk by lazy { BulkImport(app, this, http) }
+
+    /** Läuft gerade ein normaler Import (ein Link, Massenimport, Übersicht)? Dann wartet die große Liste. */
+    val busy: Boolean get() = job?.isActive == true
     private var job: Job? = null
     /**
      * Zählt Läufe. Anlass: Ein abgebrochener Lauf räumt erst später auf (finally). Ohne Zähler
@@ -141,7 +146,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         _state.value = State.Failed(message)
     }
 
-    private val userAgent by lazy {
+    internal val userAgent by lazy {
         runCatching { WebSettings.getDefaultUserAgent(app) }.getOrDefault("Mozilla/5.0 (Linux; Android 14) Mobile")
     }
 
@@ -154,6 +159,18 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     /** Ein Link → Entwurf zum Prüfen. Mehrere → Massenimport. */
     fun start(text: String = input.value) {
         val links = LinkList.parse(text)
+        if (bulk.running) {
+            _state.value = State.Failed("A big link list is importing – pause it first.")
+            return
+        }
+        // Mehr als der Massenimport fasst: als große Liste (übernimmt direkt, merkt sich den Stand).
+        if (links.size > LinkList.MAX) {
+            stopJob()
+            input.value = ""
+            _state.value = State.Idle
+            bulk.prepare(links)
+            return
+        }
         if (links.size >= 2) {
             input.value = links.joinToString("\n") { it.url }
             startBatch(links)
@@ -482,7 +499,7 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
      * In den Katalog. Gibt es den Titel schon (gleiche Quelle), wird nur aktualisiert, was die
      * Seite liefert – Staffeln, Muster, neue Folgen. Eigene Namen, Bilder und Ausnahmen bleiben.
      */
-    private fun save(d: Draft, name: String): Pair<CatalogTitle, Boolean> {
+    internal fun save(d: Draft, name: String): Pair<CatalogTitle, Boolean> {
         val store = app.store
         val old = existing(d)
         val t = if (old != null && old.type != d.title.type) {
@@ -518,6 +535,6 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
         private const val PER_TITLE = 40
         /** Darunter fängt ein Durchgang keinen neuen Titel mehr an: Seite, Browser, Übersicht. */
         private const val MIN_PER_TITLE = 3
-        private const val MAX_FILE = 2 * 1024 * 1024
+        private const val MAX_FILE = 8 * 1024 * 1024
     }
 }
