@@ -4,6 +4,7 @@ import android.webkit.WebSettings
 import de.marne.streamplayer.catalog.CatalogJson
 import de.marne.streamplayer.catalog.CatalogTitle
 import de.marne.streamplayer.catalog.CatalogType
+import de.marne.streamplayer.catalog.singleEpisodeAsMovie
 import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.importer.Draft
 import de.marne.streamplayer.importer.Importer
@@ -444,8 +445,11 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
 
     /** Titel, der schon aus derselben Quelle stammt: gleiches Muster bzw. gleiche Filmseite. */
     fun existing(draft: Draft): CatalogTitle? = app.store.catalog.value.titles.firstOrNull { t ->
-        t.type == draft.title.type &&
-            ((draft.title.template != null && t.template == draft.title.template) || (draft.title.url != null && t.url == draft.title.url))
+        (t.type == draft.title.type &&
+            ((draft.title.template != null && t.template == draft.title.template) || (draft.title.url != null && t.url == draft.title.url))) ||
+            // Früher als „Serie mit einer Folge“ übernommen, jetzt als Film erkannt: derselbe Titel.
+            (draft.title.type == CatalogType.MOVIE && draft.title.url != null &&
+                t.singleEpisodeAsMovie().let { it.type == CatalogType.MOVIE && it.url == draft.title.url && t.type == CatalogType.SERIES })
     }
 
     /** Einzelner Entwurf in den Katalog. */
@@ -481,7 +485,10 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
     private fun save(d: Draft, name: String): Pair<CatalogTitle, Boolean> {
         val store = app.store
         val old = existing(d)
-        val t = if (old != null) {
+        val t = if (old != null && old.type != d.title.type) {
+            // Art hat sich geändert (Ein-Folgen-„Serie“ → Film): neu übernehmen, eigene Angaben behalten.
+            d.title.copy(id = old.id, title = name, year = old.year ?: d.title.year, poster = old.poster ?: d.title.poster, description = old.description ?: d.title.description)
+        } else if (old != null) {
             val titles = old.seasons.associate { it.number to it.title }
             old.copy(
                 template = d.title.template ?: old.template,

@@ -174,6 +174,21 @@ class ImporterTest {
         assertEquals(listOf(SeasonSpec(1, 7)), d.title.seasons)
     }
 
+    // Anlass (1.12.0): Filmseiten mit einem einzigen Link „Episode 1“ zum Player wurden beim
+    // Massen-Import zur Serie mit einer Folge – und TMDB fand sie nie. Eine Folge = ein Film.
+    @Test fun singleEpisodeIsAMovie() = runBlocking {
+        val web = FakeWeb(
+            mapOf(
+                "https://g.test/film/corge" to html("Corge", nav + links("/film/corge/episode-1")),
+                "https://g.test/film/corge/episode-1" to html("Corge", nav + links("/film/corge/episode-1")),
+            ),
+        )
+        val d = Importer(web, pauseMs = 0).analyze("https://g.test/film/corge")
+        assertEquals(de.marne.streamplayer.catalog.CatalogType.MOVIE, d.title.type)
+        assertEquals("https://g.test/film/corge/episode-1", d.title.url)
+        assertEquals(emptyList<SeasonSpec>(), d.title.seasons)
+    }
+
     // Anlass: Mit TMDB-Treffer blieb das Poster leer („holt der Player selbst“) – im Creator gab es
     // nie ein Cover, im Player nur mit eigenem TMDB-Schlüssel.
     @Test fun linkedTmdbFillsImages() {

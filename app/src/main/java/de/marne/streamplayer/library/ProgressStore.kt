@@ -142,6 +142,18 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
     fun mergeRemote(pid: String, remote: Map<String, Progress>) = change(pid) { local -> ProgressMerge.merge(local, remote) }
 
     /** Zwei Doppel desselben Titels wurden zusammengeführt: Fortschritt zieht zur neuen ID um. */
+    /** Folge eines Titels wird zum Film (Ein-Folgen-„Serie“): ihr Fortschritt zieht auf den Film-Schlüssel um. */
+    fun episodeToMovie(id: String) {
+        _byProfile.update { m ->
+            m.mapValues { (_, map) ->
+                val ep = map.filterKeys { k -> Keys.parse(k)?.let { it.first == id && it.second != null } == true }
+                if (ep.isEmpty()) map
+                else (map - ep.keys) + ("m:$id" to ep.values.maxBy { it.updatedAt })
+            }
+        }
+        publish()
+    }
+
     fun rekey(from: String, to: String) {
         _byProfile.update { m ->
             m.mapValues { (_, map) ->

@@ -42,6 +42,8 @@ data class Draft(
     internal val details: Tmdb.Details? = null,
     /** Staffeln, die wegen der Abrufgrenze nicht mehr gelesen wurden. */
     val unread: List<Int> = emptyList(),
+    /** Film, der wie eine Serie mit einer Folge aussah: seine Seite ist die der einen Folge. */
+    internal val movieUrl: String? = null,
 ) {
     val episodeCount: Int get() = title.seasons.sumOf { it.episodes }
 }
@@ -154,16 +156,24 @@ class Importer(
         if (info.name.isNullOrBlank()) info = info.copy(name = nameFromUrl(landed))
 
         val structure = st!!
+        // Nur eine einzige Folge gefunden: ein Film, dessen Seite wie eine Serie gebaut ist (Film-
+        // seite → „Episode 1“). Außer die Seite sagt selbst, dass sie eine Serie ist (JSON-LD) –
+        // dann fehlen eher Folgen, als dass es keine gäbe.
+        val single = structure.found && structure.seasons.sumOf { it.episodes } == 1 && info.kind != Kind.SERIES
         val kind = when {
+            single -> Kind.MOVIE
             structure.found -> Kind.SERIES
             else -> info.kind ?: Kind.MOVIE
         }
+        // Der Film liegt dann auf der Seite der einen Folge (dort ist der Player).
+        val singleUrl = if (single) de.marne.streamplayer.catalog.Episodes.generate(structure.template, structure.seasons, emptyList()).firstOrNull()?.url else null
         val base = Draft(
             source = landed,
             title = CatalogTitle(id = "", type = if (kind == Kind.SERIES) CatalogType.SERIES else CatalogType.MOVIE, title = info.name.orEmpty()),
             notes = emptyList(), linked = null, candidates = emptyList(),
             // Verschiedene Seiten, nicht Abrufe: schlicht und dann im Browser ist dieselbe Seite.
             pages = tried.size, usedBrowser = viaBrowser, info = info, structure = structure, unread = unread,
+            movieUrl = singleUrl,
         )
 
         // 4. TMDB: eindeutiger Treffer wird verknüpft, sonst Kandidaten zur Wahl.
@@ -306,7 +316,7 @@ class Importer(
                 poster = linked?.poster ?: info.image,
                 backdrop = linked?.backdrop,
                 description = (if (linked != null) linked.overview else info.description)?.take(1200),
-                url = if (type == CatalogType.MOVIE) draft.source else null,
+                url = if (type == CatalogType.MOVIE) draft.movieUrl ?: draft.source else null,
                 template = template,
                 seasons = seasons,
             )

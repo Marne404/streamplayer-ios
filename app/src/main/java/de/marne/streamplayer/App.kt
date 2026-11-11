@@ -73,6 +73,14 @@ class App : Application(), SingletonImageLoader.Factory {
         tmdb = Tmdb(http, key = { settings.tmdbKey.value }, language = { settings.tmdbLanguage })
         enricher = Enricher(tmdb, library, settings)
         enricher.upgradeOld()
+        // Einmalig (1.12.0): ältere Importe, die Filme als „Serie mit einer Folge“ hatten, zu Filmen
+        // machen – Fortschritt zieht mit, TMDB sucht sie nun als Film.
+        if (!settings.flag("fix_single_episode_v1")) {
+            val ids = library.fixSingleEpisodeSeries()
+            ids.forEach(progress::episodeToMovie)
+            enricher.enqueue(ids)
+            settings.setFlag("fix_single_episode_v1")
+        }
         importer = Importer(this, library, enricher)
         adblock = AdBlocker(this, http, settings).also { it.start() }
         Notifications.createChannels(this)

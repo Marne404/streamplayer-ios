@@ -90,6 +90,10 @@ class Settings(context: Context) {
         prefs.edit().putBoolean(KEY_USAGE, value).apply()
     }
 
+    /** Einmalige Umstellungen (Migrationen): erledigt oder nicht. */
+    fun flag(name: String) = prefs.getBoolean("flag_$name", false)
+    fun setFlag(name: String) = prefs.edit().putBoolean("flag_$name", true).apply()
+
     /** Hinweis zur Nutzungsstatistik einmal gezeigt. */
     var usageNoticeShown: Boolean
         get() = prefs.getBoolean(KEY_USAGE_NOTICE, false)

@@ -60,6 +60,18 @@ data class CatalogTitle(
     val episodes: List<EpisodeOverride> = emptyList(),
 )
 
+/**
+ * „Serie“ mit genau einer Folge ist ein Film, den die Seitenstruktur wie eine Serie aussehen ließ
+ * (Filmseite mit einem Link „Episode 1“ zum Player). Serien mit nur einer Folge gibt es nicht –
+ * als Serie fände TMDB ihn auch nie. Die eine Folge wird zur Filmseite.
+ */
+fun CatalogTitle.singleEpisodeAsMovie(): CatalogTitle {
+    if (type != CatalogType.SERIES) return this
+    val eps = Episodes.generate(template, seasons, episodes)
+    if (eps.size != 1) return this
+    return copy(type = CatalogType.MOVIE, url = eps.single().url, template = null, seasons = emptyList(), episodes = emptyList())
+}
+
 class CatalogException(message: String) : Exception(message)
 
 /** Eine erzeugte Folge. */

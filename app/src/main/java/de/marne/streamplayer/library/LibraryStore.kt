@@ -5,6 +5,7 @@ import de.marne.streamplayer.catalog.CatalogTitle
 import de.marne.streamplayer.catalog.CatalogType
 import de.marne.streamplayer.catalog.Episodes
 import de.marne.streamplayer.catalog.SeasonSpec
+import de.marne.streamplayer.catalog.singleEpisodeAsMovie
 import de.marne.streamplayer.detect.UrlClassifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -149,7 +150,9 @@ class LibraryStore(context: Context) {
      * Titel aus einem Katalog anlegen oder aktualisieren. Wiedererkannt wird über die Katalog-ID,
      * sonst über Art + Titel (+ Jahr). Fortschritt, Downloads und eigenes Cover bleiben erhalten.
      */
-    fun upsert(c: CatalogTitle, localPoster: String?, localBackdrop: String?, libraryId: String? = null): Pair<LibTitle, Boolean> {
+    fun upsert(c0: CatalogTitle, localPoster: String?, localBackdrop: String?, libraryId: String? = null): Pair<LibTitle, Boolean> {
+        // Ein-Folgen-„Serie“ ohne TMDB-Verknüpfung ist ein Film (siehe singleEpisodeAsMovie).
+        val c = if (c0.tmdb == null) c0.singleEpisodeAsMovie() else c0
         val kind = if (c.type == CatalogType.SERIES) TitleKind.SERIES else TitleKind.MOVIE
         val existing = _titles.value.firstOrNull { it.sourceId == c.id }
             ?: _titles.value.firstOrNull { it.kind == kind && it.title.equals(c.title, ignoreCase = true) && (c.year == null || it.year == null || it.year == c.year) }
@@ -157,7 +160,13 @@ class LibraryStore(context: Context) {
         // Neu: in die gewählte Bibliothek. Schon vorhanden: bleibt, wo er steht.
         val base = existing ?: LibTitle(id = newId(), kind = kind, title = c.title, pageUrl = null,
             libraryId = (libraryId ?: target).takeIf { it != Library.MAIN && it != Library.ALL && _libraries.value.any { l -> l.id == it && !l.joined } })
-        val updated = base.copy(
+        // War er bisher eine (Ein-Folgen-)Serie und ist jetzt ein Film: Folgen-Angaben, TMDB-Serie und
+        // Folgen-Schlüssel gehören nicht mehr dazu.
+        val toMovie = existing != null && existing.kind == TitleKind.SERIES && kind == TitleKind.MOVIE
+        val updated = (if (toMovie) base.copy(
+            tmdb = null, tmdbId = null, episodeInfo = emptyMap(),
+            offline = base.offline.mapKeys { (k, _) -> if (k.startsWith("e:")) "m:${base.id}" else k },
+        ) else base).copy(
             kind = kind,
             title = c.title,
             pageUrl = (if (kind == TitleKind.MOVIE) c.url else firstEpisode ?: c.template) ?: base.pageUrl,
@@ -168,11 +177,12 @@ class LibraryStore(context: Context) {
             backdrop = localBackdrop ?: c.backdrop?.takeIf { !it.startsWith("data:") } ?: base.backdrop,
             description = c.description ?: base.description,
             year = c.year ?: base.year,
-            tmdbId = c.tmdb?.id ?: base.tmdbId,
+            tmdbId = c.tmdb?.id ?: if (toMovie) null else base.tmdbId,
             tmdbQuery = c.tmdb?.query,
             sourceId = c.id,
         )
         _titles.update { list -> if (existing != null) list.map { if (it.id == base.id) updated else it } else listOf(updated) + list }
+        if (toMovie) de.marne.streamplayer.App.instance.progress.episodeToMovie(base.id)
         return updated to (existing != null)
     }
 
@@ -183,6 +193,30 @@ class LibraryStore(context: Context) {
             tmdbId = info.id,
             seasons = if (t.seasons.isEmpty() && seasons != null) seasons else t.seasons,
         )
+    }
+
+    /**
+     * Einmalig für ältere Importe: „Serien“ mit genau einer Folge und ohne TMDB-Treffer werden zu
+     * Filmen (Seite = die der Folge). Rückgabe: die IDs – deren Fortschritt muss mitziehen, und
+     * TMDB soll sie nun als Film suchen.
+     */
+    fun fixSingleEpisodeSeries(): List<String> {
+        val fixed = mutableListOf<String>()
+        _titles.update { list ->
+            list.map { t ->
+                if (t.kind != TitleKind.SERIES || t.tmdb != null) return@map t
+                val eps = t.episodes()
+                if (eps.size != 1) return@map t
+                val e = eps.single()
+                fixed += t.id
+                t.copy(
+                    kind = TitleKind.MOVIE, pageUrl = e.url, template = null, seasons = emptyList(), overrides = emptyList(),
+                    episodeInfo = emptyMap(), tmdbId = null,
+                    offline = t.offline.mapKeys { (k, _) -> if (k.startsWith("e:")) "m:${t.id}" else k },
+                )
+            }
+        }
+        return fixed
     }
 
     /** Von Hand gewählter TMDB-Eintrag. Anderer Eintrag: Folgen-Angaben des alten weg, sie gehören zu ihm. */
