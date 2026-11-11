@@ -60,8 +60,7 @@ fun BackupRows(onToast: (String) -> Unit) {
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    val text = Backup.export(parts).toString(2)
-                    context.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(text.toByteArray()) }
+                    context.contentResolver.openOutputStream(uri, "wt")!!.bufferedWriter().use { Backup.write(parts, it) }
                 }.isSuccess
             }
             onToast(if (ok) tr("Gesichert.", "Saved.") else tr("Konnte die Datei nicht schreiben.", "Couldn't write the file."))

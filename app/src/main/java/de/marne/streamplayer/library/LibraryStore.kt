@@ -404,12 +404,14 @@ class LibraryStore(context: Context) {
 
     private fun hostOf(url: String) = runCatching { java.net.URI(url).host?.removePrefix("www.") }.getOrNull() ?: url
 
-    private fun load(): List<LibTitle> = runCatching {
-        if (file.exists()) {
-            val arr = JSONArray(file.readText())
-            List(arr.length()) { LibTitle.fromJson(arr.getJSONObject(it)) }
-        } else migrate()
-    }.getOrDefault(emptyList())
+    private fun load(): List<LibTitle> = try {
+        if (file.exists()) readTitles(file) else migrate()
+    } catch (e: Throwable) {
+        // Nicht lesbar: Die Datei beiseitelegen, bevor das erste Speichern sie mit einer leeren
+        // Bibliothek überschreibt – so ist nichts endgültig verloren.
+        runCatching { if (file.exists()) file.copyTo(File(file.parentFile, "titles-unreadable-${System.currentTimeMillis()}.json")) }
+        emptyList()
+    }
 
     /** Bibliothek bis 0.5 (Links und Dateien) wird zu Filmen. */
     private fun migrate(): List<LibTitle> {
@@ -432,9 +434,46 @@ class LibraryStore(context: Context) {
     }
 
     private fun save(list: List<LibTitle>) {
-        val arr = JSONArray().apply { list.forEach { put(it.toJson()) } }
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(arr.toString())
+        tmp.bufferedWriter().use { writeTitles(list, it) }
         tmp.renameTo(file)
+    }
+
+    companion object {
+        /**
+         * Titel als JSON-Liste schreiben – ein Titel je Zeile, Stück für Stück. Anlass (1.13.4):
+         * Mit 2500 Titeln samt Folgen-Infos wurde die Liste vorher als ein Text von über 20 Mio.
+         * Zeichen gebaut; das sprengte den Speicher (OutOfMemoryError beim Speichern).
+         */
+        fun writeTitles(list: List<LibTitle>, w: java.io.Writer) {
+            w.write("[\n")
+            list.forEachIndexed { i, t ->
+                if (i > 0) w.write(",\n")
+                w.write(t.toJson().toString())
+            }
+            w.write("\n]\n")
+        }
+
+        /**
+         * Gegenstück zu [writeTitles]: Zeile für Zeile, nie die ganze Datei auf einmal. Ältere Dateien
+         * (alles in einer Zeile) werden noch am Stück gelesen und beim nächsten Speichern umgestellt.
+         * In JSON-Texten sind Zeilenumbrüche immer maskiert – eine Zeile ist also genau ein Titel.
+         */
+        fun readTitles(f: File): List<LibTitle> {
+            val first = f.bufferedReader().use { it.readLine() }?.trim()
+            if (first != "[") {
+                val arr = JSONArray(f.readText())
+                return List(arr.length()) { LibTitle.fromJson(arr.getJSONObject(it)) }
+            }
+            val out = ArrayList<LibTitle>()
+            f.bufferedReader().useLines { lines ->
+                for (raw in lines) {
+                    val s = raw.trim().removeSuffix(",")
+                    if (s.isEmpty() || s == "[" || s == "]") continue
+                    out += LibTitle.fromJson(org.json.JSONObject(s))
+                }
+            }
+            return out
+        }
     }
 }

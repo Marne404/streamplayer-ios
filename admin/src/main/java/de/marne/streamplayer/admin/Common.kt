@@ -80,7 +80,17 @@ class Loader<T>(private val scope: CoroutineScope, private val fetch: suspend ()
     }
 
     /** Beim ersten Anzeigen laden, danach nur auf Wunsch. */
-    fun ensure() { if (data == null && !loading) refresh() }
+    /**
+     * Laden, wenn noch nichts da ist oder der Stand älter als [maxAgeMs] ist. Anlass: Android hielt
+     * die App stundenlang im Hintergrund; jeder Reiter zeigte weiter seinen ersten Stand („Stand
+     * 12:42“, „Noch hat sich keine Installation gemeldet“), obwohl längst Berichte da waren.
+     */
+    fun ensure(maxAgeMs: Long = STALE_MS) {
+        if (loading) return
+        if (data == null || System.currentTimeMillis() - loadedAt > maxAgeMs) refresh()
+    }
+
+    companion object { const val STALE_MS = 2 * 60 * 1000L }
 }
 
 /**

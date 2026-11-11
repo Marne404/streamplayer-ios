@@ -119,6 +119,11 @@ private fun AdminRoot() {
     val problems = remember { Loader(scope) { parseProblems(Api.call("problems")) } }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var open by rememberSaveable { mutableStateOf<String?>(null) }
+    // Zurück in die App: veraltete Zahlen neu holen (jeder Reiter einzeln, nur wenn alt).
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        listOf(overview, users, problems).forEach { it.ensure() }
+        onPauseOrDispose { }
+    }
 
     BackHandler(enabled = open != null) { open = null }
     BackHandler(enabled = open == null && tab != 0) { tab = 0 }

@@ -53,7 +53,20 @@ object Backup {
     // Teile, die je Profil gespeichert sind: Ohne das Profil-Gerüst wüsste der Import nicht, wem sie gehören.
     private val perProfile = setOf(Part.PROFILES, Part.LIST, Part.COLLECTIONS, Part.PROGRESS)
 
-    fun export(parts: Set<Part>, now: Long = System.currentTimeMillis()): JSONObject {
+    /**
+     * Sicherung in [w] schreiben. Die Titel kommen Stück für Stück dazu – als ein JSON-Text am Stück
+     * sprengte eine große Bibliothek den Speicher (siehe LibraryStore.writeTitles).
+     */
+    fun write(parts: Set<Part>, w: java.io.Writer, now: Long = System.currentTimeMillis()) {
+        val text = export(parts, now, withTitles = false).toString()
+        if (Part.LIBRARY !in parts) { w.write(text); return }
+        w.write(text.dropLast(1)) // ohne die schließende Klammer
+        w.write(",\"titles\":")
+        de.marne.streamplayer.library.LibraryStore.writeTitles(App.instance.library.titles.value, w)
+        w.write("}")
+    }
+
+    fun export(parts: Set<Part>, now: Long = System.currentTimeMillis(), withTitles: Boolean = true): JSONObject {
         val app = App.instance
         val o = JSONObject()
             .put("app", "streamplayer").put("kind", "backup").put("v", 1).put("created", now)
@@ -62,7 +75,7 @@ object Backup {
         if (Part.TMDB in parts) o.put("tmdbKey", app.settings.tmdbKey.value)
         if (Part.HISTORY in parts) o.put("history", app.settings.exportHistory())
         if (Part.LIBRARY in parts) {
-            o.put("titles", JSONArray().apply { app.library.titles.value.forEach { put(it.toJson()) } })
+            if (withTitles) o.put("titles", JSONArray().apply { app.library.titles.value.forEach { put(it.toJson()) } })
             o.put("libraries", JSONArray().apply { app.library.libraries.value.forEach { put(it.toJson()) } })
         }
         if (parts.any { it in perProfile }) {
