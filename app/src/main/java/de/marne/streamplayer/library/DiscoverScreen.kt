@@ -31,6 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import de.marne.streamplayer.ui.design.OutlinePill
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -55,7 +59,7 @@ import de.marne.streamplayer.ui.tr
 @Composable
 fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, onFocused: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val results = remember(query, state.titles) { Recommend.search(state.titles, query) }
+    val found = remember(query, state.titles) { Recommend.searchAll(state.titles, query) }
     val genres = remember(state.titles) { Recommend.genres(state.titles) }
     // Bild je Genre: der am besten bewertete Titel mit Breitbild – und möglichst nicht zweimal derselbe.
     val genreImages = remember(state.titles, genres) {
@@ -88,12 +92,35 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
             }
         }
         if (query.isNotBlank()) {
-            if (results.isEmpty()) {
+            if (found.isEmpty) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(tr("Nichts zu „$query“ in deiner Bibliothek.", "Nothing for “$query” in your library."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
                 }
             }
-            items(results, key = { "s" + it.id }) { TitlePoster(it, state, actions, width = 400.dp) }
+            // Personen zuerst: Wer einen Namen tippt, will meist alles mit ihm – ein Tipp zeigt es.
+            if (found.people.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "people") {
+                    Column {
+                        SearchHeading(tr("Personen", "People"))
+                        androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(found.people.size) { i ->
+                                val (name, list) = found.people[i]
+                                OutlinePill("$name · ${list.size}", onClick = { actions.grid(GridSpec("person", name)) })
+                            }
+                        }
+                    }
+                }
+            }
+            if (found.titles.isNotEmpty()) {
+                if (found.people.isNotEmpty() || found.episodes.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }, key = "th") { SearchHeading(tr("Titel", "Titles")) }
+                items(found.titles, key = { "s" + it.id }) { TitlePoster(it, state, actions, width = 400.dp) }
+            }
+            if (found.episodes.isNotEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "eh") { SearchHeading(tr("Folgen", "Episodes")) }
+                items(found.episodes, key = { (t, e) -> "se${t.id}:${e.season}:${e.number}" }, span = { GridItemSpan(maxLineSpan) }) { (t, e) ->
+                    EpisodeHit(t, e, state.progress[Keys.episode(t, e)]?.finished == true, onClick = { actions.play(t, e) }, onOpen = { actions.open(t) })
+                }
+            }
             return@LazyVerticalGrid
         }
 
@@ -128,6 +155,30 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SearchHeading(text: String) {
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted, modifier = Modifier.padding(top = 6.dp, bottom = 10.dp))
+}
+
+/** Gefundene Folge: Standbild, Serie und Nummer, Titel. Antippen spielt, das Bild öffnet die Serie. */
+@Composable
+private fun EpisodeHit(t: LibTitle, e: Episode, watched: Boolean, onClick: () -> Unit, onOpen: () -> Unit) {
+    androidx.compose.foundation.layout.Row(
+        Modifier.fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        de.marne.streamplayer.ui.design.Thumb(
+            de.marne.streamplayer.catalog.Tmdb.largeModel(e.still ?: t.wide),
+            Modifier.width(116.dp).aspectRatio(16f / 9f).clickable(onClick = onOpen), radius = 12.dp,
+        )
+        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+            Text("${t.title} · ${e.label}", style = MaterialTheme.typography.labelMedium, color = Palette.muted, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            Text(e.title.orEmpty(), style = MaterialTheme.typography.titleSmall, color = if (watched) Palette.muted else Palette.text, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        GIcon(Ic.play, tint = Palette.muted, size = 18.dp, modifier = Modifier.padding(horizontal = 8.dp))
     }
 }
 

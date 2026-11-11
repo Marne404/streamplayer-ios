@@ -189,6 +189,12 @@ class BrowserController(
                     poster = o.optString("poster").ifBlank { null },
                 )
             }
+            "sub" -> hub.reportSubtitle(
+                o.optString("url"),
+                lang = o.optString("lang").ifBlank { null },
+                label = o.optString("label").ifBlank { null },
+                referer = o.optString("frame").ifBlank { null },
+            )
             "challenge" -> {
                 val id = o.optString("id")
                 if (o.optBoolean("on")) challengeFrames += id else challengeFrames -= id
@@ -307,6 +313,11 @@ class BrowserController(
                     return blockedResponse()
                 }
                 val referer = request.requestHeaders["Referer"] ?: request.requestHeaders["referer"]
+                // Untertitel-Dateien merken; Teilstücke von HLS-Untertiteln (seg-12.vtt) nicht – die
+                // bringt der Stream selbst mit.
+                if (de.marne.streamplayer.subtitles.Subtitles.looksLike(url) && !de.marne.streamplayer.detect.UrlClassifier.looksLikeSegment(url)) {
+                    hub.reportSubtitle(url, referer = referer ?: currentPage)
+                }
                 hub.report(url, Source.NETWORK, referer = referer ?: currentPage)
             }
             return null // Die Seite lädt alles selbst; wir schauen nur zu.

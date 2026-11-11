@@ -78,6 +78,8 @@ class DetailActions(
     val rename: (LibTitle, String) -> Unit,
     val changeCover: (LibTitle) -> Unit,
     val resetCover: (LibTitle) -> Unit,
+    /** Poster von TMDB als Cover (Adresse) – null: wieder das Standard-Poster. */
+    val setCover: (LibTitle, String?) -> Unit,
     val refreshTmdb: ((LibTitle) -> Unit)?,
     val remove: (LibTitle) -> Unit,
 )
@@ -93,6 +95,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     var editing by remember { mutableStateOf(false) }
     var episodeMenu by remember { mutableStateOf<Episode?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
+    var covering by remember { mutableStateOf(false) }
     val progress = state.progress
     val next = remember(t, progress) { Shelves.nextFor(t, progress) }
     val seasonNumbers = remember(t) { t.seasons.map { it.number }.sorted() }
@@ -121,6 +124,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                             }
                         }
                     }
+                    if (episodes.isNotEmpty()) item(key = "offline") { OfflineSummary(t, season, state, actions) }
                     if (episodes.isEmpty()) {
                         item(key = "noeps") {
                             Text(
@@ -133,7 +137,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                         }
                     }
                     items(episodes.filter { it.season == season }, key = { "e${it.season}:${it.number}" }) { e ->
-                        EpisodeRow(t, e, progress[Keys.episode(t, e)], t.offline[Keys.episode(t, e)] != null, actions, onMenu = { episodeMenu = e })
+                        EpisodeRow(t, e, progress[Keys.episode(t, e)], state.offline(t, Keys.episode(t, e)), actions, onMenu = { episodeMenu = e })
                     }
                 } else similarGrid(similar, state, actions)
             } else if (similar.isNotEmpty()) {
@@ -145,9 +149,16 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         DetailTopBar(t, solid, actions, onEdit = { editing = true })
     }
 
-    if (editing) EditSheet(t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true })
+    if (editing) EditSheet(
+        t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true },
+        // Mit TMDB erst die Auswahl der Poster (eigenes Bild ist dort die erste Kachel), sonst gleich die Galerie.
+        onCover = { if (tmdbCoverSource(t) != null) covering = true else detail.changeCover(t) },
+    )
+    if (covering) tmdbCoverSource(t)?.let { src ->
+        CoverSheet(t, src, onPick = { detail.setCover(t, it) }, onGallery = { detail.changeCover(t) }, onDismiss = { covering = false })
+    }
     episodeMenu?.let { e ->
-        EpisodeSheet(t, e, progress[Keys.episode(t, e)], t.offline[Keys.episode(t, e)] != null, actions, detail, onDismiss = { episodeMenu = null })
+        EpisodeSheet(t, e, progress[Keys.episode(t, e)], state.offline(t, Keys.episode(t, e)), actions, detail, onDismiss = { episodeMenu = null })
     }
 
     if (renaming) TextDialog(tr("Umbenennen", "Rename"), t.title, tr("Titel", "Title"), onDismiss = { renaming = false }) {
@@ -196,23 +207,16 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
         VSpace(22.dp)
 
         // Großer Knopf und – wenn angefangen – wie weit.
-        PrimaryButton(playLabel(t, p), icon = Ic.play) { actions.play(t, null) }
+        // Liegt, was der Knopf spielt, auf dem Gerät, sagt er es: kein Netz nötig.
+        val playKey = if (t.kind == TitleKind.MOVIE) Keys.movie(t) else next?.first?.let { Keys.episode(t, it) }
+        val playsOffline = playKey != null && t.offline[playKey] != null
+        PrimaryButton(playLabel(t, p) + if (playsOffline) tr(" · offline", " · offline") else "", icon = Ic.play) { actions.play(t, null) }
         val resume = if (t.kind == TitleKind.MOVIE) p[Keys.movie(t)] else next?.second
         if (resume != null && !resume.finished && resume.positionMs > ProgressStore.MIN_RESUME_MS) {
             VSpace(10.dp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Bar(resume.fraction, height = 4.dp, modifier = Modifier.weight(1f))
                 Text(remaining(resume), style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(start = 10.dp))
-            }
-        }
-        if (t.kind == TitleKind.MOVIE) {
-            val offline = t.offline[Keys.movie(t)] != null
-            if (offline) {
-                VSpace(10.dp)
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                    GIcon(Ic.check, tint = Palette.green, size = 16.dp)
-                    Text(tr("Offline verfügbar", "Available offline"), style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.padding(start = 6.dp))
-                }
             }
         }
         VSpace(14.dp)
@@ -223,10 +227,15 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
             ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                 actions.markWatched(t, seen != Recommend.Seen.DONE)
             }
-            val canLoad = if (t.kind == TitleKind.MOVIE) t.offline[Keys.movie(t)] == null && t.pageUrl != null else next != null
-            if (canLoad) ActionIcon(Ic.download, if (t.kind == TitleKind.MOVIE) tr("Laden", "Download") else tr("Folge laden", "Episode")) {
-                actions.download(t, if (t.kind == TitleKind.MOVIE) null else next?.first)
-            }
+            // Der vierte Platz zeigt den Stand des Films bzw. der nächsten Folge – derselbe, der unten
+            // in der Folgenliste steht. Antippen lädt; läuft schon etwas, öffnet es das Blatt dazu.
+            val ep = if (t.kind == TitleKind.MOVIE) null else next?.first
+            val dl = playKey?.let { state.offline(t, it) }
+            val canLoad = dl != null && (dl != de.marne.streamplayer.download.OfflineState.None || (if (t.kind == TitleKind.MOVIE) t.pageUrl != null else ep?.url != null || t.pageUrl != null))
+            if (canLoad && dl != null) DownloadAction(
+                dl, if (t.kind == TitleKind.MOVIE) tr("Laden", "Download") else tr("Folge laden", "Episode"),
+                onDownload = { actions.download(t, ep) }, onMenu = { actions.offlineMenu(t, ep) },
+            )
         }
 
         t.tmdb?.tagline?.let {
@@ -353,7 +362,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: 
  */
 @Composable
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, actions: LibActions, onMenu: () -> Unit) {
+private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: de.marne.streamplayer.download.OfflineState, actions: LibActions, onMenu: () -> Unit) {
     val watched = p?.finished == true
     // Antippen spielt, langes Drücken öffnet die Optionen – kein Drei-Punkte-Menü je Zeile.
     Column(
@@ -391,8 +400,7 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, 
                 }.joinToString(" · ")
                 if (meta.isNotEmpty()) Text(meta, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1)
             }
-            if (offline) Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) { GIcon(Ic.check, tint = Palette.green, size = 20.dp) }
-            else IconButton(onClick = { actions.download(t, e) }) { GIcon(Ic.download, tint = Palette.muted, size = 20.dp) }
+            DownloadMark(offline, onDownload = { actions.download(t, e) }, onMenu = { actions.offlineMenu(t, e) })
         }
         e.overview?.let {
             VSpace(8.dp)
@@ -442,7 +450,7 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
 
 /** Bearbeiten an einem Ort: Cover, Name, TMDB, Seite, Entfernen – statt eines Drei-Punkte-Menüs. */
 @Composable
-private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit) {
+private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit, onCover: () -> Unit) {
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     fun then(block: () -> Unit) {
@@ -459,7 +467,7 @@ private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit,
             Text(t.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             VSpace(18.dp)
             de.marne.streamplayer.ui.design.ListGroup {
-                de.marne.streamplayer.ui.design.ListRow(tr("Cover ändern", "Change cover"), icon = Ic.image, onClick = { then { detail.changeCover(t) } })
+                de.marne.streamplayer.ui.design.ListRow(tr("Cover ändern", "Change cover"), icon = Ic.image, onClick = { then(onCover) })
                 if (t.customPoster != null) {
                     de.marne.streamplayer.ui.design.RowDivider()
                     de.marne.streamplayer.ui.design.ListRow(tr("Eigenes Cover entfernen", "Remove custom cover"), icon = Ic.minus, showChevron = false, onClick = { then { detail.resetCover(t) } })
@@ -485,7 +493,7 @@ private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit,
 
 /** Optionen einer Folge (langes Drücken): abspielen, laden, gesehen, Seite. */
 @Composable
-private fun EpisodeSheet(t: LibTitle, e: Episode, p: Progress?, offline: Boolean, actions: LibActions, detail: DetailActions, onDismiss: () -> Unit) {
+private fun EpisodeSheet(t: LibTitle, e: Episode, p: Progress?, offline: de.marne.streamplayer.download.OfflineState, actions: LibActions, detail: DetailActions, onDismiss: () -> Unit) {
     val watched = p?.finished == true
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -504,9 +512,15 @@ private fun EpisodeSheet(t: LibTitle, e: Episode, p: Progress?, offline: Boolean
             VSpace(18.dp)
             de.marne.streamplayer.ui.design.ListGroup {
                 de.marne.streamplayer.ui.design.ListRow(tr("Abspielen", "Play"), icon = Ic.play, showChevron = false, onClick = { then { actions.play(t, e) } })
-                if (!offline) {
-                    de.marne.streamplayer.ui.design.RowDivider()
+                de.marne.streamplayer.ui.design.RowDivider()
+                if (offline == de.marne.streamplayer.download.OfflineState.None) {
                     de.marne.streamplayer.ui.design.ListRow(tr("Laden", "Download"), icon = Ic.download, showChevron = false, onClick = { then { actions.download(t, e) } })
+                } else {
+                    // Mit Stand in der zweiten Zeile; das Blatt dahinter hat Anhalten, Löschen usw.
+                    de.marne.streamplayer.ui.design.ListRow(
+                        "Download", icon = Ic.download, subtitle = statusLine(offline),
+                        onClick = { then { actions.offlineMenu(t, e) } },
+                    )
                 }
                 de.marne.streamplayer.ui.design.RowDivider()
                 de.marne.streamplayer.ui.design.ListRow(

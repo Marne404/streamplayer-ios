@@ -28,6 +28,9 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var downloads: DownloadStore
         private set
+    /** Untertitel-Dateien auf dem Gerät (zu Downloads gesichert oder selbst gewählt). */
+    lateinit var subtitles: de.marne.streamplayer.subtitles.SubtitleStore
+        private set
     lateinit var adblock: AdBlocker
         private set
     lateinit var library: LibraryStore
@@ -58,6 +61,7 @@ class App : Application(), SingletonImageLoader.Factory {
         de.marne.streamplayer.ui.Lang.current = settings.language.value
         http = Http.client(this)
         downloads = DownloadStore(this)
+        subtitles = de.marne.streamplayer.subtitles.SubtitleStore(this)
         library = LibraryStore(this)
         profiles = de.marne.streamplayer.account.ProfileStore(this)
         progress = ProgressStore(this, profiles.activeId)
@@ -70,6 +74,7 @@ class App : Application(), SingletonImageLoader.Factory {
         Notifications.createChannels(this)
         cloud = de.marne.streamplayer.account.Cloud(this)
         sync = de.marne.streamplayer.account.CloudSync(this, cloud, library, profiles, progress).also { it.start() }
+        de.marne.streamplayer.widget.ContinueWidget.observe(this)
     }
 
     // Vorschaubilder: Netz über denselben OkHttp-Client, fertige Videos über ein Standbild.

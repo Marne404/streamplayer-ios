@@ -104,8 +104,12 @@ fun QuickSheet(t: LibTitle, state: LibState, actions: LibActions, onDismiss: () 
                 ActionIcon(Ic.checkCircle, if (seen == Recommend.Seen.DONE) tr("Gesehen", "Watched") else tr("Als gesehen", "Mark watched"), active = seen == Recommend.Seen.DONE) {
                     actions.markWatched(t, seen != Recommend.Seen.DONE)
                 }
-                if (t.kind == TitleKind.MOVIE && t.offline.isEmpty() && t.pageUrl != null) {
-                    ActionIcon(Ic.download, tr("Laden", "Download")) { then { actions.download(t, null) } }
+                if (t.kind == TitleKind.MOVIE) {
+                    val dl = state.offline(t, Keys.movie(t))
+                    if (dl != de.marne.streamplayer.download.OfflineState.None || t.pageUrl != null) DownloadAction(
+                        dl, tr("Laden", "Download"),
+                        onDownload = { actions.download(t, null) }, onMenu = { then { actions.offlineMenu(t, null) } },
+                    )
                 }
             }
             VSpace(8.dp)

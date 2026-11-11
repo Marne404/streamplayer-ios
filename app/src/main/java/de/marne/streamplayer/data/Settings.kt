@@ -81,6 +81,32 @@ class Settings(context: Context) {
     private val _allowlist = MutableStateFlow(prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet())
     val allowlist: StateFlow<Set<String>> = _allowlist.asStateFlow()
 
+    /** Größe der Untertitel im Player, als Faktor (1 = Standard). */
+    private val _subtitleScale = MutableStateFlow(prefs.getFloat(KEY_SUB_SCALE, 1f))
+    val subtitleScale: StateFlow<Float> = _subtitleScale.asStateFlow()
+
+    fun setSubtitleScale(value: Float) {
+        _subtitleScale.value = value
+        prefs.edit().putFloat(KEY_SUB_SCALE, value).apply()
+    }
+
+    /** Gesehene Filme und Folgen vom Gerät löschen, sobald sie zu Ende geschaut sind. */
+    private val _autoDelete = MutableStateFlow(prefs.getBoolean(KEY_AUTO_DELETE, false))
+    val autoDelete: StateFlow<Boolean> = _autoDelete.asStateFlow()
+    /** Ist eine geladene Folge gesehen, die nächste laden – so liegt immer eine bereit. */
+    private val _autoNext = MutableStateFlow(prefs.getBoolean(KEY_AUTO_NEXT, false))
+    val autoNext: StateFlow<Boolean> = _autoNext.asStateFlow()
+
+    fun setAutoDelete(value: Boolean) {
+        _autoDelete.value = value
+        prefs.edit().putBoolean(KEY_AUTO_DELETE, value).apply()
+    }
+
+    fun setAutoNext(value: Boolean) {
+        _autoNext.value = value
+        prefs.edit().putBoolean(KEY_AUTO_NEXT, value).apply()
+    }
+
     /** Startseite: „Weiterschauen“ und „Meine Liste“ als Regal – aus, stehen sie nur unter „Meins“. */
     private val _homeContinue = MutableStateFlow(prefs.getBoolean(KEY_HOME_CONTINUE, true))
     val homeContinue: StateFlow<Boolean> = _homeContinue.asStateFlow()
@@ -235,6 +261,9 @@ class Settings(context: Context) {
         _allowlist.value = prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet()
         _askProfile.value = prefs.getBoolean("ask_profile", true)
         _homeContinue.value = prefs.getBoolean(KEY_HOME_CONTINUE, true)
+        _autoDelete.value = prefs.getBoolean(KEY_AUTO_DELETE, false)
+        _subtitleScale.value = prefs.getFloat(KEY_SUB_SCALE, 1f)
+        _autoNext.value = prefs.getBoolean(KEY_AUTO_NEXT, false)
         _homeMyList.value = prefs.getBoolean(KEY_HOME_LIST, false)
         Lang.fromTag(prefs.getString(KEY_LANGUAGE, null))?.let { _language.value = it; Lang.current = it }
     }
@@ -246,6 +275,9 @@ class Settings(context: Context) {
 
     private companion object {
         const val KEY_HOME_CONTINUE = "home_continue"
+        const val KEY_AUTO_DELETE = "dl_auto_delete"
+        const val KEY_SUB_SCALE = "subtitle_scale"
+        const val KEY_AUTO_NEXT = "dl_auto_next"
         const val KEY_HOME_LIST = "home_mylist"
         /** Gehören nicht zu „Einstellungen“ in der Sicherung. */
         val NOT_SETTINGS = setOf("tmdb_key", "history", "last_url", "onboarded")

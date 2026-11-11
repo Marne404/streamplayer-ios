@@ -118,6 +118,8 @@ fun PosterTile(
     width: Dp = 124.dp,
     progress: Float? = null,
     watched: Boolean = false,
+    /** Ganz oder teilweise auf dem Gerät: kleines Pfeil-Zeichen oben rechts. */
+    offline: Boolean = false,
     badge: String? = null,
     sharedKey: String? = null,
     onLongClick: (() -> Unit)? = null,
@@ -139,10 +141,16 @@ fun PosterTile(
                         .background(Palette.ink.copy(alpha = 0.88f)).padding(horizontal = 7.dp, vertical = 2.dp),
                 )
             }
-            if (watched) {
-                Box(
-                    Modifier.align(Alignment.TopEnd).padding(8.dp).clip(RoundedCornerShape(50)).background(Palette.ink).padding(4.dp)
-                ) { GIcon(Ic.check, tint = Palette.onInk, size = 14.dp) }
+            // Geladen und gesehen stehen nebeneinander oben rechts – zwei Fragen, zwei Zeichen.
+            if (watched || offline) {
+                androidx.compose.foundation.layout.Row(Modifier.align(Alignment.TopEnd).padding(8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
+                    if (offline) Box(
+                        Modifier.clip(RoundedCornerShape(50)).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)).padding(4.dp)
+                    ) { GIcon(Ic.download, tint = androidx.compose.ui.graphics.Color.White, size = 14.dp) }
+                    if (watched) Box(
+                        Modifier.clip(RoundedCornerShape(50)).background(Palette.ink).padding(4.dp)
+                    ) { GIcon(Ic.check, tint = Palette.onInk, size = 14.dp) }
+                }
             }
             if (progress != null && progress > 0f) {
                 Box(Modifier.align(Alignment.BottomCenter).padding(horizontal = 10.dp, vertical = 10.dp)) {

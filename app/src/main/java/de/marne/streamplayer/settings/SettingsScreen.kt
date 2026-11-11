@@ -68,6 +68,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val theme by settings.theme.collectAsStateWithLifecycle()
     val wifiOnly by settings.wifiOnly.collectAsStateWithLifecycle()
     val parallel by settings.parallel.collectAsStateWithLifecycle()
+    val autoDelete by settings.autoDelete.collectAsStateWithLifecycle()
+    val autoNext by settings.autoNext.collectAsStateWithLifecycle()
     val adblockOn by settings.adblock.collectAsStateWithLifecycle()
     val allowlist by settings.allowlist.collectAsStateWithLifecycle()
     val filter by app.adblock.status.collectAsStateWithLifecycle()
@@ -215,6 +217,24 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                             height = 36.dp,
                         )
                     },
+                )
+                RowDivider()
+                ListRow(
+                    title = tr("Gesehenes löschen", "Delete when watched"),
+                    subtitle = tr("Zu Ende geschaut: Datei weg, Platz frei.", "Finished: file gone, space freed."),
+                    icon = Ic.delete,
+                    showChevron = false,
+                    onClick = { settings.setAutoDelete(!autoDelete) },
+                    trailing = { IvorySwitch(autoDelete, settings::setAutoDelete) },
+                )
+                RowDivider()
+                ListRow(
+                    title = tr("Nächste Folge laden", "Download next episode"),
+                    subtitle = tr("Geladene Folge gesehen: die nächste kommt.", "Watched a downloaded episode: the next one follows."),
+                    icon = Ic.skipNext,
+                    showChevron = false,
+                    onClick = { settings.setAutoNext(!autoNext) },
+                    trailing = { IvorySwitch(autoNext, settings::setAutoNext) },
                 )
                 RowDivider()
                 ListRow(title = tr("Speicherort", "Location"), icon = Ic.folder, value = tr("Filme/Streamplayer", "Movies/Streamplayer"))

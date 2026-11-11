@@ -27,7 +27,12 @@ class LibState(
     val profile: Profile,
     val enrich: Enricher.Status,
     val downloads: List<DownloadItem>,
+    /** Downloads, deren Video noch gesucht wird: Schlüssel → sucht gerade (true) oder wartet (false). */
+    val pending: Map<String, Boolean> = emptyMap(),
 ) {
+    /** Ein Zustand für Film oder Folge, überall gleich (siehe OfflineState). */
+    fun offline(t: LibTitle, key: String) = de.marne.streamplayer.download.Offline.state(key, t.offline[key], downloads, pending)
+
     val myList: List<String> get() = profile.list
     fun inList(t: LibTitle) = t.id in profile.list
     val collections: List<de.marne.streamplayer.account.TitleCollection> get() = profile.collections
@@ -52,6 +57,12 @@ class LibActions(
     val play: (LibTitle, Episode?) -> Unit,
     val playContinue: (ContinueItem) -> Unit,
     val download: (LibTitle, Episode?) -> Unit,
+    /** Blatt zu einem Download: Stand, Anhalten, Abbrechen, Abspielen, Löschen. */
+    val offlineMenu: (LibTitle, Episode?) -> Unit,
+    /** Alle noch fehlenden Folgen einer Staffel laden. */
+    val downloadSeason: (LibTitle, Int) -> Unit,
+    /** Geladene Dateien löschen (Schlüssel); Titel und Fortschritt bleiben. */
+    val deleteOffline: (LibTitle, List<String>) -> Unit,
     val toggleList: (LibTitle) -> Unit,
     /** Film oder ganze Serie als gesehen/ungesehen markieren. */
     val markWatched: (LibTitle, Boolean) -> Unit,

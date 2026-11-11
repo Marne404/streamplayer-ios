@@ -86,6 +86,16 @@ class Tmdb(
 
     suspend fun season(tvId: Int, season: Int): List<EpisodeInfo> = parseSeason(get("tv/$tvId/season/$season"))
 
+    /**
+     * Alle Poster eines Titels zur Auswahl (Cover ändern): Wunschsprache zuerst, dann Englisch,
+     * dann ohne Schrift, dann der Rest – je nach Bewertung. Rückgabe: Bildpfade (für [poster]).
+     */
+    suspend fun posters(kind: Kind, id: Int): List<String> {
+        val lang = language().substringBefore('-').lowercase().ifBlank { "en" }
+        val o = get("${kind.path}/$id/images", mapOf("include_image_language" to listOf(lang, "en", "null").distinct().joinToString(",")))
+        return parsePosters(o, lang)
+    }
+
     private suspend fun get(path: String, params: Map<String, String> = emptyMap()): JSONObject = withContext(Dispatchers.IO) {
         val k = key()?.trim().takeIf { !it.isNullOrEmpty() } ?: throw TmdbException(tr("Kein TMDB-Schlüssel eingetragen.", "No TMDB key entered."))
         val bearer = k.startsWith("eyJ")
@@ -167,6 +177,17 @@ class Tmdb(
             }
             return all.sortedWith(compareBy<JSONObject> { rank(it) }.thenByDescending { it.optDouble("vote_average", 0.0) }).first().s("file_path")
         }
+
+        fun parsePosters(o: JSONObject, lang: String): List<String> {
+            val arr = o.optJSONArray("posters") ?: return emptyList()
+            val all = List(arr.length()) { arr.getJSONObject(it) }.filter { it.s("file_path") != null }
+            fun rank(i: JSONObject): Int = when (i.s("iso_639_1")) { lang -> 0; "en" -> 1; null -> 2; else -> 3 }
+            return all.sortedWith(compareBy<JSONObject> { rank(it) }.thenByDescending { it.optDouble("vote_average", 0.0) })
+                .mapNotNull { it.s("file_path") }.distinct().take(60)
+        }
+
+        /** Kleines Poster für Auswahl-Raster. */
+        fun posterSmall(path: String?) = path?.takeIf { it.isNotBlank() }?.let { "$IMG/w342$it" }
 
         fun parseDetails(o: JSONObject, kind: Kind, lang: String = "de"): Details {
             val seasons = o.optJSONArray("seasons")?.let { arr ->

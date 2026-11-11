@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dunkle Fläche wie der Player: Cover leuchten darauf, egal welches Hintergrundbild der Startbildschirm hat. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#F21A1917" />
+    <corners android:radius="28dp" />
+</shape>

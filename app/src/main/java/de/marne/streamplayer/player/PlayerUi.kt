@@ -39,6 +39,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -116,8 +117,11 @@ fun PlayerScreen(
     info: PlaybackInfo,
     onBack: () -> Unit,
     onPlayEpisode: (LibTitle, Episode) -> Unit,
+    /** Eigene Untertitel-Datei wählen (Dateiwähler der Activity). */
+    onPickSubtitles: () -> Unit = {},
 ) {
     val state = remember { PlayState() }
+    val subScale by de.marne.streamplayer.App.instance.settings.subtitleScale.collectAsState()
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { state.playing = isPlaying }
@@ -194,7 +198,10 @@ fun PlayerScreen(
                     keepScreenOn = true
                 }
             },
-            update = { it.resizeMode = resizeMode },
+            update = {
+                it.resizeMode = resizeMode
+                it.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subScale)
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -285,7 +292,7 @@ fun PlayerScreen(
                     })
                 }
                 Panel.Speed -> SpeedPanel(state.speed, onPick = { player.setPlaybackSpeed(it); panel = null })
-                Panel.Tracks -> TracksPanel(player, state.tracksVersion)
+                Panel.Tracks -> TracksPanel(player, state.tracksVersion, onPickSubtitles)
                 null -> Unit
             }
         }

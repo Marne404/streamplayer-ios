@@ -45,7 +45,10 @@ class DownloadStore(private val context: Context) {
     }
 
     /** Legt einen Download an und gibt seine ID zurück. */
-    fun enqueue(c: Candidate, variant: Variant?, title: String, thumbnail: String?, userAgent: String, libraryKey: String? = null): String {
+    fun enqueue(
+        c: Candidate, variant: Variant?, title: String, thumbnail: String?, userAgent: String, libraryKey: String? = null,
+        subtitles: List<de.marne.streamplayer.subtitles.SubTrack> = emptyList(),
+    ): String {
         val item = DownloadItem(
             id = UUID.randomUUID().toString(),
             url = c.url,
@@ -61,6 +64,7 @@ class DownloadStore(private val context: Context) {
             durationMs = c.durationMs,
             bytesTotal = variant?.estimatedBytes ?: c.sizeBytes,
             libraryKey = libraryKey,
+            subtitles = subtitles,
         )
         _items.update { listOf(item) + it }
         return item.id
@@ -68,6 +72,8 @@ class DownloadStore(private val context: Context) {
 
     fun remove(id: String) {
         val item = get(id) ?: return
+        // Mit der Datei gesicherte Untertitel gehen mit; selbst gewählte (am Film/an der Folge) bleiben.
+        de.marne.streamplayer.App.instance.subtitles.removeFor(item.fileUri)
         item.fileUri?.let { uri ->
             runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
             de.marne.streamplayer.App.instance.library.removeFile(uri)

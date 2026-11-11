@@ -85,6 +85,27 @@ class RecommendTest {
         assertEquals(emptyList<LibTitle>(), Recommend.search(listOf(t, doku), "  "))
     }
 
+    /** Anlass (1.11.0): Suche über die ganze Bibliothek – Personen und Folgen als eigene Treffer. */
+    @Test fun sucheFindetPersonenFolgenUndBeschreibung() {
+        val base = series("lost", listOf("Drama"))
+        val s = base.copy(
+            title = "Lost",
+            episodeInfo = mapOf("1:1" to EpInfo("Pilot", null, null, null)),
+            tmdb = base.tmdb!!.copy(cast = listOf("Evangeline Lilly")),
+        )
+        val story = movie("story", listOf("Drama")).copy(description = "Eine Gruppe strandet auf einer Insel.")
+        val f = Recommend.searchAll(listOf(s, doku, story), "lilly")
+        assertEquals("Evangeline Lilly", f.people.single().first)
+        assertEquals(listOf(s), f.titles)
+        assertEquals(1, Recommend.searchAll(listOf(s), "lost pilot").episodes.size)
+        // Personen erst ab drei Buchstaben.
+        assertTrue(Recommend.searchAll(listOf(s), "li").people.isEmpty())
+        // Beschreibung zählt, aber hinter einem Treffer im Titel.
+        assertEquals(listOf("story"), Recommend.searchAll(listOf(s, story), "strandet").titles.map { it.id })
+        val both = movie("inselreich", listOf("Drama")).copy(title = "Insel")
+        assertEquals(listOf("inselreich", "story"), Recommend.search(listOf(story, both), "insel").map { it.id })
+    }
+
     @Test fun auswertung() {
         val p = mapOf(Keys.movie(krimi) to done(at = System.currentTimeMillis()), Keys.movie(doku) to started(at = 0))
         val s = Recommend.stats(all, p, emptyList())

@@ -51,6 +51,21 @@
     for (var i = 0; i < sources.length; i++) {
       report(sources[i].getAttribute('src'), src, { poster: extra.poster, title: extra.title, mime: sources[i].getAttribute('type') });
     }
+    tracks(el);
+  }
+
+  // Untertitel als <track>: Sprache und Name stehen dabei, das ist mehr, als das Netz verrät.
+  var sentSub = {};
+  function tracks(el) {
+    var ts = el.querySelectorAll ? el.querySelectorAll('track[src]') : [];
+    for (var i = 0; i < ts.length; i++) {
+      var kind = (ts[i].getAttribute('kind') || 'subtitles').toLowerCase();
+      if (kind !== 'subtitles' && kind !== 'captions') continue;
+      var u = abs(ts[i].getAttribute('src'));
+      if (!u || !/^https?:/i.test(u) || sentSub[u]) continue;
+      sentSub[u] = 1;
+      post({ t: 'sub', url: u, lang: ts[i].getAttribute('srclang') || '', label: ts[i].getAttribute('label') || '', frame: location.href });
+    }
   }
 
   ['play', 'playing', 'loadedmetadata'].forEach(function (type) {

@@ -114,15 +114,18 @@ fun MineScreen(state: LibState, actions: LibActions) {
                 ListGroup {
                     ListRow(
                         "Downloads", icon = Ic.download,
+                        // Eine Stelle für alles Geladene (früher daneben „Offline verfügbar“ – zwei Orte für dasselbe).
                         subtitle = when {
                             running > 0 -> if (running == 1) tr("1 läuft gerade", "1 in progress") else tr("$running laufen gerade", "$running in progress")
+                            state.pending.isNotEmpty() -> tr("Video wird gesucht", "Finding the video")
+                            offline > 0 -> listOf(
+                                if (offline == 1) tr("1 Titel", "1 title") else tr("$offline Titel", "$offline titles"),
+                                de.marne.streamplayer.ui.Format.bytes(de.marne.streamplayer.download.Offline.bytes(state.downloads)),
+                            ).joinToString(" · ")
                             else -> null
                         },
-                        value = state.downloads.size.takeIf { it > 0 }?.toString(),
                         onClick = actions.downloads,
                     )
-                    RowDivider()
-                    ListRow(tr("Offline verfügbar", "Available offline"), icon = Ic.folder, value = offline.toString(), onClick = { actions.grid(GridSpec("offline")) })
                     RowDivider()
                     ListRow(tr("Gesehen", "Watched"), icon = Ic.checkCircle, value = watched.toString(), onClick = { actions.grid(GridSpec("watched")) })
                     RowDivider()

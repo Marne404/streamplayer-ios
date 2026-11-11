@@ -103,6 +103,7 @@ fun TitlePoster(t: LibTitle, state: LibState, actions: LibActions, width: Dp = 1
         width = width,
         progress = p?.takeIf { !it.finished }?.fraction,
         watched = seen == Recommend.Seen.DONE,
+        offline = t.offline.isNotEmpty(),
         badge = if (isNew(t, state.progress)) tr("NEU", "NEW") else null,
         // Antippen öffnet die Seite (das Cover fliegt hinein), langes Drücken die Kurzansicht.
         sharedKey = coverKey(origin, t.id),

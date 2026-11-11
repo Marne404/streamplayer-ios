@@ -96,6 +96,7 @@ import de.marne.streamplayer.download.DownloadItem
 import de.marne.streamplayer.download.DownloadService
 import de.marne.streamplayer.downloads.DownloadActions
 import de.marne.streamplayer.downloads.DownloadsScreen
+import de.marne.streamplayer.downloads.PendingRow
 import de.marne.streamplayer.library.LinkActions
 import de.marne.streamplayer.library.LinkSheet
 import de.marne.streamplayer.library.DetailActions
@@ -193,10 +194,23 @@ class AppNav {
     var profileManage by mutableStateOf(false)
     /** Auswahl muss getroffen werden (gesperrtes Profil beim Start): nicht wegtippbar. */
     var profileGate by mutableStateOf(false)
+    /** Vom Widget: diesen Film bzw. diese Folge spielen (Schlüssel aus Keys). */
+    var playKey by mutableStateOf<String?>(null)
+    /** Blatt zu einem Download: Titel-ID und Schlüssel (Keys) von Film oder Folge. */
+    var offlineFor by mutableStateOf<Pair<String, String>?>(null)
+
+    /** Was gerade gesucht wird (true) oder wartet (false) – für OfflineState. */
+    fun pending(): Map<String, Boolean> = buildMap {
+        queue.forEach { put(it.key, false) }
+        quiet?.let { put(it.key, true) }
+    }
 }
 
 /** Ein Download, dessen Video noch gesucht wird: Titel, Folge (oder Film), Anzeige, Seite. */
-data class QuietJob(val titleId: String, val season: Int?, val episode: Int?, val label: String, val url: String)
+data class QuietJob(val titleId: String, val season: Int?, val episode: Int?, val label: String, val url: String) {
+    /** Fortschritts-Schlüssel (Keys) des Films bzw. der Folge. */
+    val key: String get() = if (season != null && episode != null) "e:$titleId:$season:$episode" else "m:$titleId"
+}
 
 class MainActivity : ComponentActivity() {
 
@@ -262,6 +276,13 @@ class MainActivity : ComponentActivity() {
                     ?.let { Regex("""https?://\S+""").find(it)?.value }
                     ?.let(::openLink)
             }
+            // Widget „Weiterschauen“: Film oder Folge spielen, sobald die Bibliothek bereit ist.
+            ACTION_PLAY -> {
+                val key = intent.getStringExtra(EXTRA_KEY) ?: return
+                nav.browserOpen = false
+                nav.selectTab(TAB_HOME)
+                nav.playKey = key
+            }
             ACTION_SHOW_DOWNLOADS -> {
                 nav.browserOpen = false
                 nav.selectTab(TAB_MINE)
@@ -299,6 +320,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val ACTION_SHOW_DOWNLOADS = "de.marne.streamplayer.SHOW_DOWNLOADS"
+        const val ACTION_PLAY = "de.marne.streamplayer.PLAY"
+        const val EXTRA_KEY = "key"
         const val TAB_HOME = 0
         const val TAB_DISCOVER = 1
         const val TAB_MINE = 2
@@ -331,7 +354,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val profileList by app.profiles.profiles.collectAsStateWithLifecycle()
     val activeId by app.profiles.activeId.collectAsStateWithLifecycle()
     val activeProfile = profileList.firstOrNull { it.id == activeId } ?: profileList.first()
-    val libState = LibState(titles, progress, activeProfile, enrichStatus, downloads)
+    val libState = LibState(titles, progress, activeProfile, enrichStatus, downloads, nav.pending())
     // Mehrere Profile: bei jedem Start fragen, wer schaut – wenn eingestellt. Sonst bleibt das letzte.
     val needsChoice by app.profiles.needsChoice.collectAsStateWithLifecycle()
     val askProfile by app.settings.askProfile.collectAsStateWithLifecycle()
@@ -389,9 +412,10 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        app.downloads.enqueue(c, v, title, thumb, browser.userAgent, libraryKey)
+        app.downloads.enqueue(c, v, title, thumb, browser.userAgent, libraryKey, subtitles = hub.subtitles.value)
         DownloadService.kick(context)
-        toast(tr("Läuft. Du findest es unter Meins → Downloads.", "Downloading. Find it under My Stuff → Downloads."), tr("Ansehen", "View")) {
+        // Aus der Bibliothek zeigt das Zeichen an Film/Folge den Stand – eine Meldung wäre doppelt.
+        if (libraryKey == null) toast(tr("Läuft. Du findest es unter Meins → Downloads.", "Downloading. Find it under My Stuff → Downloads."), tr("Ansehen", "View")) {
             nav.browserOpen = false
             nav.selectTab(MainActivity.TAB_MINE)
             nav.push(Route.Downloads)
@@ -405,6 +429,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 mime = c.mime.takeIf { c.kind != MediaKind.FILE },
                 referer = c.referer ?: c.pageUrl,
                 userAgent = browser.userAgent,
+                subtitles = hub.subtitles.value,
             )
         )
     }
@@ -421,15 +446,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         nav.closeInstant = false
         nav.resolving = true
         nav.browserOpen = true
-        val key = if (job.season != null && job.episode != null) "e:${job.titleId}:${job.season}:${job.episode}" else "m:${job.titleId}"
-        watch.start(job.url, WatchController.Request(key = key, label = job.label, titleId = job.titleId, download = true, fromLibrary = true))
+        watch.start(job.url, WatchController.Request(key = job.key, label = job.label, titleId = job.titleId, download = true, fromLibrary = true))
     }
 
     /**
      * Film oder Folge abspielen bzw. laden. Offline-Datei: direkt. Sonst Seite verdeckt laden,
      * Stream finden (WatchController), danach zurück in die Bibliothek.
      */
-    fun resolve(t: LibTitle, ep: Episode?, download: Boolean) {
+    fun resolve(t: LibTitle, ep: Episode?, download: Boolean, announce: Boolean = true) {
         val key = ep?.let { Keys.episode(t, it) } ?: Keys.movie(t)
         val label = if (ep != null) "${t.title} · ${ep.label}" else t.title
         val offline = t.offline[key]
@@ -444,7 +468,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             // Läuft schon eine Suche (Download oder Abspielen): hinten anstellen, nicht abbrechen.
             if (nav.quiet != null || nav.resolving) {
                 nav.queue.add(job)
-                toast(tr("Vorgemerkt: $label", "Queued: $label"))
+                if (announce) toast(tr("Vorgemerkt: $label", "Queued: $label"))
             } else startQuiet(job)
             return
         }
@@ -466,6 +490,27 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         nav.resolving = true
         nav.browserOpen = true
         watch.start(url, WatchController.Request(key = key, label = label, titleId = t.id, download = download, fromLibrary = true))
+    }
+
+    /** Stand jetzt, nicht beim letzten Zeichnen – für Aktionen, die in remember-Blöcken hängen. */
+    fun offlineNow(t: LibTitle, key: String) =
+        de.marne.streamplayer.download.Offline.state(key, app.library.get(t.id)?.offline?.get(key), app.downloads.items.value, nav.pending())
+
+    /** Fertige Datei löschen: über ihren Download-Eintrag, sonst direkt (ältere Dateien ohne Eintrag). */
+    fun deleteOfflineKey(t: LibTitle, key: String) {
+        val uri = app.library.get(t.id)?.offline?.get(key) ?: return
+        val item = app.downloads.items.value.firstOrNull { it.fileUri == uri }
+        if (item != null) DownloadService.remove(context, item.id)
+        else {
+            runCatching { context.contentResolver.delete(Uri.parse(uri), null, null) }
+            app.library.removeFile(uri)
+        }
+    }
+
+    /** Suche abbrechen: aus der Schlange nehmen bzw. die laufende Suche stoppen. */
+    fun cancelPending(key: String) {
+        nav.queue.removeAll { it.key == key }
+        if (nav.quiet?.key == key) watch.cancel()
     }
 
     fun playTitle(t: LibTitle) {
@@ -503,6 +548,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                             userAgent = browser.userAgent,
                             key = r.key,
                             startMs = r.key?.let(app.progress::resumePosition) ?: 0,
+                            subtitles = hub.subtitles.value,
                         ),
                         fade,
                     )
@@ -580,9 +626,13 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 browser.load(d.pageUrl)
             },
             goBrowse = { nav.browserOpen = true },
+            cancelPending = { key -> cancelPending(key) },
+            openTitle = { id -> nav.openDetail(id) },
             saveToLibrary = { d ->
                 d.fileUri?.let { uri ->
                     val t = app.library.addOfflineMovie(uri, d.title, d.pageUrl, d.thumbnail, d.durationMs)
+                    // Ab jetzt gehört die Datei zum Titel: Downloads gruppiert sie dort, Fortschritt zählt mit.
+                    app.downloads.update(d.id) { it.copy(libraryKey = Keys.movie(t)) }
                     toast(tr("In der Bibliothek.", "Added to your library."), tr("Ansehen", "View")) {
                         nav.selectTab(MainActivity.TAB_HOME)
                         nav.openDetail(t.id)
@@ -610,6 +660,29 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             download = { t, e ->
                 if (t.kind == TitleKind.SERIES && e == null) Shelves.nextFor(t, app.progress.all.value)?.first?.let { resolve(t, it, true) }
                 else resolve(t, e, true)
+            },
+            offlineMenu = { t, e -> nav.offlineFor = t.id to (e?.let { Keys.episode(t, it) } ?: Keys.movie(t)) },
+            downloadSeason = { t, season ->
+                // Fehlende Folgen vormerken, angehaltene fortsetzen; was läuft oder da ist, bleibt.
+                var n = 0
+                t.episodes().filter { it.season == season }.forEach { e ->
+                    when (val st = offlineNow(t, Keys.episode(t, e))) {
+                        de.marne.streamplayer.download.OfflineState.None -> if (e.url != null || t.pageUrl != null) { resolve(t, e, true, announce = false); n++ }
+                        is de.marne.streamplayer.download.OfflineState.Stopped -> { DownloadService.resume(context, st.item.id); n++ }
+                        else -> Unit
+                    }
+                }
+                toast(
+                    when (n) {
+                        0 -> tr("Alles schon geladen oder unterwegs.", "Everything is already downloaded or on its way.")
+                        1 -> tr("1 Folge vorgemerkt.", "1 episode queued.")
+                        else -> tr("$n Folgen vorgemerkt – sie laden nacheinander.", "$n episodes queued – they download one after another.")
+                    }
+                )
+            },
+            deleteOffline = { t, keys ->
+                keys.forEach { deleteOfflineKey(t, it) }
+                toast(if (keys.size == 1) tr("Download gelöscht.", "Download deleted.") else tr("${keys.size} Downloads gelöscht.", "${keys.size} downloads deleted."))
             },
             toggleList = { t ->
                 val had = t.id in app.profiles.active.list
@@ -641,6 +714,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
             resetCover = { t -> app.library.setCustomPoster(t.id, null) },
+            setCover = { t, url -> app.library.setCustomPoster(t.id, url) },
             refreshTmdb = { t ->
                 if (app.enricher.available) {
                     app.enricher.enqueue(listOf(t.id), force = true)
@@ -654,6 +728,48 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 toast(tr("Aus der Bibliothek entfernt.", "Removed from your library."))
             },
         )
+    }
+
+    // Gesehen → Datei löschen bzw. nächste Folge laden (Einstellungen → Downloads). Nur, was gerade
+    // eben fertig wurde: Beim Profilwechsel oder Abgleich tauchen alte „gesehen“ auf – die sollen
+    // nicht auf einen Schlag Dateien löschen oder Downloads lostreten.
+    val finishedSeen = remember { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(progress, activeId) {
+        val now = progress.filterValues { it.finished }.keys
+        val before = finishedSeen.value
+        finishedSeen.value = now
+        if (before == null) return@LaunchedEffect
+        val autoDelete = app.settings.autoDelete.value
+        val autoNext = app.settings.autoNext.value
+        if (!autoDelete && !autoNext) return@LaunchedEffect
+        val recent = System.currentTimeMillis() - 15 * 60_000L
+        for (key in now - before) {
+            val p = progress[key] ?: continue
+            if (p.updatedAt < recent || p.watchedMs <= 0) continue
+            val (id, season, number) = Keys.parse(key) ?: continue
+            val t = app.library.get(id) ?: continue
+            if (t.offline[key] == null) continue
+            if (autoNext && season != null && number != null) {
+                t.episode(season, number)?.let(t::next)?.let { n ->
+                    if (offlineNow(t, Keys.episode(t, n)) == de.marne.streamplayer.download.OfflineState.None && (n.url != null || t.pageUrl != null)) {
+                        resolve(t, n, true, announce = false)
+                        toast(tr("Nächste Folge wird geladen: ${n.label}", "Downloading the next episode: ${n.label}"))
+                    }
+                }
+            }
+            if (autoDelete) deleteOfflineKey(t, key)
+        }
+    }
+
+    // Wunsch vom Widget: erst, wenn „Wer schaut?“ beantwortet ist – ein gesperrtes Profil braucht seine PIN.
+    LaunchedEffect(nav.playKey, nav.profilePicker) {
+        val key = nav.playKey ?: return@LaunchedEffect
+        if (nav.profilePicker) return@LaunchedEffect
+        nav.playKey = null
+        val (id, season, number) = Keys.parse(key) ?: return@LaunchedEffect
+        val t = app.library.get(id) ?: return@LaunchedEffect
+        val ep = if (season != null && number != null) t.episode(season, number) ?: return@LaunchedEffect else null
+        resolve(t, ep, false)
     }
 
     // Wunsch aus dem Player („Nächste Folge“, Folge aus dem Panel): abholen, sobald wir wieder vorn sind.
@@ -766,6 +882,39 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
 
         nav.previewId?.let { id ->
             libState.byId(id)?.let { t -> QuickSheet(t, libState, libActions, onDismiss = { nav.previewId = null }) }
+        }
+        nav.offlineFor?.let { (id, key) ->
+            val t = libState.byId(id)
+            val parsed = de.marne.streamplayer.library.Keys.parse(key)
+            if (t == null || parsed == null) LaunchedEffect(Unit) { nav.offlineFor = null }
+            else {
+                val ep = if (parsed.second != null && parsed.third != null) t.episode(parsed.second!!, parsed.third!!) else null
+                val st = libState.offline(t, key)
+                de.marne.streamplayer.library.OfflineSheet(
+                    eyebrow = if (ep != null) "${t.title} · ${ep.label}" else tr("Film", "Movie"),
+                    title = ep?.title ?: ep?.label ?: t.title,
+                    state = st,
+                    actions = de.marne.streamplayer.library.OfflineSheetActions(
+                        play = { resolve(t, ep, false) },
+                        pause = { (st as? de.marne.streamplayer.download.OfflineState.Loading)?.item?.let { DownloadService.pause(context, it.id) } },
+                        resume = { (st as? de.marne.streamplayer.download.OfflineState.Stopped)?.item?.let { DownloadService.resume(context, it.id) } },
+                        cancel = {
+                            when (st) {
+                                is de.marne.streamplayer.download.OfflineState.Waiting -> cancelPending(key)
+                                is de.marne.streamplayer.download.OfflineState.Loading -> DownloadService.remove(context, st.item.id)
+                                is de.marne.streamplayer.download.OfflineState.Stopped -> DownloadService.remove(context, st.item.id)
+                                else -> Unit
+                            }
+                        },
+                        delete = {
+                            deleteOfflineKey(t, key)
+                            toast(tr("Download gelöscht.", "Download deleted."))
+                        },
+                        share = (st as? de.marne.streamplayer.download.OfflineState.Done)?.item?.let { d -> { share(context, d) } },
+                    ),
+                    onDismiss = { nav.offlineFor = null },
+                )
+            }
         }
         nav.collectFor?.let { id ->
             libState.byId(id)?.let { t -> de.marne.streamplayer.library.CollectionSheet(t, libState, onDismiss = { nav.collectFor = null }) }
@@ -891,7 +1040,12 @@ private fun LibraryHost(
                     else LaunchedEffect(Unit) { nav.pop() } // entfernt, während die Seite offen war
                 }
                 is Route.Grid -> GridScreen(r.spec, state, actions)
-                Route.Downloads -> DownloadsScreen(state.downloads, downloadActions, onBack = actions.back)
+                Route.Downloads -> DownloadsScreen(
+                    state,
+                    pending = listOfNotNull(nav.quiet?.let { PendingRow(it.key, it.label, true) }) + nav.queue.map { PendingRow(it.key, it.label, false) },
+                    actions = downloadActions,
+                    onBack = actions.back,
+                )
                 Route.Settings -> settings()
                 null -> when (nav.tab) {
                     MainActivity.TAB_DISCOVER -> DiscoverScreen(state, actions, nav.focusSearch) { nav.focusSearch = false }

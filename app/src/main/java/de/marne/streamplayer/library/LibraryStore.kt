@@ -174,7 +174,7 @@ class LibraryStore(context: Context) {
     fun importBackup(incoming: List<LibTitle>, replace: Boolean): Map<String, String> {
         val idMap = mutableMapOf<String, String>()
         // Eigene Cover sind Dateien dieses Geräts: aus einer fremden Sicherung gibt es sie hier nicht.
-        fun local(t: LibTitle) = t.copy(customPoster = t.customPoster?.takeIf { java.io.File(it).exists() })
+        fun local(t: LibTitle) = t.copy(customPoster = t.customPoster?.takeIf { it.startsWith("http") || java.io.File(it).exists() })
         _titles.update { list ->
             if (replace) {
                 incoming.map { t -> local(t).copy(offline = list.firstOrNull { it.id == t.id }?.offline.orEmpty() + t.offline) }

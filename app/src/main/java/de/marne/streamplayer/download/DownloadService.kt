@@ -184,6 +184,13 @@ class DownloadService : Service() {
                         finishedAt = System.currentTimeMillis(),
                     )
                 }
+                // Untertitel der Seite neben die Datei legen – offline gibt es sonst keine.
+                if (item.subtitles.isNotEmpty()) {
+                    val local = withContext(Dispatchers.IO) {
+                        de.marne.streamplayer.subtitles.Subtitles.fetch(this@DownloadService, App.instance.http, item.subtitles, item.id, item.userAgent)
+                    }
+                    App.instance.subtitles.add(saved.uri.toString(), local)
+                }
                 item.libraryKey?.let { App.instance.library.attachOffline(it, saved.uri.toString()) }
                 store.get(item.id)?.let { Notifications.done(this@DownloadService, it) }
             } catch (e: CancellationException) {

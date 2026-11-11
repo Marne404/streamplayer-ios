@@ -70,6 +70,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.compose.runtime.collectAsState
 import de.marne.streamplayer.App
 import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.library.Episode
@@ -383,7 +384,7 @@ internal fun SpeedPanel(current: Float, onPick: (Float) -> Unit) {
 
 /** Ton und Untertitel aus den Spuren des Streams. [version] steigt, wenn sich die Spuren ändern. */
 @Composable
-internal fun TracksPanel(player: ExoPlayer, version: Int) {
+internal fun TracksPanel(player: ExoPlayer, version: Int, onPickSubtitles: () -> Unit = {}) {
     val tracks = remember(version) { player.currentTracks }
     val audio = remember(tracks) {
         tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }.flatMap { g -> (0 until g.length).filter(g::isTrackSupported).map { g to it } }
@@ -413,7 +414,7 @@ internal fun TracksPanel(player: ExoPlayer, version: Int) {
             }
             item { VSpace(10.dp); SectionLabel(tr("Untertitel", "Subtitles")) }
             if (text.isEmpty()) {
-                item { Hint(tr("Dieses Video bringt keine Untertitel mit.", "This video has no subtitles.")) }
+                item { Hint(tr("Dieses Video bringt keine Untertitel mit – du kannst eine eigene Datei laden.", "This video has no subtitles – you can load your own file.")) }
             } else {
                 item {
                     OptionRow(tr("Aus", "Off"), null, selected = textOff) {
@@ -431,6 +432,25 @@ internal fun TracksPanel(player: ExoPlayer, version: Int) {
                             .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
                             .build()
                         tick++
+                    }
+                }
+            }
+            // Eigene Datei (.srt, .vtt, .ass): bleibt bei diesem Film bzw. dieser Folge gespeichert.
+            item { OptionRow(tr("Datei laden …", "Load file …"), tr(".srt, .vtt oder .ass vom Gerät", ".srt, .vtt or .ass from this device"), selected = false, onClick = onPickSubtitles) }
+            item {
+                val settings = App.instance.settings
+                val scale by settings.subtitleScale.collectAsState()
+                VSpace(10.dp)
+                SectionLabel(tr("Schriftgröße", "Text size"))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0.8f to "S", 1f to "M", 1.3f to "L", 1.6f to "XL").forEach { (f, l) ->
+                        val sel = kotlin.math.abs(scale - f) < 0.01f
+                        Box(
+                            Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(14.dp))
+                                .background(if (sel) Palette.surface2 else Color.Transparent)
+                                .clickable { settings.setSubtitleScale(f) },
+                            contentAlignment = Alignment.Center,
+                        ) { Text(l, style = MaterialTheme.typography.labelLarge, color = if (sel) Palette.text else Palette.muted) }
                     }
                 }
             }

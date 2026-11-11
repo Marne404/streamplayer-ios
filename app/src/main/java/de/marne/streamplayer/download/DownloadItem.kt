@@ -34,6 +34,8 @@ data class DownloadItem(
     val finishedAt: Long? = null,
     /** Fortschritts-Schlüssel des Films/der Folge in der Bibliothek; die fertige Datei hängt sich dort an. */
     val libraryKey: String? = null,
+    /** Untertitel der Seite; werden nach dem Laden neben die Datei gelegt (SubtitleStore). */
+    val subtitles: List<de.marne.streamplayer.subtitles.SubTrack> = emptyList(),
 ) {
     val active: Boolean get() = state == DlState.QUEUED || state == DlState.RUNNING || state == DlState.MERGING || state == DlState.WAITING_WIFI
 
@@ -45,6 +47,7 @@ data class DownloadItem(
         put("state", state.name); put("bytesDone", bytesDone); put("bytesTotal", bytesTotal); put("progress", progress.toDouble())
         put("error", error); put("fileUri", fileUri); put("fileName", fileName)
         put("createdAt", createdAt); put("finishedAt", finishedAt); put("libraryKey", libraryKey)
+        if (subtitles.isNotEmpty()) put("subs", de.marne.streamplayer.subtitles.SubTrack.listToJson(subtitles))
     }
 
     companion object {
@@ -73,6 +76,7 @@ data class DownloadItem(
                 createdAt = o.optLong("createdAt"),
                 finishedAt = o.optLongOrNull("finishedAt"),
                 libraryKey = o.optStringOrNull("libraryKey"),
+                subtitles = de.marne.streamplayer.subtitles.SubTrack.listFromJson(o.optJSONArray("subs")),
             )
         }
 

@@ -164,22 +164,58 @@ object Recommend {
     // --- Suche ---
 
     fun search(titles: List<LibTitle>, query: String): List<LibTitle> {
-        val q = norm(query).split(' ').filter { it.isNotBlank() }
+        val q = words(query)
         if (q.isEmpty()) return emptyList()
         return titles
             .map { t ->
                 val title = norm(listOfNotNull(t.title, t.tmdb?.title).joinToString(" "))
                 val rest = norm((t.genres + t.tmdb?.cast.orEmpty() + t.tmdb?.creators.orEmpty() + listOfNotNull(t.shownYear?.toString())).joinToString(" "))
-                val all = "$title $rest"
+                val text = norm(listOfNotNull(t.description, t.tmdb?.overview, t.tmdb?.tagline).joinToString(" "))
+                val all = "$title $rest $text"
                 val hit = q.all { it in all }
-                // Treffer im Titel vor Treffern in Besetzung oder Genre; Wortanfang vor Wortmitte.
-                val score = q.sumOf { w -> when { title.startsWith(w) || " $w" in " $title" -> 3; w in title -> 2; else -> 1 } }
+                // Titel vor Besetzung/Genre vor Beschreibung; Wortanfang vor Wortmitte.
+                val score = q.sumOf { w -> when { title.startsWith(w) || " $w" in " $title" -> 6; w in title -> 4; w in rest -> 2; else -> 1 } }
                 t to (if (hit) score else 0)
             }
             .filter { it.second > 0 }
             .sortedWith(compareByDescending<Pair<LibTitle, Int>> { it.second }.thenBy { it.first.title })
             .map { it.first }
     }
+
+    /** Alles, was eine Suche in der Bibliothek findet: Titel, Personen (mit ihren Titeln), Folgen. */
+    data class Found(
+        val titles: List<LibTitle>,
+        val people: List<Pair<String, List<LibTitle>>>,
+        val episodes: List<Pair<LibTitle, Episode>>,
+    ) {
+        val isEmpty: Boolean get() = titles.isEmpty() && people.isEmpty() && episodes.isEmpty()
+    }
+
+    /**
+     * Suche über die ganze Bibliothek. Personen erst ab drei Buchstaben – sonst passt „an“ auf die
+     * halbe Besetzung. Folgen über ihren Titel (der Serienname darf mitgesucht werden: „lost pilot“).
+     */
+    fun searchAll(titles: List<LibTitle>, query: String): Found {
+        val q = words(query)
+        if (q.isEmpty()) return Found(emptyList(), emptyList(), emptyList())
+        val people = if (q.sumOf { it.length } < 3) emptyList() else titles
+            .flatMap { t -> (t.tmdb?.cast.orEmpty() + t.tmdb?.creators.orEmpty()).distinct().map { it to t } }
+            .groupBy({ it.first }, { it.second })
+            .filterKeys { name -> norm(name).let { n -> q.all { w -> " $w" in " $n" } } }
+            .map { (name, l) -> name to l.distinct() }
+            .sortedWith(compareByDescending<Pair<String, List<LibTitle>>> { it.second.size }.thenBy { it.first })
+            .take(8)
+        val episodes = titles.filter { it.kind == TitleKind.SERIES }.flatMap { t ->
+            val show = norm(t.title)
+            t.episodes().mapNotNull { e ->
+                val et = norm(e.title ?: return@mapNotNull null)
+                if (q.all { it in "$show $et" } && q.any { it in et }) t to e else null
+            }
+        }.take(30)
+        return Found(search(titles, query), people, episodes)
+    }
+
+    private fun words(query: String) = norm(query).split(' ').filter { it.isNotBlank() }
 
     private fun norm(s: String): String =
         Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").replace(Regex("[^a-z0-9ß ]+"), " ")

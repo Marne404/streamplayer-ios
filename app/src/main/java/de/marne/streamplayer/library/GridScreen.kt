@@ -51,6 +51,7 @@ private fun headline(spec: GridSpec, state: LibState): Pair<String, String> {
         "watched" -> tr("Gesehen", "Watched") to state.profile.name
         "nogenre" -> tr("Ohne Genre", "No genre") to tr("Bibliothek", "Library")
         "collection" -> (state.collections.firstOrNull { it.id == spec.arg }?.name ?: "…") to tr("Sammlung", "Collection")
+        "person" -> spec.arg.orEmpty() to tr("Mit dabei", "Featuring")
         else -> tr("Alle Titel", "All titles") to tr("Bibliothek", "Library")
     }
 }
@@ -75,6 +76,7 @@ fun gridTitles(spec: GridSpec, state: LibState): List<LibTitle> {
         "watched" -> t.filter { Recommend.seen(it, p) == Recommend.Seen.DONE }
         "nogenre" -> t.filter { it.genres.isEmpty() }
         "collection" -> state.collections.firstOrNull { it.id == spec.arg }?.items?.mapNotNull(state::byId).orEmpty()
+        "person" -> t.filter { spec.arg in it.tmdb?.cast.orEmpty() || spec.arg in it.tmdb?.creators.orEmpty() }.sortedByDescending { it.shownYear ?: 0 }
         else -> t.sortedBy { it.title.lowercase() }
     }
 }

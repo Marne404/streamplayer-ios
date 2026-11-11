@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -27,6 +28,23 @@ class DetectionHub(private val scope: CoroutineScope, private val prober: Prober
     /** Alle Funde der Seite, auch ungeprüfte und verworfene. Die Oberfläche filtert selbst. */
     val candidates: StateFlow<List<Candidate>> = _candidates.asStateFlow()
 
+    private val _subtitles = MutableStateFlow<List<de.marne.streamplayer.subtitles.SubTrack>>(emptyList())
+    /** Untertitel-Dateien der Seite (<track>-Elemente, .vtt/.srt-Anfragen) – gehen mit in Player und Download. */
+    val subtitles: StateFlow<List<de.marne.streamplayer.subtitles.SubTrack>> = _subtitles.asStateFlow()
+
+    /** Höchstens zwölf je Seite: Manche Player laden Dutzende Sprachen vor. */
+    fun reportSubtitle(url: String, lang: String? = null, label: String? = null, referer: String? = null) {
+        if (!url.startsWith("http")) return
+        _subtitles.update { l ->
+            if (l.size >= 12 || l.any { it.url == url }) l
+            else {
+                // Kam dieselbe Datei schon ohne Angaben übers Netz, gewinnt die mit Sprache und Namen.
+                l + de.marne.streamplayer.subtitles.SubTrack(url, lang, label, referer)
+            }
+        }
+        if (lang != null || label != null) _subtitles.update { l -> l.map { if (it.url == url && it.lang == null && it.label == null) it.copy(lang = lang, label = label) else it } }
+    }
+
     private val _meta = MutableStateFlow(PageMeta())
     val meta: StateFlow<PageMeta> = _meta.asStateFlow()
 
@@ -42,6 +60,7 @@ class DetectionHub(private val scope: CoroutineScope, private val prober: Prober
             hasManifest = false
         }
         _candidates.value = emptyList()
+        _subtitles.value = emptyList()
         _meta.value = PageMeta()
     }
 

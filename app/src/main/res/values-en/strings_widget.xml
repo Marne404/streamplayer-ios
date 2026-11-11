@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_continue">Continue Watching</string>
+    <string name="widget_continue_desc">Where you left off – one tap keeps playing.</string>
+</resources>

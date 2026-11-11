@@ -36,6 +36,29 @@ class PlayerActivity : ComponentActivity() {
 
     private var player: ExoPlayer? = null
     private var key: String? = null
+    /** Das Video ohne Untertitel und die Untertitel dazu – eine eigene Datei kommt hinzu, ohne neu anzufangen. */
+    private var baseItem: MediaItem? = null
+    private var subs: List<Pair<de.marne.streamplayer.subtitles.SubTrack, Boolean>> = emptyList()
+
+    private val pickSubtitles = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { picked ->
+        val p = player ?: return@registerForActivityResult
+        val item = baseItem ?: return@registerForActivityResult
+        if (picked == null) return@registerForActivityResult
+        val name = runCatching {
+            contentResolver.query(picked, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        }.getOrNull()
+        // Gemerkt wird sie beim Film/der Folge (oder bei der Datei, wenn es kein Bibliothekseintrag ist).
+        val own = App.instance.subtitles.import(key ?: intent.data.toString(), picked, name)
+        if (own == null) {
+            android.widget.Toast.makeText(this, de.marne.streamplayer.ui.tr("Datei lässt sich nicht lesen.", "Couldn't read the file."), android.widget.Toast.LENGTH_SHORT).show()
+            return@registerForActivityResult
+        }
+        subs = subs.map { it.first to false } + (own to true)
+        val pos = p.currentPosition
+        p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, false).build()
+        p.setMediaItem(item.buildUpon().setSubtitleConfigurations(subs.map { (s, on) -> s.toConfiguration(on) }).build(), pos)
+        p.prepare()
+    }
     private val ticker = android.os.Handler(android.os.Looper.getMainLooper())
     private val saveTick = object : Runnable {
         override fun run() {
@@ -73,17 +96,21 @@ class PlayerActivity : ComponentActivity() {
         val withCookies = ResolvingDataSource.Factory(http) { spec ->
             Http.cookiesFor(spec.uri.toString())?.let { spec.withAdditionalHeaders(mapOf("Cookie" to it)) } ?: spec
         }
+        // Untertitel: was die Seite hatte (mitgegeben), was beim Download gesichert oder früher
+        // selbst gewählt wurde (auf dem Gerät).
+        val pageSubs = de.marne.streamplayer.subtitles.SubTrack.listFromJson(intent.getStringExtra(EXTRA_SUBS)?.let { runCatching { org.json.JSONArray(it) }.getOrNull() })
+        val localSubs = App.instance.subtitles.forKeys(key, uri.toString())
+        subs = (localSubs + pageSubs).distinctBy { it.url }.map { it to false }
         val p = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, withCookies)))
             .build()
-        p.setMediaItem(
-            MediaItem.Builder()
-                .setUri(uri)
-                .setMimeType(intent.getStringExtra(EXTRA_MIME))
-                .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra(EXTRA_TITLE)).build())
-                .build(),
-            startMs,
-        )
+        val item = MediaItem.Builder()
+            .setUri(uri)
+            .setMimeType(intent.getStringExtra(EXTRA_MIME))
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(intent.getStringExtra(EXTRA_TITLE)).build())
+            .build()
+        baseItem = item
+        p.setMediaItem(item.buildUpon().setSubtitleConfigurations(subs.map { (s, on) -> s.toConfiguration(on) }).build(), startMs)
         p.addListener(object : androidx.media3.common.Player.Listener {
             // Sehzeit: Die Uhr läuft nur, solange wirklich Bild kommt – Pause, Puffern und
             // Vorspulen zählen nicht (Sprünge ändern die Position, nicht die Uhr).
@@ -117,6 +144,7 @@ class PlayerActivity : ComponentActivity() {
                     info = info,
                     onBack = ::finish,
                     onPlayEpisode = ::playEpisode,
+                    onPickSubtitles = { runCatching { pickSubtitles.launch(arrayOf("*/*")) } },
                 )
             }
         }
@@ -178,11 +206,13 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_KEY = "key"
         private const val EXTRA_START = "start"
+        private const val EXTRA_SUBS = "subs"
 
         /** key: Fortschritts-Schlüssel aus der Bibliothek; startMs: ab hier weiterspielen. */
         fun intent(
             context: Context, uri: Uri, title: String, mime: String? = null, referer: String? = null,
             userAgent: String? = null, key: String? = null, startMs: Long = 0,
+            subtitles: List<de.marne.streamplayer.subtitles.SubTrack> = emptyList(),
         ): Intent =
             Intent(context, PlayerActivity::class.java)
                 .putExtra(EXTRA_KEY, key)
@@ -192,6 +222,7 @@ class PlayerActivity : ComponentActivity() {
                 .putExtra(EXTRA_MIME, mime)
                 .putExtra(EXTRA_REFERER, referer)
                 .putExtra(EXTRA_UA, userAgent)
+                .putExtra(EXTRA_SUBS, if (subtitles.isEmpty()) null else de.marne.streamplayer.subtitles.SubTrack.listToJson(subtitles).toString())
     }
 }
 
