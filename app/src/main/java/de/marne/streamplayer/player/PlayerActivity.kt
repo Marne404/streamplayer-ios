@@ -40,10 +40,11 @@ class PlayerActivity : ComponentActivity() {
     private var baseItem: MediaItem? = null
     private var subs: List<Pair<de.marne.streamplayer.subtitles.SubTrack, Boolean>> = emptyList()
 
-    private val pickSubtitles = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { picked ->
-        val p = player ?: return@registerForActivityResult
-        val item = baseItem ?: return@registerForActivityResult
-        if (picked == null) return@registerForActivityResult
+    /** Eigene Untertitel-Datei gewählt (Dateiwähler aus PlayerScreen). */
+    private fun onSubtitlePicked(picked: Uri?) {
+        val p = player ?: return
+        val item = baseItem ?: return
+        if (picked == null) return
         val name = runCatching {
             contentResolver.query(picked, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
         }.getOrNull()
@@ -51,7 +52,7 @@ class PlayerActivity : ComponentActivity() {
         val own = App.instance.subtitles.import(key ?: intent.data.toString(), picked, name)
         if (own == null) {
             android.widget.Toast.makeText(this, de.marne.streamplayer.ui.tr("Datei lässt sich nicht lesen.", "Couldn't read the file."), android.widget.Toast.LENGTH_SHORT).show()
-            return@registerForActivityResult
+            return
         }
         subs = subs.map { it.first to false } + (own to true)
         val pos = p.currentPosition
@@ -139,6 +140,10 @@ class PlayerActivity : ComponentActivity() {
 
         setContent {
             IvoryInkTheme(dark = true) {
+                // Über Compose statt registerForActivityResult: dieselbe Art wie in MainActivity.
+                val pickSubtitles = androidx.activity.compose.rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.OpenDocument(), ::onSubtitlePicked,
+                )
                 PlayerScreen(
                     player = p,
                     info = info,
