@@ -61,6 +61,8 @@ class LibrariesActions(
     val create: (String, Int) -> Unit,
     val update: (String, String, Int) -> Unit,
     val delete: (String) -> Unit,
+    /** Alle Titel aus der Bibliothek nehmen – für „Meine Bibliothek“, die sich nicht löschen lässt. */
+    val clear: (String) -> Unit,
     /** Einladungstext über das Teilen-Menü von Android verschicken. */
     val sendInvite: (String) -> Unit,
     /** Einladung einlösen (Code oder ganze Nachricht). */
@@ -153,6 +155,9 @@ fun LibrariesSheet(state: LibState, actions: LibrariesActions, onDismiss: () -> 
                             if (lib == null) then { actions.create(name, color) } else { actions.update(lib.id, name, color); editing = null }
                         },
                         onDelete = { lib?.let { actions.delete(it.id) }; editing = null },
+                        onClear = { lib?.let { actions.clear(it.id) }; editing = null },
+                        // Wie viele Titel nur hier stehen (die verschwinden ganz) – der Rest bleibt woanders.
+                        onlyHere = state.all.count { it.isIn(ed) && it.libraries.size == 1 },
                         nextColor = (state.libraries.size) % ProfileColors.size,
                     )
                     // Teilen nur für eigene, schon angelegte Bibliotheken.
@@ -187,7 +192,7 @@ private fun LibraryRow(color: Int?, label: String, count: Int, selected: Boolean
 }
 
 @Composable
-private fun LibraryForm(lib: Library?, count: Int, onBack: () -> Unit, onSave: (String, Int) -> Unit, onDelete: () -> Unit, nextColor: Int) {
+private fun LibraryForm(lib: Library?, count: Int, onBack: () -> Unit, onSave: (String, Int) -> Unit, onDelete: () -> Unit, onClear: () -> Unit, onlyHere: Int, nextColor: Int) {
     var name by remember { mutableStateOf(lib?.name ?: "") }
     var color by remember { mutableIntStateOf(lib?.color ?: nextColor) }
     var confirm by remember { mutableStateOf(false) }
@@ -213,6 +218,28 @@ private fun LibraryForm(lib: Library?, count: Int, onBack: () -> Unit, onSave: (
         if (lib == null) tr("Anlegen", "Create") else tr("Speichern", "Save"),
         enabled = main || name.isNotBlank(), modifier = Modifier.fillMaxWidth(),
     ) { onSave(name, color) }
+    // „Meine Bibliothek“ lässt sich nicht löschen, aber leeren – an derselben Stelle.
+    if (main && count > 0) {
+        VSpace(12.dp)
+        AnimatedContent(confirm, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(140)) }, label = "clear") { asking ->
+            if (!asking) QuietButton(tr("Bibliothek leeren", "Clear library"), color = Palette.wine, modifier = Modifier.fillMaxWidth()) { confirm = true }
+            else Column {
+                val elsewhere = count - onlyHere
+                Text(
+                    buildString {
+                        append(tr("$onlyHere Titel werden gelöscht, samt Fortschritt.", "$onlyHere titles will be deleted, along with progress."))
+                        if (elsewhere > 0) append(tr(" $elsewhere stehen auch in anderen Bibliotheken und bleiben dort.", " $elsewhere are also in other libraries and stay there."))
+                        append(tr(" Geladene Dateien bleiben unter Downloads.", " Downloaded files stay in Downloads."))
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                )
+                Row {
+                    QuietButton(tr("Leeren", "Clear"), color = Palette.wine, onClick = onClear)
+                    QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirm = false }
+                }
+            }
+        }
+    }
     if (lib != null && !main) {
         VSpace(12.dp)
         AnimatedContent(confirm, transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(140)) }, label = "del") { asking ->

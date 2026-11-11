@@ -979,6 +979,11 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                         scope.launch { runCatching { app.sharing.updateMeta(l) } }
                     }
                 },
+                clear = { id ->
+                    val gone = app.library.clearLibrary(id)
+                    app.progress.removeTitles(gone)
+                    toast(tr("Bibliothek geleert.", "Library cleared."))
+                },
                 delete = { id ->
                     val l = app.library.libraries.value.firstOrNull { it.id == id }
                     scope.launch {

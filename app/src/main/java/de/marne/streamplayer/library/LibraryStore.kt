@@ -88,6 +88,26 @@ class LibraryStore(context: Context) {
         _libraries.update { list -> list.filterNot { it.id == id } }
     }
 
+    /**
+     * Bibliothek leeren: Ihre Titel verschwinden aus ihr. Steht ein Titel noch in einer anderen,
+     * bleibt er dort; sonst ist er weg. Rückgabe: die IDs der ganz entfernten (Fortschritt mit weg).
+     */
+    fun clearLibrary(id: String): Set<String> {
+        var gone = emptySet<String>()
+        _titles.update { list ->
+            val removed = HashSet<String>()
+            val rest = list.mapNotNull { t ->
+                if (!t.isIn(id)) return@mapNotNull t
+                val others = t.libraries - id
+                if (others.isEmpty()) { removed += t.id; null }
+                else t.copy(libraryId = others.first().takeIf { it != Library.MAIN }, alsoIn = others.drop(1))
+            }
+            gone = removed
+            rest
+        }
+        return gone
+    }
+
     fun setLibrary(l: Library) = _libraries.update { list -> if (list.any { it.id == l.id }) list.map { if (it.id == l.id) l else it } else list + l }
 
     /** Titel aus der Bibliothek eines Freundes übernehmen; eigene Downloads daran bleiben. */

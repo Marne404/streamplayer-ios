@@ -110,8 +110,12 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
     }
 
     /** Titel aus der Bibliothek entfernt: sein Fortschritt in allen Profilen mit. */
-    fun removeTitle(id: String) {
-        _byProfile.update { m -> m.mapValues { (_, map) -> map.filterKeys { Keys.parse(it)?.first != id } } }
+    fun removeTitle(id: String) = removeTitles(setOf(id))
+
+    /** Mehrere auf einmal (Bibliothek geleert): ein Durchgang statt einer je Titel. */
+    fun removeTitles(ids: Set<String>) {
+        if (ids.isEmpty()) return
+        _byProfile.update { m -> m.mapValues { (_, map) -> map.filterKeys { Keys.parse(it)?.first !in ids } } }
         publish()
     }
 
