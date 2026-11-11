@@ -185,6 +185,11 @@ class LibraryStore(context: Context) {
         )
     }
 
+    /** Von Hand gewählter TMDB-Eintrag. Anderer Eintrag: Folgen-Angaben des alten weg, sie gehören zu ihm. */
+    fun setTmdbMatch(id: String, tmdbId: Int) = update(id) { t ->
+        if (t.tmdbId == tmdbId) t else t.copy(tmdbId = tmdbId, episodeInfo = emptyMap())
+    }
+
     fun setEpisodeInfo(id: String, info: Map<String, EpInfo>) = update(id) { it.copy(episodeInfo = it.episodeInfo + info) }
 
     fun setCustomPoster(id: String, path: String?) = update(id) { it.copy(customPoster = path) }

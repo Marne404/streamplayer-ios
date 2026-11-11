@@ -1,7 +1,8 @@
 #!/bin/bash
-# Veröffentlicht Player und Creator als Selbst-Update auf dem Worker „streamplayer-update“:
+# Veröffentlicht Player, Creator und Admin als Selbst-Update auf dem Worker „streamplayer-update“:
 #   /version.json            + streamplayer-<code>.partNN   (Player)
 #   /creator/version.json    + creator-<code>.partNN        (Creator)
+#   /admin/version.json      + admin-<code>.partNN          (Admin, ohne Schlüssel)
 #
 # Veröffentlicht wird jede App, deren versionCode in HEAD höher ist als die live – die andere wird
 # vom Worker zurückgeladen und unverändert mit hochgeladen (ein Deploy ersetzt immer alle Dateien).
@@ -27,7 +28,8 @@ exec 9>"$ROOT/update/.lock"
 flock 9
 
 # Modul : Pfad beim Worker : Name der Stücke : Name in dist/
-APPS=("app::streamplayer:streamplayer" "creator:creator/:creator:streamplayer-creator")
+# Admin: öffentlich ohne eingebauten Schlüssel (-Pstats.noToken); die installierte App hat ihn gemerkt.
+APPS=("app::streamplayer:streamplayer" "creator:creator/:creator:streamplayer-creator" "admin:admin/:admin:streamplayer-admin")
 
 code_of() { git show "HEAD:$1/build.gradle.kts" | grep -oP 'versionCode = \K[0-9]+'; }
 name_of() { git show "HEAD:$1/build.gradle.kts" | grep -oP 'versionName = "\K[^"]+'; }
@@ -51,7 +53,7 @@ for spec in "${APPS[@]}"; do
 done
 
 if [ ${#TODO[@]} -eq 0 ]; then
-  echo "$(date '+%F %T') Nichts Neues – Player $(code_of app), Creator $(code_of creator) sind schon veröffentlicht."
+  echo "$(date '+%F %T') Nichts Neues – Player $(code_of app), Creator $(code_of creator), Admin $(code_of admin) sind schon veröffentlicht."
   exit 0
 fi
 
@@ -68,7 +70,7 @@ for spec in "${TODO[@]}"; do
   IFS=: read -r module _ <<<"$spec"
   TASKS+=(":$module:testDebugUnitTest" ":$module:assembleRelease")
 done
-(cd "$WORK/src" && ./gradlew -q "${TASKS[@]}" -Pupdate.url="$BASE")
+(cd "$WORK/src" && ./gradlew -q "${TASKS[@]}" -Pupdate.url="$BASE" -Pstats.noToken=1)
 
 mkdir -p dist
 for spec in "${TODO[@]}"; do

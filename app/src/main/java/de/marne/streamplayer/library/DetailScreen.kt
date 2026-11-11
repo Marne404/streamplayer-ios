@@ -78,6 +78,8 @@ class DetailActions(
     val rename: (LibTitle, String) -> Unit,
     val changeCover: (LibTitle) -> Unit,
     val resetCover: (LibTitle) -> Unit,
+    /** TMDB-Eintrag von Hand zuordnen (null: kein TMDB-Schlüssel). */
+    val matchTmdb: ((LibTitle, de.marne.streamplayer.catalog.Tmdb.Result) -> Unit)?,
     /** Titel in eine andere Bibliothek verschieben. */
     val moveTo: (LibTitle, String) -> Unit,
     /** Poster von TMDB als Cover (Adresse) – null: wieder das Standard-Poster. */
@@ -99,6 +101,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     var confirmRemove by remember { mutableStateOf(false) }
     var covering by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
+    var matching by remember { mutableStateOf(false) }
     val progress = state.progress
     val next = remember(t, progress) { Shelves.nextFor(t, progress) }
     val seasonNumbers = remember(t) { t.seasons.map { it.number }.sorted() }
@@ -113,7 +116,10 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "hero") { DetailHero(t, origin) }
-            item(key = "info") { Info(t, state, actions, next, seen) }
+            // Ohne TMDB-Treffer (und nichts mehr unterwegs): darauf hinweisen, Zuordnen anbieten.
+            val unmatched = detail.matchTmdb != null && de.marne.streamplayer.App.instance.enricher.available && t.tmdb == null && !state.enrich.running &&
+                state.libraries.firstOrNull { it.id == t.library }?.readOnly != true
+            item(key = "info") { Info(t, state, actions, next, seen, onMatch = if (unmatched) ({ matching = true }) else null) }
 
             if (t.kind == TitleKind.SERIES) {
                 item(key = "tabs") {
@@ -159,7 +165,9 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         library = state.libraries.filterNot { it.joined }.takeIf { it.size > 1 }?.let { libs -> (libs.firstOrNull { it.id == t.library } ?: libs.first()) },
         sharedBy = state.libraries.firstOrNull { it.id == t.library }?.takeIf { it.readOnly }?.let { it.owner ?: tr("einem Freund", "a friend") },
         onMove = { moving = true },
+        onMatch = detail.matchTmdb?.takeIf { de.marne.streamplayer.App.instance.enricher.available }?.let { { matching = true } },
     )
+    if (matching) detail.matchTmdb?.let { m -> TmdbMatchSheet(t, onPick = { m(t, it) }, onDismiss = { matching = false }) }
     if (moving) LibraryPickSheet(
         tr("Verschieben", "Move"), tr("„${t.title}“ in welche Bibliothek?", "Move “${t.title}” to which library?"),
         state.libraries.filterNot { it.joined }, t.library, onPick = { detail.moveTo(t, it) }, onDismiss = { moving = false },
@@ -201,7 +209,7 @@ private fun DetailHero(t: LibTitle, origin: String?) {
 }
 
 @Composable
-private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<Episode, Progress?>?, seen: Recommend.Seen) {
+private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<Episode, Progress?>?, seen: Recommend.Seen, onMatch: (() -> Unit)? = null) {
     val p = state.progress
     Column(Modifier.padding(horizontal = 20.dp)) {
         Text((if (t.kind == TitleKind.SERIES) tr("Serie", "Show") else tr("Film", "Movie")).uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
@@ -253,6 +261,20 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
             Text(tr("„$it“", "“$it”"), style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Serif, fontStyle = FontStyle.Italic), color = Palette.text)
         }
         About(t)
+        onMatch?.let { m ->
+            VSpace(16.dp)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Palette.surface).clickable(onClick = m).padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GIcon(Ic.search, tint = Palette.muted, size = 18.dp)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(tr("Nicht bei TMDB gefunden", "Not found on TMDB"), style = MaterialTheme.typography.labelLarge)
+                    Text(tr("Ohne Treffer fehlen Cover, Beschreibung und Folgennamen.", "Without a match, cover, description and episode names are missing."), style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                }
+                Text(tr("Zuordnen", "Match"), style = MaterialTheme.typography.labelLarge, color = Palette.text, modifier = Modifier.padding(start = 8.dp))
+            }
+        }
     }
 }
 
@@ -465,6 +487,7 @@ private fun EditSheet(
     library: Library? = null, onMove: () -> Unit = {},
     /** Titel aus der Bibliothek eines Freundes: nur ansehen – keine Änderungen, nur die Seite. */
     sharedBy: String? = null,
+    onMatch: (() -> Unit)? = null,
 ) {
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -506,6 +529,13 @@ private fun EditSheet(
                 library?.takeIf { !it.joined }?.let { l ->
                     de.marne.streamplayer.ui.design.RowDivider()
                     de.marne.streamplayer.ui.design.ListRow(tr("Bibliothek", "Library"), icon = Ic.library, value = l.label, onClick = { then(onMove) })
+                }
+                onMatch?.let { m ->
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(
+                        if (t.tmdb == null) tr("Bei TMDB zuordnen", "Match on TMDB") else tr("Anderen TMDB-Eintrag wählen", "Pick another TMDB entry"),
+                        icon = Ic.search, value = t.tmdb?.title, onClick = { then(m) },
+                    )
                 }
                 detail.refreshTmdb?.let { r ->
                     de.marne.streamplayer.ui.design.RowDivider()

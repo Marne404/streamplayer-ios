@@ -80,6 +80,8 @@ class MainActivity : ComponentActivity() {
         // Die Bausteine aus :core sprechen zweisprachig (tr); diese App ist nur Deutsch.
         Lang.current = Lang.Code.DE
         Api.init(applicationContext)
+        de.marne.streamplayer.update.Updater.configure(BuildConfig.UPDATE_URL.ifEmpty { null }?.let { "$it/admin/version.json" }.orEmpty())
+        de.marne.streamplayer.update.Updater.check(this)
         setContent {
             val dark = isAppDark("system")
             LaunchedEffect(dark) {
@@ -93,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     }
                     // Statusleiste deckend, damit gescrollter Inhalt nicht unter der Uhr steht.
                     Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(Palette.bg))
+                    de.marne.streamplayer.update.UpdateOffer("Streamplayer Admin")
                 }
             }
         }

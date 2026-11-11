@@ -7,15 +7,17 @@ plugins {
 
 // Dritte App, nur für den Betreiber: zeigt die Nutzungsstatistik aller Installationen (stats/).
 //
-// Der Admin-Schlüssel steht nur auf diesem Rechner (local.properties: stats.adminToken) und wird in
-// die APK eingebaut, damit die App auf dem Telefon ohne Abtippen geht. Diese APK deshalb nie
-// weitergeben oder auf den Update-Server legen (tools/publish.sh kennt sie bewusst nicht).
-// Fehlt der Schlüssel, fragt die App beim Start danach.
+// Der Admin-Schlüssel steht nur auf diesem Rechner (local.properties: stats.adminToken). Eine
+// Hand-Installation baut ihn ein, damit die App ohne Abtippen geht; sie merkt ihn sich beim ersten
+// Start. Das Selbst-Update (tools/publish.sh, -Pstats.noToken) baut OHNE Schlüssel – die APK liegt
+// öffentlich auf dem Update-Server, die installierte App behält ihren gemerkten Schlüssel.
+// Fehlt er ganz, fragt die App beim Start danach. Eine APK mit Schlüssel nie weitergeben.
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val adminToken = localProps.getProperty("stats.adminToken").orEmpty().trim()
+val adminToken = if (findProperty("stats.noToken") != null) "" else localProps.getProperty("stats.adminToken").orEmpty().trim()
+val updateUrl = (findProperty("update.url") as String?) ?: "https://streamplayer-update.marne-gamingx.workers.dev"
 val statsUrl = (findProperty("stats.url") as String?) ?: "https://streamplayer-stats.marne-gamingx.workers.dev"
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
@@ -55,9 +57,11 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
         }
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("String", "UPDATE_URL", "\"\"")
         }
     }
 

@@ -40,6 +40,8 @@ object Api {
         // Ein gespeicherter Wert gewinnt, auch ein leerer: nach „Abmelden“ soll der eingebaute
         // Schlüssel nicht still wieder auftauchen.
         token = if (prefs.contains(KEY)) prefs.getString(KEY, "").orEmpty() else BuildConfig.ADMIN_TOKEN
+        // Eingebauten Schlüssel gleich merken: Updates kommen ohne Schlüssel (sie liegen öffentlich).
+        if (!prefs.contains(KEY) && token.isNotEmpty()) prefs.edit().putString(KEY, token).apply()
     }
 
     fun signIn(key: String) {

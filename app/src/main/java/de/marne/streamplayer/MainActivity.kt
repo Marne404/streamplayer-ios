@@ -751,6 +751,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             },
             resetCover = { t -> app.library.setCustomPoster(t.id, null) },
             setCover = { t, url -> app.library.setCustomPoster(t.id, url) },
+            matchTmdb = { t, r ->
+                if (!app.enricher.available) toast(tr("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.", "Add a TMDB key in Settings first."))
+                else {
+                    app.library.setTmdbMatch(t.id, r.id)
+                    app.enricher.enqueue(listOf(t.id), force = true)
+                    toast(tr("Zugeordnet: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – lädt …", "Matched: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – loading …"))
+                }
+            },
             moveTo = { t, lib ->
                 app.library.moveTitle(t.id, lib)
                 val name = app.library.libraries.value.firstOrNull { it.id == lib }?.label.orEmpty()
