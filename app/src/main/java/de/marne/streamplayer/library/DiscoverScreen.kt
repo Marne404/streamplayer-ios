@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -51,6 +52,10 @@ import de.marne.streamplayer.ui.design.Palette
 import de.marne.streamplayer.ui.design.RowDivider
 import de.marne.streamplayer.ui.design.VSpace
 import de.marne.streamplayer.ui.tr
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 
 /**
  * „Entdecken“: Suche über Titel, Besetzung, Genres und Jahr; ohne Suche Kategorien als Karten
@@ -59,13 +64,34 @@ import de.marne.streamplayer.ui.tr
 @Composable
 fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, onFocused: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val found = remember(query, state.titles) { Recommend.searchAll(state.titles, query) }
+    // Suchen kostet bei großen Bibliotheken spürbar Zeit – nie auf dem UI-Thread, sonst stockt
+    // die Tastatur. Der Index wird einmal je Titelliste gebaut (unveränderte Titel übernommen).
+    val index by produceState(SearchIndex.cached(state.titles), state.titles) {
+        if (value?.source === state.titles) return@produceState
+        // Während der Anreicherung ändert sich die Liste laufend: kurz warten, ob noch mehr kommt.
+        if (value != null) delay(400)
+        value = withContext(Dispatchers.Default) { SearchIndex.of(state.titles, check = { coroutineContext.ensureActive() }) }
+    }
+    // Ergebnis mit der Anfrage, zu der es gehört: das alte bleibt stehen, bis das neue da ist.
+    var result by remember { mutableStateOf<Pair<String, Recommend.Found>?>(null) }
+    LaunchedEffect(query, index) {
+        val idx = index ?: return@LaunchedEffect
+        if (query.isBlank()) { result = null; return@LaunchedEffect }
+        if (result != null) delay(80) // beim schnellen Tippen nicht jeden Buchstaben einzeln suchen
+        result = query to withContext(Dispatchers.Default) { idx.searchAll(query) }
+    }
+    val found = result?.second ?: Recommend.Found.EMPTY
+    val settled = result?.first == query
     val genres = remember(state.titles) { Recommend.genres(state.titles) }
     // Bild je Genre: der am besten bewertete Titel mit Breitbild – und möglichst nicht zweimal derselbe.
+    // Einmal sortieren statt je Genre die ganze Bibliothek.
     val genreImages = remember(state.titles, genres) {
+        val ranked = state.titles.filter { it.wide != null }
+            .sortedWith(compareByDescending<LibTitle> { it.rating ?: 0.0 }.thenByDescending { it.addedAt })
         val used = HashSet<String>()
         genres.associate { (g, _) ->
-            val pick = Recommend.inGenre(state.titles, g, emptyMap()).filter { it.wide != null }.let { l -> l.firstOrNull { it.id !in used } ?: l.firstOrNull() }
+            val inG = ranked.asSequence().filter { g in it.genres }
+            val pick = inG.firstOrNull { it.id !in used } ?: inG.firstOrNull()
             pick?.let { used += it.id }
             g to pick?.wide
         }
@@ -94,7 +120,11 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
         if (query.isNotBlank()) {
             if (found.isEmpty) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(tr("Nichts zu „$query“ in deiner Bibliothek.", "Nothing for “$query” in your library."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+                    // Erst „nichts“ sagen, wenn die Suche zu genau dieser Eingabe fertig ist.
+                    Text(
+                        if (settled) tr("Nichts zu „$query“ in deiner Bibliothek.", "Nothing for “$query” in your library.") else tr("Sucht …", "Searching …"),
+                        style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                    )
                 }
             }
             // Personen zuerst: Wer einen Namen tippt, will meist alles mit ihm – ein Tipp zeigt es.

@@ -1,7 +1,6 @@
 package de.marne.streamplayer.library
 
 import de.marne.streamplayer.ui.tr
-import java.text.Normalizer
 import kotlin.math.sqrt
 
 /**
@@ -23,11 +22,33 @@ object Recommend {
                 else -> Seen.NONE
             }
         }
-        val prefix = "e:${t.id}:"
-        val mine = progress.filterKeys { it.startsWith(prefix) }.values
-        if (mine.none { it.finished || it.positionMs > 0 }) return Seen.NONE
+        val tally = episodeTally(progress)[t.id] ?: return Seen.NONE
         val total = t.episodeCount
-        return if (total > 0 && mine.count { it.finished } >= total) Seen.DONE else Seen.STARTED
+        return if (total > 0 && tally.finished >= total) Seen.DONE else Seen.STARTED
+    }
+
+    /** Je Serie: wie viele Folgen fertig sind (nur Serien, bei denen etwas angefangen ist). */
+    private class Tally(var finished: Int = 0)
+
+    /**
+     * Folgen-Fortschritt nach Serie gezählt – einmal je Fortschritts-Stand. Vorher ging [seen] für
+     * jede Poster-Kachel den ganzen Fortschritt durch; mit vielen Titeln und vielen gesehenen
+     * Folgen ruckelte so jedes Raster. Die Maps aus dem ProgressStore werden nie verändert, nur
+     * ersetzt – daher reicht der Vergleich auf dasselbe Objekt.
+     */
+    @Volatile private var tallyCache: Pair<Map<String, Progress>, Map<String, Tally>>? = null
+
+    private fun episodeTally(progress: Map<String, Progress>): Map<String, Tally> {
+        tallyCache?.let { (src, m) -> if (src === progress) return m }
+        val m = HashMap<String, Tally>()
+        for ((key, p) in progress) {
+            if (!key.startsWith("e:") || !(p.finished || p.positionMs > 0)) continue
+            val end = key.indexOf(':', 2).takeIf { it > 2 } ?: continue
+            val tally = m.getOrPut(key.substring(2, end)) { Tally() }
+            if (p.finished) tally.finished++
+        }
+        tallyCache = progress to m
+        return m
     }
 
     /**
@@ -163,24 +184,8 @@ object Recommend {
 
     // --- Suche ---
 
-    fun search(titles: List<LibTitle>, query: String): List<LibTitle> {
-        val q = words(query)
-        if (q.isEmpty()) return emptyList()
-        return titles
-            .map { t ->
-                val title = norm(listOfNotNull(t.title, t.tmdb?.title).joinToString(" "))
-                val rest = norm((t.genres + t.tmdb?.cast.orEmpty() + t.tmdb?.creators.orEmpty() + listOfNotNull(t.shownYear?.toString())).joinToString(" "))
-                val text = norm(listOfNotNull(t.description, t.tmdb?.overview, t.tmdb?.tagline).joinToString(" "))
-                val all = "$title $rest $text"
-                val hit = q.all { it in all }
-                // Titel vor Besetzung/Genre vor Beschreibung; Wortanfang vor Wortmitte.
-                val score = q.sumOf { w -> when { title.startsWith(w) || " $w" in " $title" -> 6; w in title -> 4; w in rest -> 2; else -> 1 } }
-                t to (if (hit) score else 0)
-            }
-            .filter { it.second > 0 }
-            .sortedWith(compareByDescending<Pair<LibTitle, Int>> { it.second }.thenBy { it.first.title })
-            .map { it.first }
-    }
+    /** Siehe [SearchIndex] – dort steht die Suche, vorbereitet und wiederverwendbar. */
+    fun search(titles: List<LibTitle>, query: String): List<LibTitle> = SearchIndex.of(titles).search(query)
 
     /** Alles, was eine Suche in der Bibliothek findet: Titel, Personen (mit ihren Titeln), Folgen. */
     data class Found(
@@ -189,36 +194,12 @@ object Recommend {
         val episodes: List<Pair<LibTitle, Episode>>,
     ) {
         val isEmpty: Boolean get() = titles.isEmpty() && people.isEmpty() && episodes.isEmpty()
+
+        companion object { val EMPTY = Found(emptyList(), emptyList(), emptyList()) }
     }
 
-    /**
-     * Suche über die ganze Bibliothek. Personen erst ab drei Buchstaben – sonst passt „an“ auf die
-     * halbe Besetzung. Folgen über ihren Titel (der Serienname darf mitgesucht werden: „lost pilot“).
-     */
-    fun searchAll(titles: List<LibTitle>, query: String): Found {
-        val q = words(query)
-        if (q.isEmpty()) return Found(emptyList(), emptyList(), emptyList())
-        val people = if (q.sumOf { it.length } < 3) emptyList() else titles
-            .flatMap { t -> (t.tmdb?.cast.orEmpty() + t.tmdb?.creators.orEmpty()).distinct().map { it to t } }
-            .groupBy({ it.first }, { it.second })
-            .filterKeys { name -> norm(name).let { n -> q.all { w -> " $w" in " $n" } } }
-            .map { (name, l) -> name to l.distinct() }
-            .sortedWith(compareByDescending<Pair<String, List<LibTitle>>> { it.second.size }.thenBy { it.first })
-            .take(8)
-        val episodes = titles.filter { it.kind == TitleKind.SERIES }.flatMap { t ->
-            val show = norm(t.title)
-            t.episodes().mapNotNull { e ->
-                val et = norm(e.title ?: return@mapNotNull null)
-                if (q.all { it in "$show $et" } && q.any { it in et }) t to e else null
-            }
-        }.take(30)
-        return Found(search(titles, query), people, episodes)
-    }
-
-    private fun words(query: String) = norm(query).split(' ').filter { it.isNotBlank() }
-
-    private fun norm(s: String): String =
-        Normalizer.normalize(s.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").replace(Regex("[^a-z0-9ß ]+"), " ")
+    /** Suche über die ganze Bibliothek: Titel, Personen, Folgen ([SearchIndex.searchAll]). */
+    fun searchAll(titles: List<LibTitle>, query: String): Found = SearchIndex.of(titles).searchAll(query)
 
     // --- Sortieren für Übersichten ---
 
@@ -240,7 +221,8 @@ object Recommend {
             list.sortedBy { order[it.id] ?: Int.MAX_VALUE }
         }
         Sort.NEW -> list.sortedByDescending { it.addedAt }
-        Sort.AZ -> list.sortedBy { norm(it.title) }
+        // Schlüssel einmal je Titel, nicht bei jedem Vergleich neu.
+        Sort.AZ -> list.map { SearchIndex.fold(it.title) to it }.sortedBy { it.first }.map { it.second }
         Sort.RATING -> list.sortedByDescending { it.rating ?: -1.0 }
         Sort.YEAR -> list.sortedByDescending { it.shownYear ?: 0 }
     }
