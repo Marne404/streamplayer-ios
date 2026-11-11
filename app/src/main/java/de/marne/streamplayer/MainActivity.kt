@@ -377,7 +377,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         ?.takeIf { it == de.marne.streamplayer.library.Library.ALL && libraries.size > 1 || libraries.any { l -> l.id == it } }
         ?: if (libraries.size > 1) de.marne.streamplayer.library.Library.ALL else de.marne.streamplayer.library.Library.MAIN
     val visibleTitles = remember(titles, activeLibrary) {
-        if (activeLibrary == de.marne.streamplayer.library.Library.ALL) titles else titles.filter { it.library == activeLibrary }
+        if (activeLibrary == de.marne.streamplayer.library.Library.ALL) titles else titles.filter { it.isIn(activeLibrary) }
     }
     LaunchedEffect(activeLibrary) {
         app.library.target = if (activeLibrary == de.marne.streamplayer.library.Library.ALL) de.marne.streamplayer.library.Library.MAIN else activeLibrary
@@ -759,10 +759,12 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                     toast(tr("Zugeordnet: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – lädt …", "Matched: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – loading …"))
                 }
             },
-            moveTo = { t, lib ->
-                app.library.moveTitle(t.id, lib)
+            setLibraries = { t, libs -> app.library.setLibraries(t.id, libs) },
+            removeFrom = { t, lib ->
+                app.library.setLibraries(t.id, t.libraries - lib)
                 val name = app.library.libraries.value.firstOrNull { it.id == lib }?.label.orEmpty()
-                toast(tr("Verschoben nach „$name“.", "Moved to “$name”."))
+                nav.pop()
+                toast(tr("Aus „$name“ entfernt.", "Removed from “$name”."))
             },
             refreshTmdb = { t ->
                 if (app.enricher.available) {

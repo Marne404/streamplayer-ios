@@ -65,11 +65,26 @@ class LibraryStore(context: Context) {
     fun updateLibrary(id: String, name: String, color: Int) =
         _libraries.update { list -> list.map { if (it.id == id) it.copy(name = if (id == Library.MAIN && name.isBlank()) "" else name.trim(), color = color) else it } }
 
-    /** Bibliothek weg; ihre Titel gehen nach [moveTo] (Standard: die erste) – gelöscht wird kein Titel. */
+    /**
+     * Bibliothek weg; ihre Titel gehen nach [moveTo] (Standard: die erste) – gelöscht wird kein Titel.
+     * Steht ein Titel noch in einer anderen Bibliothek, bleibt er nur dort.
+     */
     fun deleteLibrary(id: String, moveTo: String = Library.MAIN) {
         if (id == Library.MAIN) return
         val to = moveTo.takeIf { it != id && it != Library.MAIN }
-        _titles.update { list -> list.map { if (it.libraryId == id) it.copy(libraryId = to) else it } }
+        _titles.update { list ->
+            list.map { t ->
+                when {
+                    t.libraryId == id -> {
+                        val rest = t.alsoIn - id
+                        if (rest.isEmpty()) t.copy(libraryId = to)
+                        else t.copy(libraryId = rest.first().takeIf { it != Library.MAIN }, alsoIn = rest.drop(1))
+                    }
+                    id in t.alsoIn -> t.copy(alsoIn = t.alsoIn - id)
+                    else -> t
+                }
+            }
+        }
         _libraries.update { list -> list.filterNot { it.id == id } }
     }
 
@@ -78,7 +93,7 @@ class LibraryStore(context: Context) {
     /** Titel aus der Bibliothek eines Freundes übernehmen; eigene Downloads daran bleiben. */
     fun putShared(sid: String, t: LibTitle) = _titles.update { list ->
         val old = list.firstOrNull { it.id == t.id }
-        val nt = t.copy(libraryId = sid, offline = old?.offline.orEmpty(), customPoster = t.customPoster?.takeIf { it.startsWith("http") })
+        val nt = t.copy(libraryId = sid, alsoIn = emptyList(), offline = old?.offline.orEmpty(), customPoster = t.customPoster?.takeIf { it.startsWith("http") })
         if (old != null) list.map { if (it.id == t.id) nt.copy(tmdb = nt.tmdb ?: old.tmdb, episodeInfo = old.episodeInfo + nt.episodeInfo) else it } else listOf(nt) + list
     }
 
@@ -90,7 +105,22 @@ class LibraryStore(context: Context) {
         _libraries.update { list -> list.filterNot { it.id == sid } }
     }
 
-    fun moveTitle(id: String, libraryId: String) = update(id) { it.copy(libraryId = libraryId.takeIf { l -> l != Library.MAIN }) }
+    fun moveTitle(id: String, libraryId: String) = setLibraries(id, listOf(libraryId))
+
+    /**
+     * In genau diesen Bibliotheken soll der Titel stehen. Mindestens eine bleibt; die bisherige
+     * eigentliche Bibliothek bleibt die eigentliche, solange sie dabei ist. Bibliotheken von
+     * Freunden zählen nicht – dorthin schreibt nur der Freund.
+     */
+    fun setLibraries(id: String, libs: List<String>) {
+        val own = _libraries.value.filterNot { it.joined }.mapTo(HashSet()) { it.id }
+        val wanted = libs.distinct().filter { it in own }
+        if (wanted.isEmpty()) return
+        update(id) { t ->
+            val home = if (t.library in wanted) t.library else wanted.first()
+            t.copy(libraryId = home.takeIf { it != Library.MAIN }, alsoIn = wanted - home)
+        }
+    }
 
     /** Abgleich: Bibliothek aus dem Konto übernehmen bzw. entfernen. */
     fun putRemoteLibrary(l: Library) = _libraries.update { list ->
@@ -146,20 +176,45 @@ class LibraryStore(context: Context) {
         return t
     }
 
+    /** Wie ein Katalog-Titel hier ankam. */
+    enum class Upserted {
+        NEW, UPDATED,
+        /** Stand schon in einer anderen Bibliothek (oder bei einem Freund): Angaben von dort übernommen, nichts neu gesucht. */
+        ADOPTED,
+    }
+
     /**
      * Titel aus einem Katalog anlegen oder aktualisieren. Wiedererkannt wird über die Katalog-ID,
      * sonst über Art + Titel (+ Jahr). Fortschritt, Downloads und eigenes Cover bleiben erhalten.
+     *
+     * Steht der Titel schon in einer anderen eigenen Bibliothek, kommt die gewählte dazu – derselbe
+     * Titel mit Cover, TMDB-Angaben, Folgen, Fortschritt und Downloads, ohne neue Suche. Steht er
+     * nur in der Bibliothek eines Freundes, entsteht ein eigener, der dessen TMDB-Angaben mitnimmt.
      */
-    fun upsert(c0: CatalogTitle, localPoster: String?, localBackdrop: String?, libraryId: String? = null): Pair<LibTitle, Boolean> {
+    fun upsert(c0: CatalogTitle, localPoster: String?, localBackdrop: String?, libraryId: String? = null): Pair<LibTitle, Upserted> {
         // Ein-Folgen-„Serie“ ohne TMDB-Verknüpfung ist ein Film (siehe singleEpisodeAsMovie).
         val c = if (c0.tmdb == null) c0.singleEpisodeAsMovie() else c0
         val kind = if (c.type == CatalogType.SERIES) TitleKind.SERIES else TitleKind.MOVIE
-        val existing = _titles.value.firstOrNull { it.sourceId == c.id }
-            ?: _titles.value.firstOrNull { it.kind == kind && it.title.equals(c.title, ignoreCase = true) && (c.year == null || it.year == null || it.year == c.year) }
+        val libs = _libraries.value
+        val joined = libs.filter { it.joined }.mapTo(HashSet()) { it.id }
+        val all = _titles.value
+        fun sameTitle(t: LibTitle) = t.kind == kind && t.title.equals(c.title, ignoreCase = true) && (c.year == null || t.year == null || t.year == c.year)
+        // Titel von Freunden sind nur geliehen: nie überschreiben, höchstens als Vorlage nehmen.
+        val existing = all.firstOrNull { it.sourceId == c.id && it.library !in joined }
+            ?: all.firstOrNull { it.library !in joined && sameTitle(it) }
+        val donor = if (existing != null) null else
+            (all.firstOrNull { it.sourceId == c.id && it.library in joined } ?: all.firstOrNull { it.library in joined && sameTitle(it) })
+                ?.takeIf { it.kind == kind }
         val firstEpisode = if (kind == TitleKind.SERIES) Episodes.generate(c.template, c.seasons, c.episodes).firstOrNull()?.url else null
-        // Neu: in die gewählte Bibliothek. Schon vorhanden: bleibt, wo er steht.
-        val base = existing ?: LibTitle(id = newId(), kind = kind, title = c.title, pageUrl = null,
-            libraryId = (libraryId ?: target).takeIf { it != Library.MAIN && it != Library.ALL && _libraries.value.any { l -> l.id == it && !l.joined } })
+        // Gewählte Bibliothek (bei „Alle“ keine bestimmte: Neues kommt in die erste).
+        val dest = (libraryId ?: target).takeIf { it == Library.MAIN || libs.any { l -> l.id == it && !l.joined } }
+        val base = existing ?: LibTitle(
+            id = newId(), kind = kind, title = c.title, pageUrl = null,
+            libraryId = dest?.takeIf { it != Library.MAIN },
+            tmdb = donor?.tmdb, tmdbId = donor?.tmdbId, episodeInfo = donor?.episodeInfo.orEmpty(), durationMs = donor?.durationMs,
+        )
+        // Schon da, aber woanders: Er bleibt dort und steht nun auch in der gewählten.
+        val adopt = existing != null && dest != null && !existing.isIn(dest)
         // War er bisher eine (Ein-Folgen-)Serie und ist jetzt ein Film: Folgen-Angaben, TMDB-Serie und
         // Folgen-Schlüssel gehören nicht mehr dazu.
         val toMovie = existing != null && existing.kind == TitleKind.SERIES && kind == TitleKind.MOVIE
@@ -180,10 +235,16 @@ class LibraryStore(context: Context) {
             tmdbId = c.tmdb?.id ?: if (toMovie) null else base.tmdbId,
             tmdbQuery = c.tmdb?.query,
             sourceId = c.id,
+            alsoIn = if (adopt) base.alsoIn + dest!! else base.alsoIn,
         )
         _titles.update { list -> if (existing != null) list.map { if (it.id == base.id) updated else it } else listOf(updated) + list }
         if (toMovie) de.marne.streamplayer.App.instance.progress.episodeToMovie(base.id)
-        return updated to (existing != null)
+        val how = when {
+            adopt || donor?.tmdb != null -> Upserted.ADOPTED
+            existing != null -> Upserted.UPDATED
+            else -> Upserted.NEW
+        }
+        return updated to how
     }
 
     /** TMDB-Angaben eintragen. Fehlen der Serie Staffeln, kommen sie von TMDB. */

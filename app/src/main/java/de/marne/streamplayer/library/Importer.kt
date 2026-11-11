@@ -17,9 +17,11 @@ import java.io.File
  */
 class Importer(private val context: Context, private val store: LibraryStore, private val enricher: Enricher) {
 
-    data class Result(val added: Int, val updated: Int, val name: String?, val problems: List<String> = emptyList()) {
+    data class Result(val added: Int, val updated: Int, val name: String?, val problems: List<String> = emptyList(), val adopted: Int = 0) {
         val summary: String get() = buildList {
             if (added > 0) add(tr("$added neu", "$added new"))
+            // Standen schon in einer anderen Bibliothek: samt Cover und TMDB-Angaben übernommen.
+            if (adopted > 0) add(tr("$adopted aus anderen Bibliotheken übernommen", "$adopted taken from other libraries"))
             if (updated > 0) add(tr("$updated aktualisiert", "$updated updated"))
             if (problems.isNotEmpty()) add(tr("${problems.size} übersprungen (${problems.first()})", "${problems.size} skipped (${problems.first()})"))
         }.joinToString(", ").ifEmpty { tr("Nichts Neues", "Nothing new") }
@@ -37,16 +39,22 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
         if (catalog.titles.isEmpty() && problems.isNotEmpty()) throw IllegalArgumentException(problems.first())
         var added = 0
         var updated = 0
+        var adopted = 0
         val ids = mutableListOf<String>()
         for (c in catalog.titles) {
             val poster = c.poster?.takeIf { it.startsWith("data:") }?.let { saveDataUri(it, "${c.id}-poster") }
             val backdrop = c.backdrop?.takeIf { it.startsWith("data:") }?.let { saveDataUri(it, "${c.id}-backdrop") }
-            val (t, existed) = store.upsert(c, poster, backdrop, libraryId)
-            if (existed) updated++ else added++
-            ids += t.id
+            val (t, how) = store.upsert(c, poster, backdrop, libraryId)
+            when (how) {
+                LibraryStore.Upserted.NEW -> added++
+                LibraryStore.Upserted.UPDATED -> updated++
+                LibraryStore.Upserted.ADOPTED -> adopted++
+            }
+            // Was TMDB-Angaben schon hat, muss nicht erneut gesucht werden.
+            if (t.tmdb == null) ids += t.id
         }
         enricher.enqueue(ids)
-        Result(added, updated, catalog.name, problems)
+        Result(added, updated, catalog.name, problems, adopted)
     }
 
     /** data:image/…;base64,… → Datei in filesDir/posters, Rückgabe als file://-Adresse. */

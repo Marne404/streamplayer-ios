@@ -202,7 +202,7 @@ class CloudSync(
                         } else fail(e)
                     },
                 ) else Channel(key, ref,
-                    local = { library.titles.value.filter { it.library == l.id }.associate { it.id to SyncCodec.sharedTitleJson(it) } },
+                    local = { library.titles.value.filter { it.isIn(l.id) }.associate { it.id to SyncCodec.sharedTitleJson(it) } },
                     apply = { _, _ -> },
                 )
                 channels[key] = ch

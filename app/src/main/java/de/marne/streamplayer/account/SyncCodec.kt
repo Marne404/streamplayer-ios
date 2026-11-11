@@ -35,7 +35,7 @@ object SyncCodec {
      * ohne eigene Bilder vom Gerät – die liegen nur im eigenen Konto. Bild-Adressen aus dem Netz bleiben.
      */
     fun sharedTitleJson(t: LibTitle): String {
-        val o = t.copy(offline = emptyMap(), libraryId = null).toJson()
+        val o = t.copy(offline = emptyMap(), libraryId = null, alsoIn = emptyList()).toJson()
         o.remove("offline")
         for (f in IMAGE_FIELDS) {
             val v = if (o.isNull(f)) null else o.optString(f)

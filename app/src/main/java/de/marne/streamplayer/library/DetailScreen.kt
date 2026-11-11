@@ -80,8 +80,10 @@ class DetailActions(
     val resetCover: (LibTitle) -> Unit,
     /** TMDB-Eintrag von Hand zuordnen (null: kein TMDB-Schlüssel). */
     val matchTmdb: ((LibTitle, de.marne.streamplayer.catalog.Tmdb.Result) -> Unit)?,
-    /** Titel in eine andere Bibliothek verschieben. */
-    val moveTo: (LibTitle, String) -> Unit,
+    /** In welchen Bibliotheken der Titel steht (mindestens einer). */
+    val setLibraries: (LibTitle, List<String>) -> Unit,
+    /** Nur aus dieser einen Bibliothek nehmen – in den anderen bleibt er. */
+    val removeFrom: (LibTitle, String) -> Unit,
     /** Poster von TMDB als Cover (Adresse) – null: wieder das Standard-Poster. */
     val setCover: (LibTitle, String?) -> Unit,
     val refreshTmdb: ((LibTitle) -> Unit)?,
@@ -162,15 +164,16 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true },
         // Mit TMDB erst die Auswahl der Poster (eigenes Bild ist dort die erste Kachel), sonst gleich die Galerie.
         onCover = { if (tmdbCoverSource(t) != null) covering = true else detail.changeCover(t) },
-        library = state.libraries.filterNot { it.joined }.takeIf { it.size > 1 }?.let { libs -> (libs.firstOrNull { it.id == t.library } ?: libs.first()) },
+        libraryLabel = state.libraries.filterNot { it.joined }.takeIf { it.size > 1 }
+            ?.let { libs -> libs.filter { t.isIn(it.id) }.joinToString(", ") { it.label }.ifEmpty { libs.first().label } },
         sharedBy = state.libraries.firstOrNull { it.id == t.library }?.takeIf { it.readOnly }?.let { it.owner ?: tr("einem Freund", "a friend") },
         onMove = { moving = true },
         onMatch = detail.matchTmdb?.takeIf { de.marne.streamplayer.App.instance.enricher.available }?.let { { matching = true } },
     )
     if (matching) detail.matchTmdb?.let { m -> TmdbMatchSheet(t, onPick = { m(t, it) }, onDismiss = { matching = false }) }
-    if (moving) LibraryPickSheet(
-        tr("Verschieben", "Move"), tr("„${t.title}“ in welche Bibliothek?", "Move “${t.title}” to which library?"),
-        state.libraries.filterNot { it.joined }, t.library, onPick = { detail.moveTo(t, it) }, onDismiss = { moving = false },
+    if (moving) LibraryToggleSheet(
+        tr("Bibliotheken", "Libraries"), tr("Wo soll „${t.title}“ stehen?", "Where should “${t.title}” be?"),
+        state.libraries.filterNot { it.joined }, t.libraries, onChange = { detail.setLibraries(t, it) }, onDismiss = { moving = false },
     )
     if (covering) tmdbCoverSource(t)?.let { src ->
         CoverSheet(t, src, onPick = { detail.setCover(t, it) }, onGallery = { detail.changeCover(t) }, onDismiss = { covering = false })
@@ -183,11 +186,30 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         renaming = false
         detail.rename(t, it)
     }
-    if (confirmRemove) AlertDialog(
+    // Steht der Titel in mehreren Bibliotheken und ist gerade eine davon offen: nur dort herausnehmen.
+    val onlyHere = state.activeLibrary.takeIf { it != Library.ALL && t.libraries.size > 1 && t.isIn(it) }
+    if (confirmRemove && onlyHere != null) {
+        val here = state.libraries.firstOrNull { it.id == onlyHere }?.label.orEmpty()
+        val others = state.libraries.filter { it.id != onlyHere && t.isIn(it.id) }.joinToString(", ") { it.label }
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            containerColor = Palette.surface,
+            title = { Text(tr("Aus „$here“ entfernen?", "Remove from “$here”?"), style = MaterialTheme.typography.headlineSmall) },
+            text = { Text(tr("In $others bleibt der Titel – mit Fortschritt und Downloads.", "It stays in $others – with progress and downloads."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
+            confirmButton = { QuietButton(tr("Entfernen", "Remove"), color = Palette.wine) { confirmRemove = false; detail.removeFrom(t, onlyHere) } },
+            dismissButton = { QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirmRemove = false } },
+        )
+    } else if (confirmRemove) AlertDialog(
         onDismissRequest = { confirmRemove = false },
         containerColor = Palette.surface,
         title = { Text(tr("Aus der Bibliothek entfernen?", "Remove from library?"), style = MaterialTheme.typography.headlineSmall) },
-        text = { Text(tr("Fortschritt geht verloren. Geladene Dateien bleiben unter Downloads.", "Your progress will be lost. Downloaded files stay in Downloads."), style = MaterialTheme.typography.bodyMedium, color = Palette.muted) },
+        text = {
+            Text(
+                if (t.libraries.size > 1) tr("Der Titel verschwindet aus allen Bibliotheken, der Fortschritt geht verloren. Geladene Dateien bleiben unter Downloads.", "It disappears from all libraries and your progress is lost. Downloaded files stay in Downloads.")
+                else tr("Fortschritt geht verloren. Geladene Dateien bleiben unter Downloads.", "Your progress will be lost. Downloaded files stay in Downloads."),
+                style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+            )
+        },
         confirmButton = { QuietButton(tr("Entfernen", "Remove"), color = Palette.wine) { confirmRemove = false; detail.remove(t) } },
         dismissButton = { QuietButton(tr("Behalten", "Keep"), color = Palette.muted) { confirmRemove = false } },
     )
@@ -484,7 +506,8 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
 @Composable
 private fun EditSheet(
     t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit, onCover: () -> Unit,
-    library: Library? = null, onMove: () -> Unit = {},
+    /** Bibliotheken des Titels als Text – null: nur eine Bibliothek vorhanden, keine Zeile. */
+    libraryLabel: String? = null, onMove: () -> Unit = {},
     /** Titel aus der Bibliothek eines Freundes: nur ansehen – keine Änderungen, nur die Seite. */
     sharedBy: String? = null,
     onMatch: (() -> Unit)? = null,
@@ -526,9 +549,9 @@ private fun EditSheet(
                 de.marne.streamplayer.ui.design.RowDivider()
                 de.marne.streamplayer.ui.design.ListRow(tr("Umbenennen", "Rename"), icon = Ic.editNote, onClick = { then(onRename) })
                 // Nur mit mehreren Bibliotheken: wohin der Titel gehört.
-                library?.takeIf { !it.joined }?.let { l ->
+                libraryLabel?.let { label ->
                     de.marne.streamplayer.ui.design.RowDivider()
-                    de.marne.streamplayer.ui.design.ListRow(tr("Bibliothek", "Library"), icon = Ic.library, value = l.label, onClick = { then(onMove) })
+                    de.marne.streamplayer.ui.design.ListRow(tr("Bibliotheken", "Libraries"), icon = Ic.library, value = label, onClick = { then(onMove) })
                 }
                 onMatch?.let { m ->
                     de.marne.streamplayer.ui.design.RowDivider()

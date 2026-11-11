@@ -81,9 +81,20 @@ data class LibTitle(
     val addedAt: Long = System.currentTimeMillis(),
     /** Bibliothek, in der der Titel steht ([Library]); null = die erste („Meine Bibliothek“). */
     val libraryId: String? = null,
+    /**
+     * Weitere Bibliotheken, in denen derselbe Titel auch steht – ein Titel, nicht mehrere Kopien:
+     * Fortschritt, Downloads, Cover und TMDB-Angaben gelten überall. Anlass: Wer in eine neue
+     * Bibliothek importierte, was schon in einer anderen stand, bekam es dort nicht zu sehen.
+     */
+    val alsoIn: List<String> = emptyList(),
 ) {
     /** Bibliothek, nie null. */
     val library: String get() = libraryId ?: Library.MAIN
+
+    /** Alle Bibliotheken des Titels, die eigentliche zuerst. */
+    val libraries: List<String> get() = if (alsoIn.isEmpty()) listOf(library) else (listOf(library) + alsoIn).distinct()
+
+    fun isIn(libraryId: String): Boolean = library == libraryId || libraryId in alsoIn
 
     val host: String? get() = (pageUrl ?: template)?.let { runCatching { java.net.URI(it.replace("{", "").replace("}", "")).host?.removePrefix("www.") }.getOrNull() }
 
@@ -157,6 +168,7 @@ data class LibTitle(
         })
         put("offline", JSONObject(offline as Map<*, *>)); put("addedAt", addedAt)
         if (libraryId != null) put("library", libraryId)
+        if (alsoIn.isNotEmpty()) put("alsoIn", JSONArray(alsoIn))
     }
 
     companion object {
@@ -213,6 +225,7 @@ data class LibTitle(
                 offline = off.keys().asSequence().associateWith { off.getString(it) },
                 addedAt = o.optLong("addedAt"),
                 libraryId = o.str("library"),
+                alsoIn = o.optJSONArray("alsoIn")?.strings().orEmpty(),
             )
         }
 
