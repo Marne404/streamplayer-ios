@@ -220,7 +220,11 @@ object Recommend {
         val topGenres: List<Pair<String, Float>>,
     )
 
-    fun stats(titles: List<LibTitle>, progress: Map<String, Progress>, myList: List<String>, now: Long = System.currentTimeMillis()): Stats {
+    /**
+     * [days]: Sehzeit je Epochentag (ProgressStore.days) – daraus „diese Woche“. Ohne (Tests, alte
+     * Daten) die Schätzung über die zuletzt bewegten Einträge.
+     */
+    fun stats(titles: List<LibTitle>, progress: Map<String, Progress>, myList: List<String>, days: Map<Long, Long>? = null, now: Long = System.currentTimeMillis()): Stats {
         val ids = titles.mapTo(HashSet()) { it.id }
         var total = 0L
         var week = 0L
@@ -229,10 +233,15 @@ object Recommend {
         for ((key, p) in progress) {
             val parsed = Keys.parse(key) ?: continue
             if (parsed.first !in ids) continue
-            val ms = if (p.finished) p.durationMs else p.positionMs
+            // Nur wirklich Gesehenes: wer bis zum Abspann springt, hat den Film nicht 2 Stunden geschaut.
+            val ms = p.countedMs
             total += ms
             if (now - p.updatedAt < 7L * 24 * 3600 * 1000) week += ms
             if (p.finished) if (parsed.second != null) episodes++ else movies++
+        }
+        if (days != null) {
+            val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
+            week = days.filterKeys { it > today - 7 }.values.sum()
         }
         val taste = taste(titles, progress, myList)
         val sum = taste.values.sum()

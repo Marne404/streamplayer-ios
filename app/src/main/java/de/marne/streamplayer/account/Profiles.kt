@@ -200,6 +200,70 @@ class ProfileStore(context: Context) {
         if (_profiles.value.size > 1) remove(id)
     }
 
+    /**
+     * Sicherung einspielen. Profile werden über ID, sonst über den Namen wiedererkannt.
+     * [identity]: Name, Farbe und PIN aus der Datei (sonst bleiben die hiesigen; neue Profile
+     * bekommen Name und Farbe, aber keine PIN). [list]/[collections]: diese Teile übernehmen.
+     * Ersetzen mit [identity]: Profile, die die Datei nicht kennt, gehen. [titleIds]: Datei-ID → ID hier.
+     * Rückgabe: Datei-Profil-ID → Profil-ID hier (für den Fortschritt).
+     */
+    fun importBackup(
+        incoming: List<Profile>, replace: Boolean, identity: Boolean, list: Boolean, collections: Boolean,
+        titleIds: Map<String, String>,
+    ): Map<String, String> {
+        val pidMap = mutableMapOf<String, String>()
+        fun ids(l: List<String>) = l.map { titleIds[it] ?: it }.distinct()
+        _profiles.update { current ->
+            val out = current.toMutableList()
+            for (inc in incoming) {
+                val i = out.indexOfFirst { it.id == inc.id }.takeIf { it >= 0 }
+                    ?: out.indexOfFirst { it.name.equals(inc.name, ignoreCase = true) }.takeIf { it >= 0 }
+                val incList = ids(inc.list)
+                val incCols = inc.collections.map { it.copy(items = ids(it.items)) }
+                if (i == null) {
+                    out += inc.copy(
+                        lock = if (identity) inc.lock else null,
+                        list = if (list) incList else emptyList(),
+                        collections = if (collections) incCols else emptyList(),
+                    )
+                    pidMap[inc.id] = inc.id
+                    continue
+                }
+                val old = out[i]
+                pidMap[inc.id] = old.id
+                out[i] = old.copy(
+                    name = if (identity && replace) inc.name else old.name,
+                    color = if (identity && replace) inc.color else old.color,
+                    // Zusammenführen nimmt eine PIN nie weg, setzt aber eine, wo noch keine ist.
+                    lock = when {
+                        identity && replace -> inc.lock
+                        identity && old.lock == null -> inc.lock
+                        else -> old.lock
+                    },
+                    list = when {
+                        !list -> old.list
+                        replace -> incList
+                        else -> old.list + incList.filter { it !in old.list }
+                    },
+                    collections = when {
+                        !collections -> old.collections
+                        replace -> incCols
+                        else -> {
+                            val merged = old.collections.map { c ->
+                                val m = incCols.firstOrNull { it.id == c.id || it.name.equals(c.name, ignoreCase = true) }
+                                if (m == null) c else c.copy(items = c.items + m.items.filter { it !in c.items })
+                            }
+                            merged + incCols.filter { n -> old.collections.none { it.id == n.id || it.name.equals(n.name, ignoreCase = true) } }
+                        }
+                    },
+                )
+            }
+            if (replace && identity) out.filter { p -> p.id in pidMap.values }.ifEmpty { out } else out
+        }
+        if (_profiles.value.none { it.id == _activeId.value }) select(_profiles.value.first().id)
+        return pidMap
+    }
+
     private fun load(): List<Profile> {
         val list = runCatching {
             val arr = JSONArray(file.readText())

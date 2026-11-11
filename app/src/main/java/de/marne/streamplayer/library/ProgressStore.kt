@@ -15,9 +15,16 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.File
 
-data class Progress(val positionMs: Long, val durationMs: Long, val finished: Boolean, val updatedAt: Long) {
+/**
+ * [watchedMs]: wirklich abgespielte Zeit (Uhr läuft nur, solange das Bild läuft – Vorspulen zählt
+ * nicht). -1 = Eintrag von vor 1.10, als nur die Position gespeichert wurde; dann gilt die alte
+ * Schätzung [countedMs].
+ */
+data class Progress(val positionMs: Long, val durationMs: Long, val finished: Boolean, val updatedAt: Long, val watchedMs: Long = -1) {
     val fraction: Float get() = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val remainingMs: Long get() = (durationMs - positionMs).coerceAtLeast(0)
+    /** Für die Statistik: echte Sehzeit, bei alten Einträgen die frühere Schätzung. */
+    val countedMs: Long get() = if (watchedMs >= 0) watchedMs else if (finished) durationMs else positionMs
 }
 
 /**
@@ -36,13 +43,26 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
     private val _all = MutableStateFlow(_byProfile.value[activeId.value].orEmpty())
     val all: StateFlow<Map<String, Progress>> = _all.asStateFlow()
 
+    /**
+     * Sehzeit je Tag (Epochentag → ms) und Profil – für „diese Woche“. Ein Zähler je Folge reicht
+     * dafür nicht: Er wüsste nicht, wann die Zeit angefallen ist. Nur auf dem Gerät, 60 Tage.
+     */
+    private val _daysByProfile = MutableStateFlow(loadDays())
+    val daysByProfile: StateFlow<Map<String, Map<Long, Long>>> = _daysByProfile.asStateFlow()
+    private val _days = MutableStateFlow(_daysByProfile.value[activeId.value].orEmpty())
+    val days: StateFlow<Map<Long, Long>> = _days.asStateFlow()
+
     init {
         scope.launch { _byProfile.drop(1).debounce(500).collect { save(it) } }
+        scope.launch { _daysByProfile.drop(1).debounce(500).collect { save(_byProfile.value) } }
         // Synchron nachziehen statt über stateIn: MainActivity liest all.value direkt nach einem Wechsel.
         scope.launch(Dispatchers.Main.immediate) { activeId.collect { publish() } }
     }
 
-    private fun publish() { _all.value = _byProfile.value[activeId.value].orEmpty() }
+    private fun publish() {
+        _all.value = _byProfile.value[activeId.value].orEmpty()
+        _days.value = _daysByProfile.value[activeId.value].orEmpty()
+    }
 
     private fun change(pid: String = activeId.value, f: (Map<String, Progress>) -> Map<String, Progress>) {
         _byProfile.update { m -> m + (pid to f(m[pid].orEmpty())) }
@@ -57,11 +77,25 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
         return if (!p.finished && p.positionMs > MIN_RESUME_MS) p.positionMs else 0
     }
 
-    fun report(key: String, positionMs: Long, durationMs: Long, ended: Boolean = false) {
+    /** [playedMs]: seit der letzten Meldung wirklich abgespielte Zeit (siehe [Progress.watchedMs]). */
+    fun report(key: String, positionMs: Long, durationMs: Long, ended: Boolean = false, playedMs: Long = 0) {
         if (durationMs <= 0 && !ended) return
         // Abspann zählt als gesehen: weniger als 2 Minuten oder 5 % übrig.
         val finished = ended || (durationMs > 0 && durationMs - positionMs < maxOf(120_000L, durationMs / 20))
-        change { it + (key to Progress(positionMs, durationMs, finished, System.currentTimeMillis())) }
+        val played = playedMs.coerceAtLeast(0)
+        change {
+            val before = it[key]?.countedMs ?: 0
+            it + (key to Progress(positionMs, durationMs, finished, System.currentTimeMillis(), before + played))
+        }
+        if (played > 0) {
+            val pid = activeId.value
+            val today = java.time.LocalDate.now().toEpochDay()
+            _daysByProfile.update { m ->
+                val days = m[pid].orEmpty()
+                m + (pid to (days + (today to (days[today] ?: 0) + played)).filterKeys { it > today - 60 })
+            }
+            publish()
+        }
     }
 
     /**
@@ -70,7 +104,9 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
      */
     fun setWatched(key: String, watched: Boolean) = change { map ->
         val d = map[key]?.durationMs ?: 0
-        map + (key to if (watched) Progress(d, d, true, System.currentTimeMillis()) else Progress(0, d, false, System.currentTimeMillis()))
+        // Markieren ist kein Schauen: die gezählte Sehzeit bleibt, wie sie war.
+        val w = map[key]?.countedMs ?: 0
+        map + (key to if (watched) Progress(d, d, true, System.currentTimeMillis(), w) else Progress(0, d, false, System.currentTimeMillis(), w))
     }
 
     /** Titel aus der Bibliothek entfernt: sein Fortschritt in allen Profilen mit. */
@@ -82,6 +118,21 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
     /** Profil gelöscht. */
     fun removeProfile(pid: String) {
         _byProfile.update { it - pid }
+        _daysByProfile.update { it - pid }
+        publish()
+    }
+
+    /**
+     * Sicherung einspielen, Profile und Titel schon auf die hiesigen IDs umgeschrieben. Ersetzen:
+     * der Verlauf ist danach der der Datei. Zusammenführen: je Folge der neuere Stand, Sehzeit je Tag
+     * die größere.
+     */
+    fun importBackup(progress: Map<String, Map<String, Progress>>, days: Map<String, Map<Long, Long>>, replace: Boolean) {
+        _byProfile.update { m -> if (replace) progress else m + progress.mapValues { (pid, p) -> ProgressMerge.merge(m[pid].orEmpty(), p) } }
+        _daysByProfile.update { m ->
+            if (replace) days
+            else m + days.mapValues { (pid, d) -> (m[pid].orEmpty().keys + d.keys).associateWith { maxOf(m[pid]?.get(it) ?: 0, d[it] ?: 0) } }
+        }
         publish()
     }
 
@@ -113,11 +164,20 @@ class ProgressStore(context: Context, private val activeId: StateFlow<String>) {
         ps.keys().asSequence().associateWith { ProgressMerge.fromJson(ps.getJSONObject(it)) }
     }.getOrDefault(emptyMap())
 
+    private fun loadDays(): Map<String, Map<Long, Long>> = runCatching {
+        if (!file.exists()) return emptyMap()
+        val w = JSONObject(file.readText()).optJSONObject("watch") ?: return emptyMap()
+        w.keys().asSequence().associateWith { pid -> ProgressMerge.daysFromJson(w.getJSONObject(pid)) }
+    }.getOrDefault(emptyMap())
+
+    @Synchronized
     private fun save(all: Map<String, Map<String, Progress>>) {
         val ps = JSONObject()
         all.forEach { (pid, map) -> ps.put(pid, ProgressMerge.toJson(map)) }
+        val w = JSONObject()
+        _daysByProfile.value.forEach { (pid, days) -> w.put(pid, ProgressMerge.daysToJson(days)) }
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(JSONObject().put("v", 2).put("profiles", ps).toString())
+        tmp.writeText(JSONObject().put("v", 2).put("profiles", ps).put("watch", w).toString())
         tmp.renameTo(file)
     }
 
@@ -131,9 +191,23 @@ object ProgressMerge {
     /** Je Schlüssel gewinnt der neuere Stand; Einträge, die nur eine Seite kennt, bleiben. */
     fun merge(local: Map<String, Progress>, remote: Map<String, Progress>): Map<String, Progress> {
         val out = local.toMutableMap()
-        remote.forEach { (k, r) -> val l = out[k]; if (l == null || r.updatedAt > l.updatedAt) out[k] = r }
+        remote.forEach { (k, r) ->
+            val l = out[k]
+            // Die Position kommt vom neueren Stand, die Sehzeit vom größeren: Sie wächst nur, und
+            // ein älteres Gerät mit mehr gezählter Zeit hat sie wirklich gesehen.
+            out[k] = when {
+                l == null -> r
+                r.updatedAt > l.updatedAt -> r.copy(watchedMs = maxOf(r.watchedMs, l.watchedMs))
+                else -> l.copy(watchedMs = maxOf(r.watchedMs, l.watchedMs))
+            }
+        }
         return out
     }
+
+    fun daysToJson(days: Map<Long, Long>): JSONObject = JSONObject().apply { days.toSortedMap().forEach { (d, ms) -> put(d.toString(), ms) } }
+
+    fun daysFromJson(o: JSONObject): Map<Long, Long> =
+        o.keys().asSequence().mapNotNull { k -> k.toLongOrNull()?.let { it to o.optLong(k) } }.toMap()
 
     /** Nach Titel gruppiert: ein Dokument je Titel und Profil statt eines je Folge. */
     fun byTitle(map: Map<String, Progress>): Map<String, Map<String, Progress>> =
@@ -141,12 +215,14 @@ object ProgressMerge {
 
     fun toJson(map: Map<String, Progress>): JSONObject = JSONObject().apply {
         // Sortiert, damit derselbe Stand immer denselben Text ergibt (Änderungserkennung über Hash).
-        map.toSortedMap().forEach { (k, p) -> put(k, JSONObject().put("p", p.positionMs).put("d", p.durationMs).put("f", p.finished).put("u", p.updatedAt)) }
+        map.toSortedMap().forEach { (k, p) ->
+            put(k, JSONObject().put("p", p.positionMs).put("d", p.durationMs).put("f", p.finished).put("u", p.updatedAt).apply { if (p.watchedMs >= 0) put("w", p.watchedMs) })
+        }
     }
 
     fun fromJson(o: JSONObject): Map<String, Progress> = o.keys().asSequence().associateWith { k ->
         val p = o.getJSONObject(k)
-        Progress(p.optLong("p"), p.optLong("d"), p.optBoolean("f"), p.optLong("u"))
+        Progress(p.optLong("p"), p.optLong("d"), p.optBoolean("f"), p.optLong("u"), p.optLong("w", -1))
     }
 }
 

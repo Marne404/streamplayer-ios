@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,6 +77,10 @@ fun HomeScreen(state: LibState, actions: LibActions) {
     val newest = remember(titles) { titles.sortedByDescending { it.addedAt }.take(15) }
     val offline = remember(titles) { titles.filter { it.offline.isNotEmpty() } }
 
+    val settings = de.marne.streamplayer.App.instance.settings
+    val showContinue by settings.homeContinue.collectAsState()
+    val showMyList by settings.homeMyList.collectAsState()
+
     val list = rememberLazyListState()
     // Deckend erst, wenn die Bühne fast weg ist: vorher liegt die Kopfzeile auf dem Bild.
     val solid by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 600 } }
@@ -98,7 +103,7 @@ fun HomeScreen(state: LibState, actions: LibActions) {
                     }
                 }
             }
-            if (cont.isNotEmpty()) {
+            if (showContinue && cont.isNotEmpty()) {
                 shelf(tr("Weiterschauen", "Continue Watching"), key = "continue", onAll = if (cont.size > 3) ({ actions.grid(GridSpec("continue")) }) else null) {
                     items(cont, key = { it.key }) { c ->
                         WideTile(
@@ -110,7 +115,7 @@ fun HomeScreen(state: LibState, actions: LibActions) {
                     }
                 }
             }
-            if (myList.isNotEmpty()) {
+            if (showMyList && myList.isNotEmpty()) {
                 shelf(tr("Meine Liste", "My List"), key = "mylist", onAll = { actions.grid(GridSpec("list")) }) {
                     items(myList, key = { "l" + it.id }) { TitlePoster(it, state, actions, origin = "list") }
                 }
@@ -190,11 +195,22 @@ private fun HomeHeader(state: LibState, kind: TitleKind?, onKind: (TitleKind?) -
             IconButton(onClick = actions.search) { GIcon(Ic.search) }
             IconButton(onClick = actions.profiles) { de.marne.streamplayer.account.ProfileAvatar(state.profile, 32.dp) }
         }
-        if (state.titles.isNotEmpty()) {
+        // Filter erst beim Weiterscrollen: oben gehört der Platz der Bühne. Ist ein Filter gesetzt,
+        // bleiben sie stehen – sonst sähe man nicht, warum die Startseite nur Filme zeigt.
+        // Der Kopf liegt über der Liste: Aufklappen schiebt nichts, es kommt nur von oben herein.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = state.titles.isNotEmpty() && (solid || kind != null),
+            enter = androidx.compose.animation.expandVertically(tween(420, easing = BouncyEase), expandFrom = Alignment.Top) +
+                androidx.compose.animation.fadeIn(tween(220, delayMillis = 80)) +
+                androidx.compose.animation.slideInVertically(tween(420, easing = BouncyEase)) { -it / 3 },
+            exit = androidx.compose.animation.shrinkVertically(tween(320, easing = SpringEase), shrinkTowards = Alignment.Top) +
+                androidx.compose.animation.fadeOut(tween(160)),
+        ) {
             KindChips(kind, onKind, Modifier.padding(start = 20.dp, top = 6.dp, bottom = 10.dp)) {
                 CategoryPill { actions.categories(kind) }
             }
-        } else VSpace(10.dp)
+        }
+        VSpace(if (state.titles.isEmpty()) 10.dp else 0.dp)
     }
 }
 

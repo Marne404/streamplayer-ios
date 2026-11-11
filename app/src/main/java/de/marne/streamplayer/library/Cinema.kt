@@ -242,9 +242,6 @@ private fun HeroPage(t: LibTitle, page: Int, pager: PagerState, state: LibState,
                         alpha = 1f - offset.absoluteValue.coerceIn(0f, 1f)
                     },
             ) {
-                val g = genreLine(t, 3)
-                if (g.isNotEmpty()) Text(g.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.brass, maxLines = 1)
-                VSpace(6.dp)
                 Text(t.title, style = MaterialTheme.typography.displaySmall, color = Palette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 val facts = factLine(t)
                 if (facts.isNotEmpty()) {

@@ -166,6 +166,29 @@ class LibraryStore(context: Context) {
         else (rest + merged).sortedByDescending { it.addedAt }
     }
 
+    /**
+     * Sicherung einspielen. Ersetzen: die Bibliothek ist danach die der Datei (Downloads dieses Geräts
+     * bleiben an ihren Titeln). Zusammenführen: Vorhandenes bleibt, Neues kommt dazu; wiedererkannt
+     * über ID oder Katalog-ID. Rückgabe: Datei-ID → ID hier, wo sie abweichen (Fortschritt, Listen).
+     */
+    fun importBackup(incoming: List<LibTitle>, replace: Boolean): Map<String, String> {
+        val idMap = mutableMapOf<String, String>()
+        // Eigene Cover sind Dateien dieses Geräts: aus einer fremden Sicherung gibt es sie hier nicht.
+        fun local(t: LibTitle) = t.copy(customPoster = t.customPoster?.takeIf { java.io.File(it).exists() })
+        _titles.update { list ->
+            if (replace) {
+                incoming.map { t -> local(t).copy(offline = list.firstOrNull { it.id == t.id }?.offline.orEmpty() + t.offline) }
+            } else {
+                val added = incoming.mapNotNull { t ->
+                    val same = list.firstOrNull { it.id == t.id } ?: t.sourceId?.let { sid -> list.firstOrNull { it.sourceId == sid } }
+                    if (same != null) { if (same.id != t.id) idMap[t.id] = same.id; null } else local(t)
+                }
+                (list + added).sortedByDescending { it.addedAt }
+            }
+        }
+        return idMap
+    }
+
     private fun update(id: String, change: (LibTitle) -> LibTitle) =
         _titles.update { list -> list.map { if (it.id == id) change(it) else it } }
 

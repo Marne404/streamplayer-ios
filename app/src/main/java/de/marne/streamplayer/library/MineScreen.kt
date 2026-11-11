@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +44,8 @@ import de.marne.streamplayer.ui.tr
  */
 @Composable
 fun MineScreen(state: LibState, actions: LibActions) {
-    val stats = remember(state.titles, state.progress, state.myList) { Recommend.stats(state.titles, state.progress, state.myList) }
+    val days by de.marne.streamplayer.App.instance.progress.days.collectAsState()
+    val stats = remember(state.titles, state.progress, state.myList, days) { Recommend.stats(state.titles, state.progress, state.myList, days) }
     val cont = remember(state.titles, state.progress) { Shelves.continueWatching(state.titles, state.progress) }
     val myList = remember(state.titles, state.myList) { state.myList.mapNotNull(state::byId) }
     val watched = remember(state.titles, state.progress) { state.titles.count { Recommend.seen(it, state.progress) == Recommend.Seen.DONE } }

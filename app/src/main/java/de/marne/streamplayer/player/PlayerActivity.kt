@@ -85,6 +85,12 @@ class PlayerActivity : ComponentActivity() {
             startMs,
         )
         p.addListener(object : androidx.media3.common.Player.Listener {
+            // Sehzeit: Die Uhr läuft nur, solange wirklich Bild kommt – Pause, Puffern und
+            // Vorspulen zählen nicht (Sprünge ändern die Position, nicht die Uhr).
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) playingSince = android.os.SystemClock.elapsedRealtime() else takePlayed()
+            }
+
             override fun onPlaybackStateChanged(state: Int) {
                 // Zu Ende geschaut: als gesehen merken – das macht „Nächste Folge“ möglich.
                 if (state == androidx.media3.common.Player.STATE_ENDED) saveProgress(ended = true)
@@ -138,11 +144,24 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
     }
 
+    /** Seit wann das Bild läuft (0 = steht); [played] sammelt bis zur nächsten Meldung. */
+    private var playingSince = 0L
+    private var played = 0L
+
+    private fun takePlayed() {
+        if (playingSince > 0) {
+            played += android.os.SystemClock.elapsedRealtime() - playingSince
+            playingSince = if (player?.isPlaying == true) android.os.SystemClock.elapsedRealtime() else 0L
+        }
+    }
+
     private fun saveProgress(ended: Boolean = false) {
         val k = key ?: return
         val p = player ?: return
         val duration = p.duration.takeIf { it > 0 && it != androidx.media3.common.C.TIME_UNSET } ?: return
-        App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended)
+        takePlayed()
+        App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended, played)
+        played = 0
     }
 
     override fun onDestroy() {

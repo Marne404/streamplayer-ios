@@ -74,6 +74,8 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val tmdbKey by settings.tmdbKey.collectAsStateWithLifecycle()
     val tmdbAuto by settings.tmdbAuto.collectAsStateWithLifecycle()
     val askProfile by settings.askProfile.collectAsStateWithLifecycle()
+    val homeContinue by settings.homeContinue.collectAsStateWithLifecycle()
+    val homeMyList by settings.homeMyList.collectAsStateWithLifecycle()
     val language by settings.language.collectAsStateWithLifecycle()
     val profiles by app.profiles.profiles.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
@@ -129,6 +131,29 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 selected = language.tag,
                 onSelect = { tag -> Lang.fromTag(tag)?.let(settings::setLanguage) },
             )
+        }
+
+        item { SectionTitle(tr("Startseite", "Home")) }
+        item {
+            ListGroup {
+                ListRow(
+                    title = tr("Weiterschauen", "Continue Watching"),
+                    subtitle = tr("Aus: steht nur unter „Meins“.", "Off: only shown in My Stuff."),
+                    icon = Ic.play,
+                    showChevron = false,
+                    onClick = { settings.setHomeContinue(!homeContinue) },
+                    trailing = { IvorySwitch(homeContinue, settings::setHomeContinue) },
+                )
+                RowDivider()
+                ListRow(
+                    title = tr("Meine Liste", "My List"),
+                    subtitle = tr("Aus: steht nur unter „Meins“.", "Off: only shown in My Stuff."),
+                    icon = Ic.bookmark,
+                    showChevron = false,
+                    onClick = { settings.setHomeMyList(!homeMyList) },
+                    trailing = { IvorySwitch(homeMyList, settings::setHomeMyList) },
+                )
+            }
         }
 
         item { SectionTitle(tr("Mediathek", "Library")) }
@@ -256,6 +281,9 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                 )
             }
         }
+
+        item { SectionTitle(tr("Sicherung", "Backup")) }
+        item { BackupRows(onToast) }
 
         item { SectionTitle(tr("Über", "About")) }
         item {

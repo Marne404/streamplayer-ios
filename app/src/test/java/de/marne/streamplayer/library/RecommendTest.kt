@@ -95,6 +95,28 @@ class RecommendTest {
         assertEquals(listOf("Drama", "Krimi", "Dokumentarfilm"), s.topGenres.map { it.first })
     }
 
+    // Anlass: Wer bis zum Abspann sprang, bekam die ganze Laufzeit als Sehzeit gutgeschrieben.
+    @Test fun sehzeitZaehltNurGesehenes() {
+        val now = System.currentTimeMillis()
+        val skipped = Progress(100_000, 100_000, true, now, watchedMs = 5_000)
+        val today = java.time.LocalDate.now().toEpochDay()
+        val s = Recommend.stats(all, mapOf(Keys.movie(krimi) to skipped), emptyList(), days = mapOf(today to 5_000L, today - 10 to 40_000L), now = now)
+        assertEquals(5_000L, s.watchedMs)
+        assertEquals(5_000L, s.weekMs)
+    }
+
+    @Test fun sehzeitUeberlebtJsonUndAbgleich() {
+        val a = Progress(10, 100, false, 2, watchedMs = 7)
+        val back = ProgressMerge.fromJson(ProgressMerge.toJson(mapOf("m:x" to a)))
+        assertEquals(a, back["m:x"])
+        val old = ProgressMerge.fromJson(org.json.JSONObject("""{"m:x":{"p":10,"d":100,"f":false,"u":1}}"""))
+        assertEquals(-1L, old["m:x"]!!.watchedMs)
+        // Neuere Position, aber die größere Sehzeit bleibt.
+        val merged = ProgressMerge.merge(mapOf("m:x" to Progress(50, 100, false, 1, 60)), mapOf("m:x" to a))
+        assertEquals(10L, merged["m:x"]!!.positionMs)
+        assertEquals(60L, merged["m:x"]!!.watchedMs)
+    }
+
     @Test fun neueFelderUeberlebenJson() {
         val t = movie("k", listOf("Krimi", "Drama"), 7.5).let { it.copy(tmdb = it.tmdb!!.copy(tagline = "Ein Satz.", cast = listOf("A", "B"), creators = listOf("C"))) }
         val back = LibTitle.fromJson(JSONObject(t.toJson().toString()))

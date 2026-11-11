@@ -1,6 +1,8 @@
 package de.marne.streamplayer.library
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -231,16 +233,49 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
             VSpace(18.dp)
             Text(tr("„$it“", "“$it”"), style = MaterialTheme.typography.bodyLarge.copy(fontFamily = Serif, fontStyle = FontStyle.Italic), color = Palette.text)
         }
+        About(t)
+    }
+}
+
+/**
+ * Beschreibung, gekürzt; „Mehr“ zeigt den ganzen Text und erst dann Besetzung und Regie – die
+ * Seite bleibt ruhig, wer es wissen will, tippt. „Mehr“ steht auch da, wenn nur Namen fehlen.
+ */
+@Composable
+private fun About(t: LibTitle) {
+    val cast = t.tmdb?.cast.orEmpty()
+    val creators = t.tmdb?.creators.orEmpty()
+    val hasCredits = cast.isNotEmpty() || creators.isNotEmpty()
+    var open by remember(t.id) { mutableStateOf(false) }
+    var overflow by remember(t.id) { mutableStateOf(false) }
+    if (t.text == null && !hasCredits) return
+    Column(Modifier.animateContentSize(animationSpec = tween(320, easing = SpringEase))) {
         t.text?.let {
             VSpace(12.dp)
-            ExpandableText(it, collapsedLines = 4, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                it, style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                maxLines = if (open) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis,
+                onTextLayout = { r -> if (!open) overflow = r.hasVisualOverflow },
+                modifier = Modifier.clickable(enabled = overflow || hasCredits || open) { open = !open },
+            )
         }
-        val cast = t.tmdb?.cast.orEmpty()
-        val creators = t.tmdb?.creators.orEmpty()
-        if (cast.isNotEmpty() || creators.isNotEmpty()) {
-            VSpace(12.dp)
-            if (cast.isNotEmpty()) Credit(tr("Mit", "Starring"), cast.take(5).joinToString(", "))
-            if (creators.isNotEmpty()) Credit(if (t.kind == TitleKind.SERIES) tr("Idee", "Created by") else tr("Regie", "Director"), creators.joinToString(", "))
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open && hasCredits,
+            enter = androidx.compose.animation.fadeIn(tween(220, delayMillis = 120)),
+            exit = androidx.compose.animation.fadeOut(tween(140)),
+        ) {
+            Column(Modifier.padding(top = 12.dp)) {
+                if (cast.isNotEmpty()) Credit(tr("Mit", "Starring"), cast.take(8).joinToString(", "))
+                if (creators.isNotEmpty()) Credit(if (t.kind == TitleKind.SERIES) tr("Idee", "Created by") else tr("Regie", "Director"), creators.joinToString(", "))
+            }
+        }
+        if (overflow || hasCredits || open) {
+            VSpace(4.dp)
+            Text(
+                if (open) tr("Weniger", "Less") else tr("Mehr", "More"),
+                style = MaterialTheme.typography.labelLarge, color = Palette.text,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { open = !open }.padding(vertical = 4.dp),
+            )
         }
     }
 }
@@ -256,7 +291,6 @@ private fun FactsRow(t: LibTitle) {
                 if (real > 0) add(if (real == 1) tr("1 Staffel", "1 season") else tr("$real Staffeln", "$real seasons"))
                 if (t.episodeCount > 0) add(if (t.episodeCount == 1) tr("1 Folge", "1 episode") else tr("${t.episodeCount} Folgen", "${t.episodeCount} episodes"))
             } else t.runtimeMs?.let { minutesText(it) }?.let(::add)
-            t.host?.let(::add)
         }
         t.rating?.let {
             Text(ratingText(it), style = MaterialTheme.typography.labelLarge, color = Palette.brass)
