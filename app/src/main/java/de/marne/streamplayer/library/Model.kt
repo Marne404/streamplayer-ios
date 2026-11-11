@@ -79,7 +79,12 @@ data class LibTitle(
     /** Fertige Downloads: Fortschritts-Schlüssel ([Keys]) → content://-Adresse. */
     val offline: Map<String, String> = emptyMap(),
     val addedAt: Long = System.currentTimeMillis(),
+    /** Bibliothek, in der der Titel steht ([Library]); null = die erste („Meine Bibliothek“). */
+    val libraryId: String? = null,
 ) {
+    /** Bibliothek, nie null. */
+    val library: String get() = libraryId ?: Library.MAIN
+
     val host: String? get() = (pageUrl ?: template)?.let { runCatching { java.net.URI(it.replace("{", "").replace("}", "")).host?.removePrefix("www.") }.getOrNull() }
 
     /** Hochformat-Cover für Regale. */
@@ -143,6 +148,7 @@ data class LibTitle(
             }
         })
         put("offline", JSONObject(offline as Map<*, *>)); put("addedAt", addedAt)
+        if (libraryId != null) put("library", libraryId)
     }
 
     companion object {
@@ -198,6 +204,7 @@ data class LibTitle(
                 },
                 offline = off.keys().asSequence().associateWith { off.getString(it) },
                 addedAt = o.optLong("addedAt"),
+                libraryId = o.str("library"),
             )
         }
 

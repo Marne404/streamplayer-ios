@@ -193,11 +193,13 @@ class DownloadService : Service() {
                 }
                 item.libraryKey?.let { App.instance.library.attachOffline(it, saved.uri.toString()) }
                 store.get(item.id)?.let { Notifications.done(this@DownloadService, it) }
+                de.marne.streamplayer.stats.Usage.downloadDone()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Throwable) {
                 store.update(item.id) { it.copy(state = DlState.FAILED, speedBps = 0, error = Errors.describe(e)) }
                 store.get(item.id)?.let { Notifications.failed(this@DownloadService, it) }
+                de.marne.streamplayer.stats.Usage.downloadFailed()
             }
         }
         jobs[item.id] = job

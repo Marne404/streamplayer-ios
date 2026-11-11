@@ -51,6 +51,9 @@ class App : Application(), SingletonImageLoader.Factory {
         private set
     lateinit var sync: de.marne.streamplayer.account.CloudSync
         private set
+    /** Bibliotheken mit Freunden teilen (nur ansehen). */
+    lateinit var sharing: de.marne.streamplayer.account.Sharing
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -60,6 +63,7 @@ class App : Application(), SingletonImageLoader.Factory {
         settings = Settings(this)
         de.marne.streamplayer.ui.Lang.current = settings.language.value
         http = Http.client(this)
+        de.marne.streamplayer.stats.Usage.init(this)
         downloads = DownloadStore(this)
         subtitles = de.marne.streamplayer.subtitles.SubtitleStore(this)
         library = LibraryStore(this)
@@ -74,7 +78,16 @@ class App : Application(), SingletonImageLoader.Factory {
         Notifications.createChannels(this)
         cloud = de.marne.streamplayer.account.Cloud(this)
         sync = de.marne.streamplayer.account.CloudSync(this, cloud, library, profiles, progress).also { it.start() }
+        sharing = de.marne.streamplayer.account.Sharing(cloud, library)
         de.marne.streamplayer.widget.ContinueWidget.observe(this)
+        // Sitzung = App kommt nach vorn; beim Gehen die Zahlen schicken (wenn es Zeit ist).
+        androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_START -> de.marne.streamplayer.stats.Usage.session()
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> de.marne.streamplayer.stats.Usage.maybeSend()
+                else -> Unit
+            }
+        })
     }
 
     // Vorschaubilder: Netz über denselben OkHttp-Client, fertige Videos über ein Standbild.

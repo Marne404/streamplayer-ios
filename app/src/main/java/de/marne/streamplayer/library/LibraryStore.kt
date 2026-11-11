@@ -31,12 +31,98 @@ class LibraryStore(context: Context) {
     private val _titles = MutableStateFlow(load())
     val titles: StateFlow<List<LibTitle>> = _titles.asStateFlow()
 
+    private val libFile = File(context.filesDir, "libraries.json")
+    private val _libraries = MutableStateFlow(loadLibraries())
+    /** Alle Bibliotheken, [Library.MAIN] immer zuerst. */
+    val libraries: StateFlow<List<Library>> = _libraries.asStateFlow()
+
+    /**
+     * Wohin neue Titel kommen (Browser, „In Bibliothek“, Katalog ohne eigene Wahl): die gerade
+     * gezeigte Bibliothek – setzt AppRoot. Bei „Alle“ die erste.
+     */
+    @Volatile var target: String = Library.MAIN
+
     init {
         scope.launch { _titles.drop(1).debounce(400).collect { save(it) } }
+        scope.launch { _libraries.drop(1).collect { saveLibraries(it) } }
         if (!file.exists() && _titles.value.isNotEmpty()) scope.launch { save(_titles.value) }
     }
 
     fun get(id: String): LibTitle? = _titles.value.firstOrNull { it.id == id }
+
+    // --- Bibliotheken ---
+
+    // In eine Bibliothek eines Freundes kommt nichts: dorthin schreibt nur er.
+    private fun newTarget(): String? = target.takeIf { it != Library.MAIN && it != Library.ALL && _libraries.value.any { l -> l.id == it && !l.joined } }
+
+    fun createLibrary(name: String, color: Int): Library {
+        val l = Library(newId(), name.trim(), color)
+        _libraries.update { it + l }
+        return l
+    }
+
+    fun updateLibrary(id: String, name: String, color: Int) =
+        _libraries.update { list -> list.map { if (it.id == id) it.copy(name = if (id == Library.MAIN && name.isBlank()) "" else name.trim(), color = color) else it } }
+
+    /** Bibliothek weg; ihre Titel gehen nach [moveTo] (Standard: die erste) – gelöscht wird kein Titel. */
+    fun deleteLibrary(id: String, moveTo: String = Library.MAIN) {
+        if (id == Library.MAIN) return
+        val to = moveTo.takeIf { it != id && it != Library.MAIN }
+        _titles.update { list -> list.map { if (it.libraryId == id) it.copy(libraryId = to) else it } }
+        _libraries.update { list -> list.filterNot { it.id == id } }
+    }
+
+    fun setLibrary(l: Library) = _libraries.update { list -> if (list.any { it.id == l.id }) list.map { if (it.id == l.id) l else it } else list + l }
+
+    /** Titel aus der Bibliothek eines Freundes übernehmen; eigene Downloads daran bleiben. */
+    fun putShared(sid: String, t: LibTitle) = _titles.update { list ->
+        val old = list.firstOrNull { it.id == t.id }
+        val nt = t.copy(libraryId = sid, offline = old?.offline.orEmpty(), customPoster = t.customPoster?.takeIf { it.startsWith("http") })
+        if (old != null) list.map { if (it.id == t.id) nt.copy(tmdb = nt.tmdb ?: old.tmdb, episodeInfo = old.episodeInfo + nt.episodeInfo) else it } else listOf(nt) + list
+    }
+
+    fun removeShared(sid: String, titleId: String) = _titles.update { list -> list.filterNot { it.id == titleId && it.libraryId == sid } }
+
+    /** Freundes-Bibliothek verlassen oder zurückgezogen: sie und ihre Titel sind weg. */
+    fun removeJoined(sid: String) {
+        _titles.update { list -> list.filterNot { it.libraryId == sid } }
+        _libraries.update { list -> list.filterNot { it.id == sid } }
+    }
+
+    fun moveTitle(id: String, libraryId: String) = update(id) { it.copy(libraryId = libraryId.takeIf { l -> l != Library.MAIN }) }
+
+    /** Abgleich: Bibliothek aus dem Konto übernehmen bzw. entfernen. */
+    fun putRemoteLibrary(l: Library) = _libraries.update { list ->
+        if (list.any { it.id == l.id }) list.map { if (it.id == l.id) l else it } else list + l
+    }
+
+    fun removeRemoteLibrary(id: String) {
+        if (id == Library.MAIN) return
+        _libraries.update { list -> list.filterNot { it.id == id } }
+    }
+
+    /** Sicherung: Bibliotheken übernehmen (Ersetzen: genau die der Datei, MAIN bleibt immer). */
+    fun importLibraries(incoming: List<Library>, replace: Boolean) = _libraries.update { list ->
+        val merged = if (replace) incoming else list + incoming.filter { n -> list.none { it.id == n.id } }
+        withMain(merged)
+    }
+
+    private fun withMain(list: List<Library>): List<Library> {
+        val main = list.firstOrNull { it.id == Library.MAIN } ?: Library(Library.MAIN, "")
+        return listOf(main) + list.filter { it.id != Library.MAIN }.distinctBy { it.id }
+    }
+
+    private fun loadLibraries(): List<Library> = withMain(runCatching {
+        if (!libFile.exists()) return@runCatching emptyList()
+        val a = JSONArray(libFile.readText())
+        List(a.length()) { Library.fromJson(a.getJSONObject(it)) }
+    }.getOrDefault(emptyList()))
+
+    private fun saveLibraries(list: List<Library>) {
+        val tmp = File(libFile.parentFile, libFile.name + ".tmp")
+        tmp.writeText(JSONArray().apply { list.forEach { put(it.toJson()) } }.toString())
+        tmp.renameTo(libFile)
+    }
 
     fun findByPage(url: String): LibTitle? {
         val key = UrlClassifier.key(url)
@@ -53,7 +139,7 @@ class LibraryStore(context: Context) {
         val t = LibTitle(
             id = newId(), kind = TitleKind.MOVIE,
             title = title?.takeIf { it.isNotBlank() } ?: hostOf(url),
-            pageUrl = url, backdrop = image, description = description,
+            pageUrl = url, backdrop = image, description = description, libraryId = newTarget(),
         )
         _titles.update { listOf(t) + it }
         return t
@@ -63,12 +149,14 @@ class LibraryStore(context: Context) {
      * Titel aus einem Katalog anlegen oder aktualisieren. Wiedererkannt wird über die Katalog-ID,
      * sonst über Art + Titel (+ Jahr). Fortschritt, Downloads und eigenes Cover bleiben erhalten.
      */
-    fun upsert(c: CatalogTitle, localPoster: String?, localBackdrop: String?): Pair<LibTitle, Boolean> {
+    fun upsert(c: CatalogTitle, localPoster: String?, localBackdrop: String?, libraryId: String? = null): Pair<LibTitle, Boolean> {
         val kind = if (c.type == CatalogType.SERIES) TitleKind.SERIES else TitleKind.MOVIE
         val existing = _titles.value.firstOrNull { it.sourceId == c.id }
             ?: _titles.value.firstOrNull { it.kind == kind && it.title.equals(c.title, ignoreCase = true) && (c.year == null || it.year == null || it.year == c.year) }
         val firstEpisode = if (kind == TitleKind.SERIES) Episodes.generate(c.template, c.seasons, c.episodes).firstOrNull()?.url else null
-        val base = existing ?: LibTitle(id = newId(), kind = kind, title = c.title, pageUrl = null)
+        // Neu: in die gewählte Bibliothek. Schon vorhanden: bleibt, wo er steht.
+        val base = existing ?: LibTitle(id = newId(), kind = kind, title = c.title, pageUrl = null,
+            libraryId = (libraryId ?: target).takeIf { it != Library.MAIN && it != Library.ALL && _libraries.value.any { l -> l.id == it && !l.joined } })
         val updated = base.copy(
             kind = kind,
             title = c.title,
@@ -107,7 +195,7 @@ class LibraryStore(context: Context) {
         val id = newId()
         val t = LibTitle(
             id = id, kind = TitleKind.MOVIE, title = title, pageUrl = pageUrl, backdrop = image,
-            durationMs = durationMs, offline = mapOf("m:$id" to uri),
+            durationMs = durationMs, offline = mapOf("m:$id" to uri), libraryId = newTarget(),
         )
         _titles.update { listOf(t) + it }
         return t

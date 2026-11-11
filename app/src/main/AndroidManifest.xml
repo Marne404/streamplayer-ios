@@ -43,6 +43,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Einladung zu einer geteilten Bibliothek: streamplayer://join/<code> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="streamplayer" android:host="join" />
+            </intent-filter>
             <!-- Katalog-Dateien: aus dem Creator geteilt oder im Dateimanager geöffnet -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

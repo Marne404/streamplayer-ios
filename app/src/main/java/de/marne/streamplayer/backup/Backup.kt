@@ -61,7 +61,10 @@ object Backup {
         if (Part.SETTINGS in parts) o.put("settings", app.settings.exportPrefs())
         if (Part.TMDB in parts) o.put("tmdbKey", app.settings.tmdbKey.value)
         if (Part.HISTORY in parts) o.put("history", app.settings.exportHistory())
-        if (Part.LIBRARY in parts) o.put("titles", JSONArray().apply { app.library.titles.value.forEach { put(it.toJson()) } })
+        if (Part.LIBRARY in parts) {
+            o.put("titles", JSONArray().apply { app.library.titles.value.forEach { put(it.toJson()) } })
+            o.put("libraries", JSONArray().apply { app.library.libraries.value.forEach { put(it.toJson()) } })
+        }
         if (parts.any { it in perProfile }) {
             o.put("profiles", JSONArray().apply {
                 app.profiles.profiles.value.forEach { p ->
@@ -112,6 +115,8 @@ object Backup {
 
         val titleIds = if (Part.LIBRARY in use) {
             val a = o.optJSONArray("titles") ?: JSONArray()
+            // Erst die Bibliotheken, dann die Titel – sonst zeigten Titel auf Bibliotheken, die es (noch) nicht gibt.
+            o.optJSONArray("libraries")?.let { l -> app.library.importLibraries(List(l.length()) { de.marne.streamplayer.library.Library.fromJson(l.getJSONObject(it)) }, replace) }
             app.library.importBackup(List(a.length()) { LibTitle.fromJson(a.getJSONObject(it)) }, replace)
         } else emptyMap()
 

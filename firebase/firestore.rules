@@ -37,6 +37,13 @@ service cloud.firestore {
       allow delete: if owner(uid);
     }
 
+    // Bibliotheken: { json, updatedAt, deleted } wie Titel – nur Name und Farbe.
+    match /users/{uid}/libraries/{libraryId} {
+      allow get, list: if owner(uid);
+      allow create, update: if owner(uid) && validSyncDoc();
+      allow delete: if owner(uid);
+    }
+
     match /users/{uid}/profiles/{profileId} {
       allow get, list: if owner(uid);
       allow create, update: if owner(uid) && validSyncDoc();
@@ -47,6 +54,76 @@ service cloud.firestore {
       allow get, list: if owner(uid);
       allow create, update: if owner(uid) && validSyncDoc();
       allow delete: if owner(uid);
+    }
+
+    // ---------- Geteilte Bibliotheken (nur ansehen) ----------
+    // shared/{sid}: Besitzer schreibt; Mitglied ist, wer unter members/{uid} steht. Beitreten
+    // nur mit dem Code einer Einladung, die zu genau dieser Bibliothek gehört.
+
+    function signedIn() { return request.auth != null; }
+
+    function shareDoc(sid) {
+      return get(/databases/$(database)/documents/shared/$(sid));
+    }
+
+    function shareOwner(sid) {
+      return signedIn() && exists(/databases/$(database)/documents/shared/$(sid))
+        && shareDoc(sid).data.owner == request.auth.uid;
+    }
+
+    function shareMember(sid) {
+      return signedIn() && exists(/databases/$(database)/documents/shared/$(sid)/members/$(request.auth.uid));
+    }
+
+    function validShare() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['owner', 'ownerName', 'name', 'color', 'updatedAt'])
+        && d.keys().hasAll(['owner', 'ownerName', 'name', 'color', 'updatedAt'])
+        && d.owner == request.auth.uid
+        && d.ownerName is string && d.ownerName.size() <= 100
+        && d.name is string && d.name.size() <= 100
+        && d.color is int
+        && d.updatedAt == request.time;
+    }
+
+    match /shared/{sid} {
+      allow get: if signedIn() && (resource.data.owner == request.auth.uid || shareMember(sid));
+      allow create: if signedIn() && validShare();
+      allow update: if signedIn() && resource.data.owner == request.auth.uid && validShare();
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+
+      match /titles/{titleId} {
+        allow get, list: if shareOwner(sid) || shareMember(sid);
+        allow create, update: if shareOwner(sid) && validSyncDoc();
+        allow delete: if shareOwner(sid);
+      }
+
+      match /members/{uid} {
+        allow get: if signedIn() && (request.auth.uid == uid || shareOwner(sid));
+        allow list: if shareOwner(sid);
+        allow create: if signedIn() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['code', 'name', 'joinedAt'])
+          && request.resource.data.keys().hasAll(['code', 'name', 'joinedAt'])
+          && request.resource.data.code is string
+          && request.resource.data.name is string && request.resource.data.name.size() <= 100
+          && request.resource.data.joinedAt == request.time
+          && exists(/databases/$(database)/documents/invites/$(request.resource.data.code))
+          && get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data.shareId == sid;
+        allow delete: if signedIn() && (request.auth.uid == uid || shareOwner(sid));
+      }
+    }
+
+    // Einladung: Code = Dokument-ID, lang genug, um nicht erraten zu werden. Einzeln lesbar für
+    // jeden Angemeldeten (wer den Code hat, darf sehen, wozu er gehört), nie auflistbar.
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow create: if signedIn() && code.size() >= 20
+        && request.resource.data.keys().hasOnly(['shareId', 'owner', 'createdAt'])
+        && request.resource.data.keys().hasAll(['shareId', 'owner', 'createdAt'])
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && shareOwner(request.resource.data.shareId);
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
     }
 
     // Bilder werden einzeln geholt, nie aufgelistet.

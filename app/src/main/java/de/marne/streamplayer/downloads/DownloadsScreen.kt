@@ -113,9 +113,9 @@ fun DownloadsScreen(state: LibState, pending: List<PendingRow>, actions: Downloa
     val done = items.filter { it.state == DlState.DONE }.sortedByDescending { it.finishedAt ?: it.createdAt }
 
     // Zu welchem Titel gehört eine Datei? Über die Datei selbst (sie hängt am Titel), sonst über den Schlüssel.
-    val byUri = remember(state.titles) { state.titles.flatMap { t -> t.offline.map { (k, u) -> u to (t to k) } }.toMap() }
+    val byUri = remember(state.all) { state.all.flatMap { t -> t.offline.map { (k, u) -> u to (t to k) } }.toMap() }
     fun owner(d: DownloadItem): Pair<LibTitle, String>? =
-        d.fileUri?.let(byUri::get) ?: d.libraryKey?.let { k -> Keys.parse(k)?.first?.let(state::byId)?.let { it to k } }
+        d.fileUri?.let(byUri::get) ?: d.libraryKey?.let { k -> Keys.parse(k)?.first?.let(state::anyById)?.let { it to k } }
     val groups = done.mapNotNull { d -> owner(d)?.let { (t, k) -> Triple(t, k, d) } }
         .groupBy { it.first.id }
         .map { (_, l) -> TitleGroup(l.first().first, l.map { it.second to it.third }) }

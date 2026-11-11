@@ -67,6 +67,7 @@ class DownloadStore(private val context: Context) {
             subtitles = subtitles,
         )
         _items.update { listOf(item) + it }
+        de.marne.streamplayer.stats.Usage.downloadStarted()
         return item.id
     }
 

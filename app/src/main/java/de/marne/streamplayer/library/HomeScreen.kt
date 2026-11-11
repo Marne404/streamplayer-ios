@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -189,8 +190,31 @@ private fun HomeHeader(state: LibState, kind: TitleKind?, onKind: (TitleKind?) -
     Column(modifier.fillMaxWidth().background(Palette.bg.copy(alpha = alpha)).statusBarsPadding()) {
         Row(Modifier.padding(start = 20.dp, end = 8.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(greeting().uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-                Text(tr("Für ${state.profile.name}", "For ${state.profile.name}"), style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Mit mehreren Bibliotheken steht oben, welche man sieht; ein Tipp wechselt.
+                // Mit einer: wie bisher der Gruß – das Blatt dahinter legt die zweite an.
+                val many = state.libraries.size > 1
+                Text(
+                    (if (many) "${greeting()}, ${state.profile.name}" else greeting()).uppercase(),
+                    style = MaterialTheme.typography.labelSmall, color = Palette.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Row(
+                    Modifier.clip(RoundedCornerShape(10.dp)).clickable(onClick = actions.libraries),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (many) {
+                        LibraryDot(state.library?.color, 10.dp)
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                    }
+                    Text(
+                        when {
+                            !many -> tr("Für ${state.profile.name}", "For ${state.profile.name}")
+                            else -> state.library?.label ?: tr("Alles", "Everything")
+                        },
+                        style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    GIcon(Ic.expandMore, size = 20.dp, tint = Palette.muted, modifier = Modifier.padding(start = 2.dp))
+                }
             }
             IconButton(onClick = actions.search) { GIcon(Ic.search) }
             IconButton(onClick = actions.profiles) { de.marne.streamplayer.account.ProfileAvatar(state.profile, 32.dp) }

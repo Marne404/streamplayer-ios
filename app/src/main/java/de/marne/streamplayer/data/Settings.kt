@@ -81,6 +81,42 @@ class Settings(context: Context) {
     private val _allowlist = MutableStateFlow(prefs.getStringSet(KEY_ALLOWLIST, emptySet())!!.toSet())
     val allowlist: StateFlow<Set<String>> = _allowlist.asStateFlow()
 
+    /** Nutzungszahlen an die Admin-Übersicht schicken (stats/Usage.kt). Standard an, mit Hinweis beim ersten Start. */
+    private val _usageStats = MutableStateFlow(prefs.getBoolean(KEY_USAGE, true))
+    val usageStats: StateFlow<Boolean> = _usageStats.asStateFlow()
+
+    fun setUsageStats(value: Boolean) {
+        _usageStats.value = value
+        prefs.edit().putBoolean(KEY_USAGE, value).apply()
+    }
+
+    /** Hinweis zur Nutzungsstatistik einmal gezeigt. */
+    var usageNoticeShown: Boolean
+        get() = prefs.getBoolean(KEY_USAGE_NOTICE, false)
+        set(v) { prefs.edit().putBoolean(KEY_USAGE_NOTICE, v).apply() }
+
+    var usageLastSent: Long
+        get() = prefs.getLong(KEY_USAGE_SENT, 0)
+        set(v) { prefs.edit().putLong(KEY_USAGE_SENT, v).apply() }
+
+    /** Zufällige Kennung dieser Installation (für die Statistik) – bleibt bis zur Neuinstallation. */
+    val installId: String
+        get() = prefs.getString(KEY_INSTALL, null) ?: java.util.UUID.randomUUID().toString().also { prefs.edit().putString(KEY_INSTALL, it).apply() }
+
+    /** Gezeigte Bibliothek je Profil (Profil-ID → Bibliotheks-ID oder „*“ für alle). */
+    private val _activeLibraries = MutableStateFlow(readActiveLibraries())
+    val activeLibraries: StateFlow<Map<String, String>> = _activeLibraries.asStateFlow()
+
+    fun setActiveLibrary(profileId: String, libraryId: String) {
+        _activeLibraries.value = _activeLibraries.value + (profileId to libraryId)
+        prefs.edit().putString(KEY_ACTIVE_LIBS, JSONObject(_activeLibraries.value as Map<*, *>).toString()).apply()
+    }
+
+    private fun readActiveLibraries(): Map<String, String> = runCatching {
+        val o = JSONObject(prefs.getString(KEY_ACTIVE_LIBS, null) ?: return emptyMap())
+        o.keys().asSequence().associateWith { o.getString(it) }
+    }.getOrDefault(emptyMap())
+
     /** Größe der Untertitel im Player, als Faktor (1 = Standard). */
     private val _subtitleScale = MutableStateFlow(prefs.getFloat(KEY_SUB_SCALE, 1f))
     val subtitleScale: StateFlow<Float> = _subtitleScale.asStateFlow()
@@ -263,6 +299,8 @@ class Settings(context: Context) {
         _homeContinue.value = prefs.getBoolean(KEY_HOME_CONTINUE, true)
         _autoDelete.value = prefs.getBoolean(KEY_AUTO_DELETE, false)
         _subtitleScale.value = prefs.getFloat(KEY_SUB_SCALE, 1f)
+        _activeLibraries.value = readActiveLibraries()
+        _usageStats.value = prefs.getBoolean(KEY_USAGE, true)
         _autoNext.value = prefs.getBoolean(KEY_AUTO_NEXT, false)
         _homeMyList.value = prefs.getBoolean(KEY_HOME_LIST, false)
         Lang.fromTag(prefs.getString(KEY_LANGUAGE, null))?.let { _language.value = it; Lang.current = it }
@@ -277,10 +315,15 @@ class Settings(context: Context) {
         const val KEY_HOME_CONTINUE = "home_continue"
         const val KEY_AUTO_DELETE = "dl_auto_delete"
         const val KEY_SUB_SCALE = "subtitle_scale"
+        const val KEY_ACTIVE_LIBS = "active_libraries"
+        const val KEY_USAGE = "usage_stats"
+        const val KEY_USAGE_NOTICE = "usage_notice"
+        const val KEY_USAGE_SENT = "usage_last_sent"
+        const val KEY_INSTALL = "install_id"
         const val KEY_AUTO_NEXT = "dl_auto_next"
         const val KEY_HOME_LIST = "home_mylist"
         /** Gehören nicht zu „Einstellungen“ in der Sicherung. */
-        val NOT_SETTINGS = setOf("tmdb_key", "history", "last_url", "onboarded")
+        val NOT_SETTINGS = setOf("tmdb_key", "history", "last_url", "onboarded", "install_id", "usage_last_sent", "usage_notice")
         const val KEY_THEME = "theme"
         const val KEY_WIFI = "wifi_only"
         const val KEY_PARALLEL = "parallel"

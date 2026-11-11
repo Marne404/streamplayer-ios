@@ -55,6 +55,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import de.marne.streamplayer.ui.design.QuietButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -194,6 +195,12 @@ class AppNav {
     var profileManage by mutableStateOf(false)
     /** Auswahl muss getroffen werden (gesperrtes Profil beim Start): nicht wegtippbar. */
     var profileGate by mutableStateOf(false)
+    /** Blatt „Bibliotheken“ offen. */
+    var librariesOpen by mutableStateOf(false)
+    /** Einladungscode zum Beitreten (Link, geteilter Text, Eingabe). */
+    var joinCode by mutableStateOf<String?>(null)
+    /** Katalog wartet auf die Wahl der Bibliothek. */
+    var importAsk by mutableStateOf<Uri?>(null)
     /** Vom Widget: diesen Film bzw. diese Folge spielen (Schlüssel aus Keys). */
     var playKey by mutableStateOf<String?>(null)
     /** Blatt zu einem Download: Titel-ID und Schlüssel (Keys) von Film oder Folge. */
@@ -265,14 +272,22 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             Intent.ACTION_VIEW -> {
                 val data = intent.data ?: return
+                // Einladung zu einer geteilten Bibliothek: streamplayer://join/<code>
+                if (data.scheme == "streamplayer" && data.host == "join") {
+                    data.lastPathSegment?.let { nav.browserOpen = false; nav.joinCode = it }
+                    return
+                }
                 if (data.scheme == "http" || data.scheme == "https") openLink(data.toString()) else importCatalog(data)
             }
             Intent.ACTION_SEND -> {
                 // Katalog-Datei aus dem Creator (oder einem Dateimanager) – sonst ein Link als Text.
                 @Suppress("DEPRECATION")
                 val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                val invite = text?.takeIf { "streamplayer://join/" in it }?.let(de.marne.streamplayer.account.Sharing::codeIn)
                 if (stream != null) importCatalog(stream)
-                else intent.getStringExtra(Intent.EXTRA_TEXT)
+                else if (invite != null) { nav.browserOpen = false; nav.joinCode = invite }
+                else text
                     ?.let { Regex("""https?://\S+""").find(it)?.value }
                     ?.let(::openLink)
             }
@@ -354,7 +369,20 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     val profileList by app.profiles.profiles.collectAsStateWithLifecycle()
     val activeId by app.profiles.activeId.collectAsStateWithLifecycle()
     val activeProfile = profileList.firstOrNull { it.id == activeId } ?: profileList.first()
-    val libState = LibState(titles, progress, activeProfile, enrichStatus, downloads, nav.pending())
+    // Bibliotheken: gezeigt wird die gewählte des Profils; ohne Wahl (oder wenn sie weg ist) mit
+    // mehreren Bibliotheken „Alles“, sonst die eine.
+    val libraries by app.library.libraries.collectAsStateWithLifecycle()
+    val activeLibraries by app.settings.activeLibraries.collectAsStateWithLifecycle()
+    val activeLibrary = activeLibraries[activeProfile.id]
+        ?.takeIf { it == de.marne.streamplayer.library.Library.ALL && libraries.size > 1 || libraries.any { l -> l.id == it } }
+        ?: if (libraries.size > 1) de.marne.streamplayer.library.Library.ALL else de.marne.streamplayer.library.Library.MAIN
+    val visibleTitles = remember(titles, activeLibrary) {
+        if (activeLibrary == de.marne.streamplayer.library.Library.ALL) titles else titles.filter { it.library == activeLibrary }
+    }
+    LaunchedEffect(activeLibrary) {
+        app.library.target = if (activeLibrary == de.marne.streamplayer.library.Library.ALL) de.marne.streamplayer.library.Library.MAIN else activeLibrary
+    }
+    val libState = LibState(visibleTitles, progress, activeProfile, enrichStatus, downloads, nav.pending(), titles, libraries, activeLibrary)
     // Mehrere Profile: bei jedem Start fragen, wer schaut – wenn eingestellt. Sonst bleibt das letzte.
     val needsChoice by app.profiles.needsChoice.collectAsStateWithLifecycle()
     val askProfile by app.settings.askProfile.collectAsStateWithLifecycle()
@@ -379,9 +407,14 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         }
     }
 
-    fun doImport(uri: Uri) {
+    fun doImport(uri: Uri, libraryId: String? = null) {
+        // Mehrere Bibliotheken: erst fragen, wohin der Katalog soll.
+        if (libraryId == null && app.library.libraries.value.count { !it.joined } > 1) {
+            nav.importAsk = uri
+            return
+        }
         scope.launch {
-            runCatching { app.importer.import(uri) }
+            runCatching { app.importer.import(uri, libraryId) }
                 .onSuccess { r ->
                     val hint = if (!app.enricher.available) tr(" Für Cover und Beschreibungen: TMDB-Schlüssel in den Einstellungen.", " For covers and descriptions: add a TMDB key in Settings.") else ""
                     toast(tr("Katalog importiert: ${r.summary}.$hint", "Catalog imported: ${r.summary}.$hint"))
@@ -521,6 +554,8 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     // Stream gefunden: abspielen oder laden – und bei Aufträgen aus der Bibliothek dorthin zurück.
     LaunchedEffect(watchState) {
         if (watchState !is WatchController.State.Challenge) nav.challenge = false
+        // Statistik: nur, dass auf dieser Domain nichts gefunden wurde – nie die Adresse.
+        (watchState as? WatchController.State.NotFound)?.let { de.marne.streamplayer.stats.Usage.findFailed(it.host) }
         when (val s = watchState) {
             // Prüfung: Die Seite muss sichtbar werden, sonst kommt niemand an das Kästchen. Beim
             // Download im Hintergrund nicht einfach dazwischenfahren – erst fragen.
@@ -698,6 +733,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             import = { importLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
             browser = { nav.browserOpen = true },
             downloads = { nav.push(Route.Downloads) },
+            libraries = { nav.librariesOpen = true },
             back = { nav.pop() },
         )
     }
@@ -715,6 +751,11 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             },
             resetCover = { t -> app.library.setCustomPoster(t.id, null) },
             setCover = { t, url -> app.library.setCustomPoster(t.id, url) },
+            moveTo = { t, lib ->
+                app.library.moveTitle(t.id, lib)
+                val name = app.library.libraries.value.firstOrNull { it.id == lib }?.label.orEmpty()
+                toast(tr("Verschoben nach „$name“.", "Moved to “$name”."))
+            },
             refreshTmdb = { t ->
                 if (app.enricher.available) {
                     app.enricher.enqueue(listOf(t.id), force = true)
@@ -759,6 +800,32 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             }
             if (autoDelete) deleteOfflineKey(t, key)
         }
+    }
+
+    // Einladung einlösen: beitreten, die Bibliothek zeigen. Ohne Konto geht es nicht – dann dorthin.
+    LaunchedEffect(nav.joinCode, nav.profilePicker) {
+        val code = nav.joinCode ?: return@LaunchedEffect
+        if (nav.profilePicker) return@LaunchedEffect
+        nav.joinCode = null
+        if (app.cloud.user.value == null) {
+            toast(tr("Zum Beitreten erst bei einem Konto anmelden.", "Sign in to an account to join."), tr("Konto", "Account")) {
+                nav.selectTab(MainActivity.TAB_MINE)
+                nav.push(Route.Settings)
+            }
+            return@LaunchedEffect
+        }
+        runCatching { app.sharing.join(code) }
+            .onSuccess { l ->
+                app.settings.setActiveLibrary(app.profiles.active.id, l.id)
+                nav.selectTab(MainActivity.TAB_HOME)
+                toast(tr("„${l.label}“ von ${l.owner ?: "deinem Freund"} ist da – nur zum Ansehen.", "“${l.label}” from ${l.owner ?: "your friend"} is here – view only."))
+            }
+            .onFailure { toast(it.message ?: tr("Beitreten hat nicht geklappt.", "Couldn't join.")) }
+    }
+    // Ein Freund hat das Teilen beendet oder einen entfernt.
+    val revoked by app.sync.revoked.collectAsStateWithLifecycle()
+    LaunchedEffect(revoked) {
+        revoked?.let { toast(tr("„$it“ wird nicht mehr mit dir geteilt.", "“$it” is no longer shared with you.")) ; app.sync.revokedShown() }
     }
 
     // Wunsch vom Widget: erst, wenn „Wer schaut?“ beantwortet ist – ein gesperrtes Profil braucht seine PIN.
@@ -881,10 +948,59 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         )
 
         nav.previewId?.let { id ->
-            libState.byId(id)?.let { t -> QuickSheet(t, libState, libActions, onDismiss = { nav.previewId = null }) }
+            libState.anyById(id)?.let { t -> QuickSheet(t, libState, libActions, onDismiss = { nav.previewId = null }) }
+        }
+        if (nav.librariesOpen) de.marne.streamplayer.library.LibrariesSheet(
+            libState,
+            de.marne.streamplayer.library.LibrariesActions(
+                select = { id ->
+                    app.settings.setActiveLibrary(activeProfile.id, id)
+                    nav.selectTab(MainActivity.TAB_HOME)
+                },
+                create = { name, color ->
+                    val l = app.library.createLibrary(name, color)
+                    app.settings.setActiveLibrary(activeProfile.id, l.id)
+                    nav.selectTab(MainActivity.TAB_HOME)
+                    toast(tr("„${l.label}“ angelegt. Titel kommen per Katalog oder über „Bearbeiten → Bibliothek“ hinein.", "“${l.label}” created. Add titles by catalog or via “Edit → Library”."))
+                },
+                update = { id, name, color ->
+                    app.library.updateLibrary(id, name, color)
+                    app.library.libraries.value.firstOrNull { it.id == id }?.takeIf { it.shared }?.let { l ->
+                        scope.launch { runCatching { app.sharing.updateMeta(l) } }
+                    }
+                },
+                delete = { id ->
+                    val l = app.library.libraries.value.firstOrNull { it.id == id }
+                    scope.launch {
+                        when {
+                            l == null -> Unit
+                            // Freundes-Bibliothek: verlassen (Titel weg). Eigene geteilte: erst das Teilen beenden.
+                            l.joined -> app.sharing.leave(l)
+                            else -> {
+                                if (l.shared) runCatching { app.sharing.stop(l) }
+                                app.library.deleteLibrary(id)
+                            }
+                        }
+                    }
+                },
+                sendInvite = { text ->
+                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+                    context.startActivity(Intent.createChooser(send, tr("Einladung schicken", "Send invite")))
+                },
+                join = { text -> de.marne.streamplayer.account.Sharing.codeIn(text)?.let { nav.joinCode = it } },
+                toast = { toast(it) },
+            ),
+            onDismiss = { nav.librariesOpen = false },
+        )
+        nav.importAsk?.let { uri ->
+            de.marne.streamplayer.library.LibraryPickSheet(
+                tr("Katalog", "Catalog"), tr("In welche Bibliothek?", "Into which library?"),
+                libraries.filterNot { it.joined }, if (activeLibrary == de.marne.streamplayer.library.Library.ALL) null else activeLibrary,
+                onPick = { doImport(uri, it) }, onDismiss = { nav.importAsk = null },
+            )
         }
         nav.offlineFor?.let { (id, key) ->
-            val t = libState.byId(id)
+            val t = libState.anyById(id)
             val parsed = de.marne.streamplayer.library.Keys.parse(key)
             if (t == null || parsed == null) LaunchedEffect(Unit) { nav.offlineFor = null }
             else {
@@ -917,7 +1033,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             }
         }
         nav.collectFor?.let { id ->
-            libState.byId(id)?.let { t -> de.marne.streamplayer.library.CollectionSheet(t, libState, onDismiss = { nav.collectFor = null }) }
+            libState.anyById(id)?.let { t -> de.marne.streamplayer.library.CollectionSheet(t, libState, onDismiss = { nav.collectFor = null }) }
         }
         if (nav.naming) de.marne.streamplayer.library.CollectionNameDialog(tr("Neue Sammlung", "New collection"), "", onDismiss = { nav.naming = false }) { name ->
             val id = app.profiles.createCollection(name)
@@ -946,6 +1062,32 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         )
 
         de.marne.streamplayer.update.UpdateOffer("Streamplayer")
+
+        // Einmal sagen, dass Zahlen geschickt werden – und wie man es abschaltet. Nicht über „Wer schaut?“.
+        var usageNotice by remember { mutableStateOf(!app.settings.usageNoticeShown) }
+        if (usageNotice && !nav.profilePicker) androidx.compose.material3.AlertDialog(
+            onDismissRequest = { },
+            containerColor = Palette.surface,
+            title = { Text(tr("Nutzungsstatistik", "Usage statistics"), style = MaterialTheme.typography.headlineSmall) },
+            text = {
+                Text(
+                    tr(
+                        "Damit Marne sieht, ob die App läuft, schickt sie Zahlen: wie oft und wie lange geschaut wird, Downloads, Abstürze und auf welchen Domains die Video-Suche scheitert. Keine Titel, keine Seitenadressen, keine Suchbegriffe. Abschalten geht jederzeit unter Einstellungen → Datenschutz – dann wird auch das schon Geschickte gelöscht.",
+                        "So Marne can see whether the app works, it sends numbers: how often and how long you watch, downloads, crashes and on which domains finding a video fails. No titles, no page addresses, no search terms. Turn it off anytime in Settings → Privacy – what was already sent gets deleted too.",
+                    ),
+                    style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                )
+            },
+            confirmButton = { QuietButton(tr("Verstanden", "Got it"), color = Palette.text) { app.settings.usageNoticeShown = true; usageNotice = false } },
+            dismissButton = {
+                QuietButton(tr("Abschalten", "Turn off"), color = Palette.muted) {
+                    app.settings.usageNoticeShown = true
+                    usageNotice = false
+                    app.settings.setUsageStats(false)
+                    de.marne.streamplayer.stats.Usage.forget()
+                }
+            },
+        )
 
         fullscreen?.let { view -> FullscreenHost(view, onExit = browser::exitFullscreen) }
     }
@@ -1035,7 +1177,7 @@ private fun LibraryHost(
         holder.SaveableStateProvider(key) {
             when (r) {
                 is Route.Detail -> {
-                    val t = state.byId(r.id)
+                    val t = state.anyById(r.id)
                     if (t != null) DetailScreen(t, state, actions, detail, r.origin)
                     else LaunchedEffect(Unit) { nav.pop() } // entfernt, während die Seite offen war
                 }

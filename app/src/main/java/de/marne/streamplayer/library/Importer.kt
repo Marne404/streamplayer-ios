@@ -25,13 +25,14 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
         }.joinToString(", ").ifEmpty { tr("Nichts Neues", "Nothing new") }
     }
 
-    suspend fun import(uri: Uri): Result = withContext(Dispatchers.IO) {
+    /** [libraryId]: Bibliothek für neue Titel (null: die gerade gezeigte). */
+    suspend fun import(uri: Uri, libraryId: String? = null): Result = withContext(Dispatchers.IO) {
         val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
             ?: throw IllegalStateException(tr("Datei lässt sich nicht lesen.", "Can’t read the file."))
-        importText(text)
+        importText(text, libraryId)
     }
 
-    suspend fun importText(text: String): Result = withContext(Dispatchers.IO) {
+    suspend fun importText(text: String, libraryId: String? = null): Result = withContext(Dispatchers.IO) {
         val (catalog, problems) = CatalogJson.parseReport(text)
         if (catalog.titles.isEmpty() && problems.isNotEmpty()) throw IllegalArgumentException(problems.first())
         var added = 0
@@ -40,7 +41,7 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
         for (c in catalog.titles) {
             val poster = c.poster?.takeIf { it.startsWith("data:") }?.let { saveDataUri(it, "${c.id}-poster") }
             val backdrop = c.backdrop?.takeIf { it.startsWith("data:") }?.let { saveDataUri(it, "${c.id}-backdrop") }
-            val (t, existed) = store.upsert(c, poster, backdrop)
+            val (t, existed) = store.upsert(c, poster, backdrop, libraryId)
             if (existed) updated++ else added++
             ids += t.id
         }

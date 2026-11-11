@@ -30,6 +30,20 @@ object SyncCodec {
         return o.toString()
     }
 
+    /**
+     * Ein Titel, wie ihn Freunde sehen (geteilte Bibliothek): ohne Downloads, ohne Bibliothek und
+     * ohne eigene Bilder vom Gerät – die liegen nur im eigenen Konto. Bild-Adressen aus dem Netz bleiben.
+     */
+    fun sharedTitleJson(t: LibTitle): String {
+        val o = t.copy(offline = emptyMap(), libraryId = null).toJson()
+        o.remove("offline")
+        for (f in IMAGE_FIELDS) {
+            val v = if (o.isNull(f)) null else o.optString(f)
+            if (v != null && !v.startsWith("http")) o.remove(f)
+        }
+        return o.toString()
+    }
+
     /** Alle Bild-Platzhalter in einem Titel. */
     fun coverNames(json: String): List<String> {
         val o = JSONObject(json)

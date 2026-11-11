@@ -81,6 +81,7 @@ class PlayerActivity : ComponentActivity() {
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, de.marne.streamplayer.R.anim.player_exit)
         }
         val uri = intent.data ?: return finish()
+        if (savedInstanceState == null) de.marne.streamplayer.stats.Usage.play()
         val referer = intent.getStringExtra(EXTRA_REFERER)
         val userAgent = intent.getStringExtra(EXTRA_UA) ?: Http.defaultUserAgent(this)
         key = intent.getStringExtra(EXTRA_KEY)
@@ -194,6 +195,7 @@ class PlayerActivity : ComponentActivity() {
         val duration = p.duration.takeIf { it > 0 && it != androidx.media3.common.C.TIME_UNSET } ?: return
         takePlayed()
         App.instance.progress.report(k, if (ended) duration else p.currentPosition, duration, ended, played)
+        de.marne.streamplayer.stats.Usage.watched(played)
         played = 0
     }
 

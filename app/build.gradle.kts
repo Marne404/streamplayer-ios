@@ -57,11 +57,14 @@ android {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             buildConfigField("String", "FIREBASE_EMULATOR", "\"\"")
             buildConfigField("String", "UPDATE_URL", "\"$updateUrl\"")
+            buildConfigField("String", "STATS_URL", "\"https://streamplayer-stats.marne-gamingx.workers.dev\"")
         }
         debug {
             applicationIdSuffix = ".debug"
             buildConfigField("String", "FIREBASE_EMULATOR", "\"$firebaseEmulator\"")
             buildConfigField("String", "UPDATE_URL", "\"\"")
+            // Debug zählt nicht mit (Tests verfälschten die Übersicht); zum Ausprobieren: -Pstats.debugUrl=…
+            buildConfigField("String", "STATS_URL", "\"${(findProperty("stats.debugUrl") as String?).orEmpty()}\"")
         }
     }
 

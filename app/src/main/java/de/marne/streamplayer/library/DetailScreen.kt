@@ -78,6 +78,8 @@ class DetailActions(
     val rename: (LibTitle, String) -> Unit,
     val changeCover: (LibTitle) -> Unit,
     val resetCover: (LibTitle) -> Unit,
+    /** Titel in eine andere Bibliothek verschieben. */
+    val moveTo: (LibTitle, String) -> Unit,
     /** Poster von TMDB als Cover (Adresse) – null: wieder das Standard-Poster. */
     val setCover: (LibTitle, String?) -> Unit,
     val refreshTmdb: ((LibTitle) -> Unit)?,
@@ -96,6 +98,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     var episodeMenu by remember { mutableStateOf<Episode?>(null) }
     var confirmRemove by remember { mutableStateOf(false) }
     var covering by remember { mutableStateOf(false) }
+    var moving by remember { mutableStateOf(false) }
     val progress = state.progress
     val next = remember(t, progress) { Shelves.nextFor(t, progress) }
     val seasonNumbers = remember(t) { t.seasons.map { it.number }.sorted() }
@@ -153,6 +156,13 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
         t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true },
         // Mit TMDB erst die Auswahl der Poster (eigenes Bild ist dort die erste Kachel), sonst gleich die Galerie.
         onCover = { if (tmdbCoverSource(t) != null) covering = true else detail.changeCover(t) },
+        library = state.libraries.filterNot { it.joined }.takeIf { it.size > 1 }?.let { libs -> (libs.firstOrNull { it.id == t.library } ?: libs.first()) },
+        sharedBy = state.libraries.firstOrNull { it.id == t.library }?.takeIf { it.readOnly }?.let { it.owner ?: tr("einem Freund", "a friend") },
+        onMove = { moving = true },
+    )
+    if (moving) LibraryPickSheet(
+        tr("Verschieben", "Move"), tr("„${t.title}“ in welche Bibliothek?", "Move “${t.title}” to which library?"),
+        state.libraries.filterNot { it.joined }, t.library, onPick = { detail.moveTo(t, it) }, onDismiss = { moving = false },
     )
     if (covering) tmdbCoverSource(t)?.let { src ->
         CoverSheet(t, src, onPick = { detail.setCover(t, it) }, onGallery = { detail.changeCover(t) }, onDismiss = { covering = false })
@@ -450,7 +460,12 @@ fun TextDialog(title: String, initial: String, placeholder: String, onDismiss: (
 
 /** Bearbeiten an einem Ort: Cover, Name, TMDB, Seite, Entfernen – statt eines Drei-Punkte-Menüs. */
 @Composable
-private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit, onCover: () -> Unit) {
+private fun EditSheet(
+    t: LibTitle, detail: DetailActions, onDismiss: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit, onCover: () -> Unit,
+    library: Library? = null, onMove: () -> Unit = {},
+    /** Titel aus der Bibliothek eines Freundes: nur ansehen – keine Änderungen, nur die Seite. */
+    sharedBy: String? = null,
+) {
     val sheet = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     fun then(block: () -> Unit) {
@@ -466,6 +481,19 @@ private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit,
             VSpace(6.dp)
             Text(t.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
             VSpace(18.dp)
+            if (sharedBy != null) {
+                Text(
+                    tr("Geteilt von $sharedBy – nur zum Ansehen. Ändern kann nur $sharedBy.", "Shared by $sharedBy – view only. Only $sharedBy can change it."),
+                    style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                )
+                t.pageUrl?.let { url ->
+                    VSpace(14.dp)
+                    de.marne.streamplayer.ui.design.ListGroup {
+                        de.marne.streamplayer.ui.design.ListRow(tr("Seite öffnen", "Open page"), icon = Ic.openNew, onClick = { then { detail.openPage(url) } })
+                    }
+                }
+                return@Column
+            }
             de.marne.streamplayer.ui.design.ListGroup {
                 de.marne.streamplayer.ui.design.ListRow(tr("Cover ändern", "Change cover"), icon = Ic.image, onClick = { then(onCover) })
                 if (t.customPoster != null) {
@@ -474,6 +502,11 @@ private fun EditSheet(t: LibTitle, detail: DetailActions, onDismiss: () -> Unit,
                 }
                 de.marne.streamplayer.ui.design.RowDivider()
                 de.marne.streamplayer.ui.design.ListRow(tr("Umbenennen", "Rename"), icon = Ic.editNote, onClick = { then(onRename) })
+                // Nur mit mehreren Bibliotheken: wohin der Titel gehört.
+                library?.takeIf { !it.joined }?.let { l ->
+                    de.marne.streamplayer.ui.design.RowDivider()
+                    de.marne.streamplayer.ui.design.ListRow(tr("Bibliothek", "Library"), icon = Ic.library, value = l.label, onClick = { then(onMove) })
+                }
                 detail.refreshTmdb?.let { r ->
                     de.marne.streamplayer.ui.design.RowDivider()
                     de.marne.streamplayer.ui.design.ListRow(tr("TMDB neu laden", "Reload from TMDB"), icon = Ic.refresh, showChevron = false, onClick = { then { r(t) } })

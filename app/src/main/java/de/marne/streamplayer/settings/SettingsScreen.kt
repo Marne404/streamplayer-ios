@@ -70,6 +70,7 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
     val parallel by settings.parallel.collectAsStateWithLifecycle()
     val autoDelete by settings.autoDelete.collectAsStateWithLifecycle()
     val autoNext by settings.autoNext.collectAsStateWithLifecycle()
+    val usageStats by settings.usageStats.collectAsStateWithLifecycle()
     val adblockOn by settings.adblock.collectAsStateWithLifecycle()
     val allowlist by settings.allowlist.collectAsStateWithLifecycle()
     val filter by app.adblock.status.collectAsStateWithLifecycle()
@@ -298,6 +299,29 @@ fun SettingsScreen(settings: Settings, onClearBrowsingData: () -> Unit, onToast:
                     titleColor = Palette.wine,
                     showChevron = false,
                     onClick = { confirmClear = true },
+                )
+            }
+        }
+
+        item { SectionTitle(tr("Datenschutz", "Privacy")) }
+        item {
+            ListGroup {
+                ListRow(
+                    title = tr("Nutzungsstatistik", "Usage statistics"),
+                    subtitle = tr("Nur Zahlen an Marne: wie oft, wie lange, was schiefging. Keine Titel, keine Seiten.", "Numbers only, sent to Marne: how often, how long, what failed. No titles, no pages."),
+                    icon = Ic.shield,
+                    showChevron = false,
+                    onClick = {
+                        val on = !usageStats
+                        settings.setUsageStats(on)
+                        if (!on) { de.marne.streamplayer.stats.Usage.forget(); onToast(tr("Aus – auch das schon Geschickte wird gelöscht.", "Off – what was already sent gets deleted too.")) }
+                    },
+                    trailing = {
+                        IvorySwitch(usageStats) { on ->
+                            settings.setUsageStats(on)
+                            if (!on) { de.marne.streamplayer.stats.Usage.forget(); onToast(tr("Aus – auch das schon Geschickte wird gelöscht.", "Off – what was already sent gets deleted too.")) }
+                        }
+                    },
                 )
             }
         }

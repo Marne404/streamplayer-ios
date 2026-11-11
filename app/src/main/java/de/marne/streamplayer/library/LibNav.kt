@@ -22,6 +22,7 @@ data class GridSpec(val kind: String, val arg: String? = null)
 
 /** Alles, was die Bibliotheks-Seiten anzeigen – einmal in AppRoot gesammelt. */
 class LibState(
+    /** Titel der gezeigten Bibliothek (bei „Alle“: alle). Listen und Sammlungen filtern hierüber. */
     val titles: List<LibTitle>,
     val progress: Map<String, Progress>,
     val profile: Profile,
@@ -29,7 +30,15 @@ class LibState(
     val downloads: List<DownloadItem>,
     /** Downloads, deren Video noch gesucht wird: Schlüssel → sucht gerade (true) oder wartet (false). */
     val pending: Map<String, Boolean> = emptyMap(),
+    /** Wirklich alle Titel – für Detailseite, Downloads, alles, was über Bibliotheken hinweg gilt. */
+    val all: List<LibTitle> = titles,
+    val libraries: List<Library> = listOf(Library(Library.MAIN, "")),
+    /** Gezeigte Bibliothek oder [Library.ALL]. */
+    val activeLibrary: String = Library.ALL,
 ) {
+    val library: Library? get() = libraries.firstOrNull { it.id == activeLibrary }
+    fun anyById(id: String) = all.firstOrNull { it.id == id }
+
     /** Ein Zustand für Film oder Folge, überall gleich (siehe OfflineState). */
     fun offline(t: LibTitle, key: String) = de.marne.streamplayer.download.Offline.state(key, t.offline[key], downloads, pending)
 
@@ -74,5 +83,7 @@ class LibActions(
     val import: () -> Unit,
     val browser: () -> Unit,
     val downloads: () -> Unit,
+    /** Bibliotheken: wechseln, anlegen, bearbeiten (Blatt). */
+    val libraries: () -> Unit,
     val back: () -> Unit,
 )

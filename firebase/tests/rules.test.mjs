@@ -25,7 +25,7 @@ const sync = (json = '{"id":"t1"}', deleted = false) => ({ json, updatedAt: serv
 
 test('eigene Titel, Profile, Fortschritt: schreiben, lesen, abfragen, löschen', async () => {
   const db = me();
-  for (const path of ['users/alice/titles/t1', 'users/alice/profiles/main', 'users/alice/profiles/main/progress/t1']) {
+  for (const path of ['users/alice/titles/t1', 'users/alice/libraries/anime', 'users/alice/profiles/main', 'users/alice/profiles/main/progress/t1']) {
     await assertSucceeds(setDoc(doc(db, path), sync()));
     await assertSucceeds(getDoc(doc(db, path)));
     await assertSucceeds(setDoc(doc(db, path), sync('', true)));   // weich löschen
@@ -82,4 +82,53 @@ test('alles andere ist zu: Konto-Dokument, fremde Sammlungen, Wurzel', async () 
   await assertFails(setDoc(doc(db, 'users/alice/admin/x'), sync()));
   await assertFails(setDoc(doc(db, 'settings/global'), { open: true }));
   await assertFails(getDocs(collection(db, 'users')));
+});
+
+// ---------- Geteilte Bibliotheken ----------
+// Anlass (1.12.0): Bibliotheken mit Freunden teilen, nur zum Ansehen. Alice teilt, Bob tritt mit
+// dem Code bei, Mallory hat keinen Code.
+const bob = () => env.authenticatedContext('bob').firestore();
+const share = (owner = 'alice') => ({ owner, ownerName: 'Alice', name: 'Anime', color: 1, updatedAt: serverTimestamp() });
+const CODE = 'abcdefghijkmnopqrstuvw';
+
+async function aliceShares() {
+  const a = me();
+  await assertSucceeds(setDoc(doc(a, 'shared/lib1'), share()));
+  await assertSucceeds(setDoc(doc(a, `invites/${CODE}`), { shareId: 'lib1', owner: 'alice', createdAt: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(a, 'shared/lib1/titles/t1'), sync()));
+}
+
+test('teilen: Besitzer legt an, lädt ein, spiegelt Titel', async () => {
+  await aliceShares();
+  // Fremder Besitzer eingetragen, zu kurzer Code, Einladung für fremde Bibliothek: nein.
+  await assertFails(setDoc(doc(other(), 'shared/lib2'), share('alice')));
+  await assertFails(setDoc(doc(me(), 'invites/kurz'), { shareId: 'lib1', owner: 'alice', createdAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(other(), 'invites/zzzzzzzzzzzzzzzzzzzzzz'), { shareId: 'lib1', owner: 'mallory', createdAt: serverTimestamp() }));
+  // Übernehmen einer fremden geteilten Bibliothek: nein.
+  await assertFails(setDoc(doc(other(), 'shared/lib1'), share('mallory')));
+});
+
+test('beitreten nur mit passendem Code, dann nur lesen', async () => {
+  await aliceShares();
+  const b = bob();
+  await assertFails(getDocs(collection(b, 'shared/lib1/titles')));
+  await assertSucceeds(getDoc(doc(b, `invites/${CODE}`)));
+  await assertFails(getDocs(collection(b, 'invites')));
+  // Falscher Code, fremder Name im Pfad: nein.
+  await assertFails(setDoc(doc(b, 'shared/lib1/members/bob'), { code: 'falschfalschfalschfals', name: 'Bob', joinedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(b, 'shared/lib1/members/carol'), { code: CODE, name: 'Bob', joinedAt: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(b, 'shared/lib1/members/bob'), { code: CODE, name: 'Bob', joinedAt: serverTimestamp() }));
+  await assertSucceeds(getDoc(doc(b, 'shared/lib1')));
+  await assertSucceeds(getDocs(query(collection(b, 'shared/lib1/titles'), where('updatedAt', '>', Timestamp.fromMillis(0)))));
+  // Nur ansehen: nichts schreiben, Mitglieder nicht auflisten.
+  await assertFails(setDoc(doc(b, 'shared/lib1/titles/t2'), sync()));
+  await assertFails(setDoc(doc(b, 'shared/lib1'), share('bob')));
+  await assertFails(getDocs(collection(b, 'shared/lib1/members')));
+  // Mallory ohne Code: nichts.
+  await assertFails(getDoc(doc(other(), 'shared/lib1')));
+  await assertFails(getDocs(collection(other(), 'shared/lib1/titles')));
+  // Besitzer sieht Mitglieder und kann eins entfernen; Bob kann gehen.
+  await assertSucceeds(getDocs(collection(me(), 'shared/lib1/members')));
+  await assertSucceeds(deleteDoc(doc(b, 'shared/lib1/members/bob')));
+  await assertFails(getDocs(collection(b, 'shared/lib1/titles')));
 });

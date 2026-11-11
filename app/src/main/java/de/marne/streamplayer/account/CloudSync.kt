@@ -59,6 +59,12 @@ import java.util.Date
  *   users/{uid}/profiles/{profileId}                   { json, updatedAt, deleted }
  *   users/{uid}/profiles/{profileId}/progress/{titleId} { json, updatedAt, deleted }
  *   users/{uid}/covers/{name}                          { data, updatedAt }
+ *   users/{uid}/libraries/{libraryId}                  { json, updatedAt, deleted }
+ *
+ * Geteilte Bibliotheken (Sharing.kt):
+ *   shared/{libraryId}/titles/{titleId}                { json, updatedAt, deleted }  – schreibt nur der Besitzer
+ * Der Besitzer spiegelt die Titel dieser Bibliothek dorthin; Mitglieder lesen nur (readOnly-Kanal)
+ * und haben die Titel lokal in einer Bibliothek mit joined = true – die geht nicht ins eigene Konto.
  * Gelöscht wird weich (deleted = true), damit andere Geräte es über dieselbe Abfrage erfahren.
  */
 @OptIn(FlowPreview::class)
@@ -75,6 +81,11 @@ class CloudSync(
         data class Done(val at: Long) : Status
         data class Error(val message: String) : Status
     }
+
+    /** Name einer Freundes-Bibliothek, die gerade weggefallen ist (für einen Hinweis). */
+    private val _revoked = MutableStateFlow<String?>(null)
+    val revoked: StateFlow<String?> = _revoked.asStateFlow()
+    fun revokedShown() { _revoked.value = null }
 
     private val _status = MutableStateFlow<Status>(Status.Off)
     val status: StateFlow<Status> = _status.asStateFlow()
@@ -139,22 +150,77 @@ class CloudSync(
 
         init {
             channels["titles"] = Channel("titles", root.collection("titles"),
-                local = { library.titles.value.associate { it.id to SyncCodec.titleJson(it) } },
+                // Titel aus Bibliotheken von Freunden gehören nicht ins eigene Konto: die kommen von dort.
+                local = {
+                    val joined = library.libraries.value.filter { it.joined }.map { it.id }.toSet()
+                    library.titles.value.filter { it.library !in joined }.associate { it.id to SyncCodec.titleJson(it) }
+                },
                 apply = ::applyTitle,
                 beforePush = ::uploadCovers,
+            )
+            // Bibliotheken („Anime“, „Serien“): nur Name und Farbe – welche Titel drin sind, steht am Titel.
+            channels["libraries"] = Channel("libraries", root.collection("libraries"),
+                local = { library.libraries.value.associate { it.id to it.toJson().toString() } },
+                apply = ::applyLibrary,
             )
             channels["profiles"] = Channel("profiles", root.collection("profiles"),
                 local = { profiles.profiles.value.associate { it.id to it.toJson().toString() } },
                 apply = ::applyProfile,
             )
             syncProgressChannels()
+            syncShareChannels()
+        }
+
+        /**
+         * Je geteilter eigener Bibliothek ein Kanal, der ihre Titel nach shared/… spiegelt; je
+         * Bibliothek eines Freundes einer, der nur liest. Läuft bei jeder Änderung der Bibliotheken.
+         */
+        fun syncShareChannels() {
+            val libs = library.libraries.value
+            val wanted = libs.filter { it.shared || it.joined }.associateBy { "share:${it.id}" }
+            // Weg: Kanal schließen und seinen Stand vergessen – träte man wieder bei, käme sonst nur
+            // „was seitdem neu ist“ und die älteren Titel fehlten.
+            channels.keys.filter { it.startsWith("share:") && it !in wanted }.forEach { k ->
+                channels.remove(k)?.detach()
+                state.drop(k)
+            }
+            wanted.forEach { (key, l) ->
+                if (key in channels) return@forEach
+                val ref = db.collection("shared").document(l.id).collection("titles")
+                val ch = if (l.joined) Channel(key, ref,
+                    local = { emptyMap() },
+                    apply = { id, json ->
+                        if (json == null) library.removeShared(l.id, id)
+                        else library.putShared(l.id, LibTitle.fromJson(JSONObject(json)))
+                    },
+                    readOnly = true,
+                    // Kein Zugriff mehr: Der Freund hat das Teilen beendet oder einen entfernt.
+                    onError = { e ->
+                        if ((e as? FirebaseFirestoreException)?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                            library.removeJoined(l.id)
+                            _revoked.value = l.label
+                        } else fail(e)
+                    },
+                ) else Channel(key, ref,
+                    local = { library.titles.value.filter { it.library == l.id }.associate { it.id to SyncCodec.sharedTitleJson(it) } },
+                    apply = { _, _ -> },
+                )
+                channels[key] = ch
+                if (open) ch.listen()
+            }
         }
 
         fun open() {
             if (open || closed) return
             open = true
             channels.values.forEach { it.listen() }
-            jobs += scope.launch { library.titles.drop(1).debounce(2_000).collect { push("titles") } }
+            jobs += scope.launch {
+                library.titles.drop(1).debounce(2_000).collect {
+                    push("titles")
+                    channels.keys.filter { it.startsWith("share:") }.forEach { push(it) }
+                }
+            }
+            jobs += scope.launch { library.libraries.drop(1).debounce(1_000).collect { syncShareChannels(); push("libraries") } }
             jobs += scope.launch { profiles.profiles.drop(1).debounce(1_000).collect { syncProgressChannels(); push("profiles") } }
             jobs += scope.launch { progress.byProfile.drop(1).debounce(20_000).collect { pushProgress() } }
             jobs += scope.launch { retryMissingCovers() }
@@ -224,6 +290,11 @@ class CloudSync(
             val dup = t.sourceId?.let { sid -> library.titles.value.firstOrNull { it.id != t.id && it.sourceId == sid } }
             if (dup != null) progress.rekey(dup.id, t.id)
             library.putRemote(t, replacing = dup?.id)
+        }
+
+        private fun applyLibrary(id: String, json: String?) {
+            if (json == null) library.removeRemoteLibrary(id)
+            else library.putRemoteLibrary(de.marne.streamplayer.library.Library.fromJson(JSONObject(json)))
         }
 
         private fun applyProfile(id: String, json: String?) {
@@ -308,6 +379,9 @@ class CloudSync(
             val local: () -> Map<String, String>,
             val apply: suspend (id: String, json: String?) -> Unit,
             val beforePush: suspend (List<Pair<String, String?>>) -> Unit = {},
+            /** Nur lesen (Bibliothek eines Freundes): nie schreiben. */
+            val readOnly: Boolean = false,
+            val onError: ((Throwable) -> Unit)? = null,
         ) {
             private val st = state.channel(key)
             private var reg: ListenerRegistration? = null
@@ -322,7 +396,7 @@ class CloudSync(
                 // Nur Neues seit dem letzten Abgleich: das hält die Lesevorgänge klein.
                 val q = if (st.since > 0) ref.whereGreaterThan("updatedAt", Timestamp(Date(st.since))) else ref
                 reg = q.addSnapshotListener { snap, err ->
-                    if (err != null) { fail(err); return@addSnapshotListener }
+                    if (err != null) { (onError ?: ::fail)(err); return@addSnapshotListener }
                     if (snap != null) scope.launch { mutex.withLock { onSnapshot(snap) } }
                 }
             }
@@ -358,7 +432,7 @@ class CloudSync(
 
             /** Geänderte Einträge schreiben. Aufruf nur mit gehaltenem [mutex]. */
             suspend fun pushLocked() {
-                if (!ready) return
+                if (!ready || readOnly) return
                 val now = local()
                 val writes = mutableListOf<Pair<String, String?>>()
                 now.forEach { (id, json) -> if (st.hashes[id] != SyncCodec.hash(json)) writes += id to json }
@@ -413,6 +487,8 @@ class CloudSync(
         }
 
         fun channel(key: String) = channels.getOrPut(key) { Ch() }
+
+        fun drop(key: String) { channels.remove(key); save() }
 
         fun save() {
             val cs = JSONObject()
