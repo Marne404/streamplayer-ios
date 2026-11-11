@@ -66,6 +66,23 @@ class BrowserController(
     /** Rückkanäle in alle Frames der aktuellen Seite (auch iframes fremder Hosts). */
     private val frames = java.util.concurrent.CopyOnWriteArrayList<androidx.webkit.JavaScriptReplyProxy>()
 
+    /**
+     * Die Seite zeigt eine Prüfung („Bist du ein Mensch?“) – Cloudflare, Turnstile, hCaptcha,
+     * reCAPTCHA. Gemeldet von detect.js je Frame; vorbei, wenn alle melden „weg“ oder eine neue
+     * Hauptseite lädt.
+     */
+    private val challengeFrames = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val _challenge = MutableStateFlow(false)
+    val challenge: StateFlow<Boolean> = _challenge.asStateFlow()
+
+    private fun updateChallenge() {
+        val on = challengeFrames.isNotEmpty()
+        // Gelöst: Freigabe-Cookie sofort auf die Platte, sonst fragt die Seite nach einem
+        // Neustart der App wieder – Player und Downloads schicken dieselben Cookies mit.
+        if (_challenge.value && !on) CookieManager.getInstance().flush()
+        _challenge.value = on
+    }
+
     /** Videos auf der Seite stumm starten: Manche Player verraten ihre Adresse erst beim Abspielen. */
     fun nudgePlayback() = postToFrames("{\"t\":\"nudge\"}")
 
@@ -172,6 +189,11 @@ class BrowserController(
                     poster = o.optString("poster").ifBlank { null },
                 )
             }
+            "challenge" -> {
+                val id = o.optString("id")
+                if (o.optBoolean("on")) challengeFrames += id else challengeFrames -= id
+                updateChallenge()
+            }
             "meta" -> if (isMainFrame) hub.updateMeta(o.optString("title"), o.optString("image").ifBlank { null })
         }
         return null
@@ -273,6 +295,11 @@ class BrowserController(
                     }
                     currentPage = url
                     hub.reset(url)
+                    // Neue Hauptseite: alte Prüf-Frames gibt es nicht mehr (pagehide kommt nicht immer an).
+                    if (challengeFrames.isNotEmpty()) {
+                        challengeFrames.clear()
+                        updateChallenge()
+                    }
                 }
                 // Werbung zuerst: was blockiert ist, taucht auch nicht als „gefundenes Video“ auf.
                 if (!request.isForMainFrame && adblock.shouldBlock(url, currentPage)) {

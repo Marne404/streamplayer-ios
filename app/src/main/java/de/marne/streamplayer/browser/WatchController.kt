@@ -51,6 +51,8 @@ class WatchController(
         data class Ready(val candidate: Candidate, val title: String, val thumbnail: String?, val autoStart: Boolean) : State
         data class NotFound(val host: String) : State
         data class Protected(val title: String) : State
+        /** Die Seite will eine Bestätigung, die nur ein Mensch geben kann: Seite zeigen, Suche wartet. */
+        data class Challenge(val host: String) : State
     }
 
     private val _state = MutableStateFlow<State>(State.Idle)
@@ -74,15 +76,38 @@ class WatchController(
         _state.value = State.Searching(request.label ?: host, tr("Seite lädt …", "Loading page …"))
 
         job = scope.launch {
-            val t0 = SystemClock.elapsedRealtime()
+            var t0 = SystemClock.elapsedRealtime()
             var nudged = false
             var firstHit = 0L
+            var challengeSince = 0L
             while (isActive) {
                 delay(300)
                 val now = SystemClock.elapsedRealtime()
                 val elapsed = now - t0
                 val all = hub.candidates.value.filter { it.status == ProbeStatus.OK }
                 val usable = all.filter { !it.drm }
+
+                // Prüfung auf der Seite: Uhr anhalten. Viele erledigen sich in ein paar Sekunden
+                // selbst (Cloudflare prüft still); erst wenn nicht, um Hilfe bitten. Ein Fund geht
+                // trotzdem vor – dann war die Prüfung nur ein Rest auf der Seite.
+                if (browser.challenge.value && usable.isEmpty()) {
+                    if (challengeSince == 0L) challengeSince = now
+                    t0 = now
+                    _state.value = if (now - challengeSince >= CHALLENGE_GRACE_MS) {
+                        State.Challenge(request.label ?: host)
+                    } else {
+                        State.Searching(request.label ?: host, tr("Seite prüft den Browser …", "The site is checking the browser …"), 0)
+                    }
+                    continue
+                }
+                if (challengeSince != 0L) {
+                    // Bestanden: von vorn suchen, mit voller Zeit – die eigentliche Seite lädt erst jetzt.
+                    challengeSince = 0L
+                    t0 = now
+                    nudged = false
+                    browser.setAutoplay(true)
+                    _state.value = State.Searching(request.label ?: host, tr("Geschafft. Seite lädt …", "Done. Loading page …"))
+                }
 
                 if (usable.isNotEmpty()) {
                     if (firstHit == 0L) {
@@ -172,5 +197,6 @@ class WatchController(
         const val NUDGE_AFTER_MS = 4000L
         const val NUDGE_LATEST_MS = 10_000L
         const val TIMEOUT_MS = 30_000L
+        const val CHALLENGE_GRACE_MS = 3500L
     }
 }

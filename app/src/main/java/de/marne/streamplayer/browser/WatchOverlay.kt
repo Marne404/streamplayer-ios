@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -125,7 +126,8 @@ fun WatchOverlay(
                         VSpace(4.dp)
                         QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onCancel)
                     }
-                    WatchController.State.Idle -> Unit
+                    // Kommt nicht vor: bei einer Prüfung tritt die Abdeckung beiseite (ChallengeBar).
+                    is WatchController.State.Challenge, WatchController.State.Idle -> Unit
                 }
             }
         }
@@ -137,3 +139,45 @@ private fun Eyebrow(text: String) {
     Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted, textAlign = TextAlign.Center, maxLines = 1)
     VSpace(8.dp)
 }
+
+/**
+ * Leiste über der Seite, solange eine Prüfung wartet: Die Abdeckung ist weg, damit man das Kästchen
+ * antippen kann. Kommt von unten und federt an; geht kürzer, als sie kam. Danach sucht die App
+ * von selbst weiter.
+ */
+@Composable
+fun ChallengeBar(visible: Boolean, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val bouncy = androidx.compose.animation.core.CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+    val spring = androidx.compose.animation.core.CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(420, easing = bouncy)) { it } +
+            fadeIn(androidx.compose.animation.core.tween(220)),
+        exit = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.tween(320, easing = spring)) { it } +
+            fadeOut(androidx.compose.animation.core.tween(200)),
+    ) {
+        val shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp)
+        androidx.compose.foundation.layout.Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .shadow(16.dp, shape, ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.18f), spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.18f))
+                .background(Palette.ink, shape)
+                .padding(start = 18.dp, end = 6.dp, top = 14.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            de.marne.streamplayer.ui.design.GIcon(Ic.shieldLock, tint = Palette.onInk, size = 22.dp)
+            Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+                Text(tr("Kurz bestätigen", "Quick check"), style = MaterialTheme.typography.titleSmall, color = Palette.onInk)
+                Text(
+                    tr("Die Seite will wissen, ob ein Mensch da ist. Bestätige es oben – danach geht es von selbst weiter.",
+                        "The site wants to know you’re human. Confirm it above – then it carries on by itself."),
+                    style = MaterialTheme.typography.bodySmall, color = Palette.onInk.copy(alpha = 0.72f),
+                )
+            }
+            QuietButton(tr("Abbrechen", "Cancel"), color = Palette.onInk, onClick = onCancel)
+        }
+    }
+}
+

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -170,7 +171,8 @@ fun BrowserScreen(
                 )
             }
 
-            if (watching && !showStart) {
+            val challenged = watchState is WatchController.State.Challenge
+            if (watching && !showStart && !challenged) {
                 WatchOverlay(
                     state = watchState,
                     onPlay = { (watchState as? WatchController.State.Ready)?.let { onPreview(it.candidate, it.title) } },
@@ -188,6 +190,12 @@ fun BrowserScreen(
                     },
                 )
             }
+
+            ChallengeBar(
+                visible = challenged && !showStart,
+                onCancel = watch::cancel,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+            )
 
             FoundOverlay(
                 visible = !showStart && !watching && found.isNotEmpty(),

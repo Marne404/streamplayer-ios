@@ -384,6 +384,7 @@ private fun ColumnScope.Searching(state: WatchController.State, download: Boolea
     val (phase, step) = when (state) {
         is WatchController.State.Searching -> state.phase to state.step
         is WatchController.State.Ready -> 4 to if (download) tr("Download startet …", "Starting download …") else tr("Gleich geht's los.", "Starting soon.")
+        is WatchController.State.Challenge -> 1 to tr("Wartet auf deine Bestätigung …", "Waiting for your confirmation …")
         else -> 0 to ""
     }
     val haptic = LocalHapticFeedback.current

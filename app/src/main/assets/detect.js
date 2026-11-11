@@ -359,5 +359,47 @@
     var vids = document.querySelectorAll('video, audio');
     for (var i = 0; i < vids.length; i++) { try { vids[i].pause(); } catch (e) { } }
   }
+  // ---------- Prüfungen: „Bist du ein Mensch?“ ----------
+  // Manche Seiten (oder ihr Video-Host im iframe) zeigen erst eine Prüfung: die Zwischenseite von
+  // Cloudflare oder ein Kästchen von Turnstile, hCaptcha, reCAPTCHA. Lösen kann sie nur ein Mensch –
+  // die App merkt nur, dass eine da ist, und zeigt dann die Seite. Ein Widget wohnt in seinem
+  // eigenen Frame und meldet sich hier selbst, auch wenn es im geschlossenen Shadow-DOM steckt.
+  // Nur sichtbare zählen: unsichtbare Varianten (reCAPTCHA v3, Turnstile „invisible“) laufen auf
+  // vielen normalen Seiten mit und brauchen niemanden.
+
+  var chId = Math.random().toString(36).slice(2);
+  var chOn = false;
+
+  function challengeHere() {
+    var h = location.hostname, u = location.href;
+    if (/size=invisible/.test(u)) return false;
+    var widget = h === 'challenges.cloudflare.com' ||
+      (/(^|\.)hcaptcha\.com$/.test(h) && /frame=(checkbox|challenge)/.test(location.hash)) ||
+      (/(^|\.)(google\.com|recaptcha\.net)$/.test(h) && /\/recaptcha\/(api2|enterprise)\/(anchor|bframe)/.test(location.pathname));
+    if (widget) return !isTop && window.innerWidth >= 100 && window.innerHeight >= 40;
+    // Cloudflare-Zwischenseite („Einen Moment …“): ihr Skript legt _cf_chl_opt an.
+    return isTop && (!!window._cf_chl_opt || !!document.getElementById('challenge-form'));
+  }
+
+  function checkChallenge() {
+    var on = false;
+    try { on = challengeHere(); } catch (e) { }
+    if (on !== chOn) {
+      chOn = on;
+      post({ t: 'challenge', id: chId, on: on });
+    }
+  }
+
+  var chTicks = 0;
+  var chTimer = setInterval(function () {
+    checkChallenge();
+    // Fünf Minuten reichen; länger löst niemand ein Kästchen.
+    if (++chTicks >= 300) clearInterval(chTimer);
+  }, 1000);
+  // Frame geht weg (gelöst, neu geladen): Prüfung vorbei.
+  window.addEventListener('pagehide', function () {
+    if (chOn) { chOn = false; post({ t: 'challenge', id: chId, on: false }); }
+  });
+
   post({ t: 'hello', url: location.href });
 })();

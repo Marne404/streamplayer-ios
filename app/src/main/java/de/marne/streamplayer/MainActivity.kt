@@ -185,6 +185,8 @@ class AppNav {
      * Ladebildschirm – nur eine kleine Leiste unten. Was währenddessen dazukommt, wartet in [queue].
      */
     var quiet by mutableStateOf<QuietJob?>(null)
+    /** Die Seite wartet auf eine Prüfung („Bist du ein Mensch?“): Ladebildschirm und Bibliothek treten beiseite. */
+    var challenge by mutableStateOf(false)
     val queue = androidx.compose.runtime.mutableStateListOf<QuietJob>()
     /** „Wer schaut?“: offen, und ob gleich im Verwalten-Modus (aus den Einstellungen). */
     var profilePicker by mutableStateOf(false)
@@ -473,7 +475,17 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
 
     // Stream gefunden: abspielen oder laden – und bei Aufträgen aus der Bibliothek dorthin zurück.
     LaunchedEffect(watchState) {
+        if (watchState !is WatchController.State.Challenge) nav.challenge = false
         when (val s = watchState) {
+            // Prüfung: Die Seite muss sichtbar werden, sonst kommt niemand an das Kästchen. Beim
+            // Download im Hintergrund nicht einfach dazwischenfahren – erst fragen.
+            is WatchController.State.Challenge -> {
+                val job = nav.quiet
+                if (job == null) nav.challenge = true
+                else toast(tr("${job.label}: Seite will eine Bestätigung.", "${job.label}: the site wants a confirmation."), tr("Zeigen", "Show")) {
+                    if (watch.state.value is WatchController.State.Challenge) nav.challenge = true
+                }
+            }
             is WatchController.State.Ready -> if (s.autoStart) {
                 val r = watch.request
                 if (r.download) {
@@ -656,7 +668,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
     // Zurück: Browser schließen › Detailseite schließen › zur Bibliothek. BrowserScreen hat eigene,
     // spätere Handler (Seitenverlauf, Suche abbrechen) – die gewinnen, solange sie aktiv sind.
     // Sucht der Browser nur verdeckt nach einem Download, gehört Zurück weiter der Bibliothek.
-    val browserShown = nav.browserOpen && nav.quiet == null
+    val browserShown = nav.browserOpen && (nav.quiet == null || nav.challenge)
     BackHandler(enabled = !browserShown && nav.stack.isEmpty() && nav.tab != MainActivity.TAB_HOME) { nav.selectTab(MainActivity.TAB_HOME) }
     BackHandler(enabled = !browserShown && nav.stack.isNotEmpty()) { nav.pop() }
     BackHandler(enabled = browserShown) { if (watch.active) watch.cancel() else nav.browserOpen = false }
@@ -676,10 +688,10 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
                 onPreview = preview,
                 onClose = { nav.browserOpen = false },
                 onWatchShowPage = { nav.resolving = false },
-                interactive = nav.quiet == null,
+                interactive = nav.quiet == null || nav.challenge,
             )
         }
-        if (!nav.browserOpen || nav.resolving) {
+        if (!nav.browserOpen || nav.resolving && !nav.challenge) {
             Column(Modifier.fillMaxSize().background(Palette.bg)) {
                 Box(Modifier.weight(1f)) {
                     LibraryHost(nav, libState, libActions, detailActions, downloadActions) {
@@ -766,7 +778,7 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
         if (nav.categories) CategorySheet(libState, nav.categoriesKind, libActions, onDismiss = { nav.categories = false })
 
         ResolveScreen(
-            visible = nav.resolving && nav.quiet == null,
+            visible = nav.resolving && nav.quiet == null && !nav.challenge,
             instant = nav.closeInstant,
             info = nav.resolveInfo,
             state = watchState,
