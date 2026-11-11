@@ -16,6 +16,7 @@ als Werkzeug hinter den Kulissen. Die Oberfläche folgt dem Design-System **Ivor
 | `:app` | `de.marne.streamplayer` | Player: Mediathek, Abspielen, Downloads, Browser |
 | `:creator` | `de.marne.streamplayer.creator` | Kataloge bauen: aus Link übernehmen, Serien-Muster, Staffeln, TMDB, Cover |
 | `:core` | (Bibliothek) | Ivory & Ink, Katalogformat, Muster, TMDB-Client, Link-Analyse |
+| `:admin` | `de.marne.streamplayer.admin` | nur für den Betreiber: Nutzungsstatistik aller Installationen (siehe unten) |
 
 Filme und Serien kommen nur noch über **Katalog-Dateien** in den Player. Gebaut werden sie im
 Creator und mit „An Streamplayer senden“ direkt übergeben. Alternativ öffnet bzw. teilt man eine
@@ -463,6 +464,46 @@ Android-Emulator dagegen läuft (Demo-Projekt, keine echten Daten).
 **Nie ins Repo oder in die App:** Dienstkonto-Schlüssel (`*-firebase-adminsdk-*.json`). Die App
 braucht keinen; wer ihn hat, umgeht alle Regeln.
 
+## Nutzungsstatistik (Worker `stats/`, Admin-App `:admin`)
+
+Der Player meldet Tagessummen an den Cloudflare-Worker `streamplayer-stats`
+(D1-Datenbank `streamplayer-stats`). Die Admin-App zeigt sie. **Nur Zahlen:** keine Titel, keine
+Seitenadressen, keine Suchbegriffe. Bei erfolgloser Video-Suche nur der Hostname der Seite. Je
+Installation eine zufällige UUID, den Kontonamen nur, wenn jemand angemeldet ist. Schaltet man die
+Statistik in der App ab, schickt sie einmal `/v1/forget` und danach nichts mehr. Der Worker löscht
+dann alles zu dieser Installation.
+
+| Weg | wofür |
+| --- | --- |
+| `POST /v1/report` | Bericht: Version, SDK, Sprache, Konto oder `null`, Bestand (`counts`), Tagessummen der letzten bis zu 14 Tage (`days`), Fehl-Domains und Absturz-Signaturen je Tag. Höchstens 64 KB (sonst 413). |
+| `POST /v1/forget` | `{install}`: alles zu dieser Installation löschen |
+| `POST /admin` | `authorization: Admin <Schlüssel>`, `{op, today?}`: `ping`, `overview`, `users`, `user` (`install`), `problems` |
+
+- **Überschreiben statt addieren:** Je (Installation, Tag) gilt der letzte Bericht. Ein doppelt
+  geschickter Bericht ändert nichts. Fehl-Domains und Abstürze eines gemeldeten Tages, die nicht
+  mehr im Bericht stehen, fallen weg. Ein Absturz behält die Version, mit der er zuerst kam.
+- **Misstrauisch:** Der Weg ist offen. `stats/src/report.js` prüft die UUID, nimmt nur Tage von
+  heute −29 bis morgen (Zeitzone), deckelt jede Zahl, kürzt Texte und macht aus allem, was als
+  Domain kommt, den bloßen Hostnamen. Unbekannte Felder werden nie gelesen.
+- **Aufräumen:** Täglich um 03:17 UTC löscht der Worker Tage, die älter als 90 Tage sind, und
+  Installationen, die sich 180 Tage nicht gemeldet haben.
+- **„Aktiv“** heißt: an dem Tag mindestens eine Sitzung. „Heute“ ist der Tag der Admin-App (`today`),
+  denn die Tage sind Ortszeit der Player-App.
+
+```sh
+node --test stats/test/                 # Prüfung der Berichte, ohne Netz
+node stats/test/e2e.mjs                 # gegen den echten Worker (Test-Installation, räumt auf)
+cd stats && npx wrangler deploy         # deployen
+npx wrangler d1 execute streamplayer-stats --remote --file=schema.sql   # Schema (in stats/)
+```
+
+**Admin-App:** Überblick (Aktive heute, 7 und 30 Tage, Sehzeit, Verlauf, Versionen, Konten),
+Nutzer (Liste, Detail mit Tagesreihe, Fehl-Domains, Abstürzen) und Probleme (Fehl-Domains,
+Abstürze, Download-Fehlerquote). Der Schlüssel steht in `local.properties` als
+`stats.adminToken=…` (gitignored) und wird beim Bauen eingebaut. Diese APK darum nie weitergeben;
+`tools/publish.sh` veröffentlicht sie bewusst nicht. Ohne Schlüssel fragt die App beim Start danach.
+Der Worker hat ihn als Secret `ADMIN_TOKEN` (`npx wrangler secret put ADMIN_TOKEN` in `stats/`).
+
 ## Was sie bewusst nicht kann
 
 - **DRM** (Widevine & Co.): wird erkannt und als „Geschützt“ markiert, nicht geladen.
@@ -501,6 +542,7 @@ Voraussetzungen: JDK 17+, Android SDK mit Plattform 37.1, Gradle-Wrapper liegt b
 ```sh
 ./gradlew :app:assembleDebug        # Player-APK unter app/build/outputs/apk/debug/
 ./gradlew :creator:assembleDebug    # Creator-APK unter creator/build/outputs/apk/debug/
+./gradlew :admin:assembleRelease    # Admin-App (mit eingebautem Schlüssel, nur für dich)
 ./gradlew testDebugUnitTest         # alle Unit-Tests (Kern, Player)
 ```
 

@@ -1,0 +1,7 @@
+<!-- Drei Säulen: die Statistik. Innerhalb der sicheren Zone (66 dp in der Mitte). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="@color/launcher_fg"
+        android:pathData="M35,75h8v-16a2,2 0,0 0,-2 -2h-4a2,2 0,0 0,-2 2z M50,75h8v-32a2,2 0,0 0,-2 -2h-4a2,2 0,0 0,-2 2z M65,75h8v-22a2,2 0,0 0,-2 -2h-4a2,2 0,0 0,-2 2z" />
+</vector>

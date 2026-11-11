@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="window_bg">#F4F1EA</color>
+    <!-- Tannengrün statt Messing (Creator): auf dem Startbildschirm nicht zu verwechseln. -->
+    <color name="launcher_bg">#34503F</color>
+    <color name="launcher_fg">#F4F1EA</color>
+</resources>
