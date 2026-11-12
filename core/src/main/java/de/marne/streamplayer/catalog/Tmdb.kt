@@ -54,7 +54,8 @@ class Tmdb(
 
     data class EpisodeInfo(val season: Int, val episode: Int, val name: String?, val overview: String?, val still: String?, val runtimeMin: Int?)
 
-    class TmdbException(message: String) : IOException(message)
+    /** [code]: HTTP-Status (0: kein Schlüssel). Netzfehler sind gewöhnliche IOExceptions. */
+    class TmdbException(message: String, val code: Int = 0) : IOException(message)
 
     val configured: Boolean get() = !key().isNullOrBlank()
 
@@ -110,9 +111,9 @@ class Tmdb(
         http.newCall(req).execute().use { r ->
             val body = r.body?.string().orEmpty()
             when {
-                r.code == 401 -> throw TmdbException(tr("TMDB lehnt den Schlüssel ab.", "TMDB rejected the key."))
-                r.code == 404 -> throw TmdbException(tr("Bei TMDB nicht gefunden.", "Not found on TMDB."))
-                !r.isSuccessful -> throw TmdbException(tr("TMDB antwortet mit ${r.code}.", "TMDB responded with ${r.code}."))
+                r.code == 401 -> throw TmdbException(tr("TMDB lehnt den Schlüssel ab.", "TMDB rejected the key."), 401)
+                r.code == 404 -> throw TmdbException(tr("Bei TMDB nicht gefunden.", "Not found on TMDB."), 404)
+                !r.isSuccessful -> throw TmdbException(tr("TMDB antwortet mit ${r.code}.", "TMDB responded with ${r.code}."), r.code)
             }
             JSONObject(body)
         }

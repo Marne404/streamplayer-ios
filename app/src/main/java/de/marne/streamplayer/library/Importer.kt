@@ -29,13 +29,16 @@ class Importer(private val context: Context, private val store: LibraryStore, pr
 
     /** [libraryId]: Bibliothek für neue Titel (null: die gerade gezeigte). */
     suspend fun import(uri: Uri, libraryId: String? = null): Result = withContext(Dispatchers.IO) {
-        val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+        // Titel für Titel lesen: Ein Katalog mit Tausenden Serien passt nicht als ein Text in den Speicher.
+        val parsed = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { CatalogJson.read(it) }
             ?: throw IllegalStateException(tr("Datei lässt sich nicht lesen.", "Can’t read the file."))
-        importText(text, libraryId)
+        importCatalog(parsed, libraryId)
     }
 
-    suspend fun importText(text: String, libraryId: String? = null): Result = withContext(Dispatchers.IO) {
-        val (catalog, problems) = CatalogJson.parseReport(text)
+    suspend fun importText(text: String, libraryId: String? = null): Result = importCatalog(CatalogJson.parseReport(text), libraryId)
+
+    private suspend fun importCatalog(parsed: Pair<de.marne.streamplayer.catalog.Catalog, List<String>>, libraryId: String?): Result = withContext(Dispatchers.IO) {
+        val (catalog, problems) = parsed
         if (catalog.titles.isEmpty() && problems.isNotEmpty()) throw IllegalArgumentException(problems.first())
         var added = 0
         var updated = 0

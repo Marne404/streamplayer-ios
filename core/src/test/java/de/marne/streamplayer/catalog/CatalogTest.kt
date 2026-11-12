@@ -62,6 +62,35 @@ class CatalogTest {
         assertEquals(c, again)
     }
 
+    /**
+     * Anlass: Der Creator stürzte nach einem Import von 11 000 Serien ab – der Katalog wurde als ein
+     * einziger Text samt JSON-Baum gelesen und geschrieben. Jetzt Titel für Titel; die alte,
+     * eingerückte Datei muss dabei weiter lesbar sein (die Daten des Nutzers liegen so vor).
+     */
+    @Test fun streamsLargeCatalogsAndReadsOldLayout() {
+        val tricky = CatalogTitle(
+            "t", CatalogType.SERIES, "A [b] {c} \"d\" \\ e, f: ü", 2001, TmdbRef(5),
+            description = "Zeile 1\nZeile 2 ] } ,", template = "https://x.to/t/{s}/{e}", seasons = listOf(SeasonSpec(1, 3)),
+        )
+        val big = Catalog(List(20_000) { i -> tricky.copy(id = "t$i", title = "Serie $i") } + tricky, "Groß")
+        val text = java.io.StringWriter().also { CatalogJson.write(big, it) }.toString()
+        // Ein Titel je Zeile: Kopf, 20 001 Titel, Schluss.
+        assertEquals(20_003, text.trimEnd().lines().size)
+        val (back, problems) = CatalogJson.read(java.io.StringReader(text))
+        assertEquals(big, back)
+        assertTrue(problems.isEmpty())
+
+        // Alte Dateien: eingerückt (toString(2)), mehrzeilige Titel, Schlüssel in anderer Reihenfolge.
+        val old = JSONObject().put("titles", org.json.JSONArray().put(JSONObject(CatalogJson.write(Catalog(listOf(tricky))).lines()[1])))
+            .put("name", "Alt").put("version", 1).put("format", "streamplayer-catalog").toString(2)
+        val read = CatalogJson.parse(old, strict = false)
+        assertEquals(Catalog(listOf(tricky), "Alt"), read)
+
+        // Leere Liste, bloße Liste, BOM.
+        assertEquals(0, CatalogJson.parse("""{"titles":[]}""").titles.size)
+        assertEquals(1, CatalogJson.parse("﻿ [ {\"title\":\"A\",\"url\":\"https://x.to/a\"} ] ").titles.size)
+    }
+
     @Test fun helpfulErrors() {
         fun err(json: String): String = try { CatalogJson.parse(json); fail("kein Fehler"); "" } catch (e: CatalogException) { e.message!! }
         assertTrue(err("{kaputt").startsWith("Keine gültige JSON-Datei"))

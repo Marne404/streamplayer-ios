@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
@@ -196,7 +198,7 @@ class BulkImport(private val app: CreatorApp, private val session: ImportSession
     fun clear() {
         stop()
         _state.value = null
-        file.delete()
+        persist()
     }
 
     /** Fehlgeschlagene Links als Text – zum Teilen oder später erneut Einfügen. */
@@ -238,23 +240,44 @@ class BulkImport(private val app: CreatorApp, private val session: ImportSession
     }
 
     private var lastSave = 0L
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val saveLock = Mutex()
 
     private fun set(s: State) {
         _state.value = s
-        // Höchstens alle zwei Sekunden auf die Platte – bei laufender Liste ändert sich ständig der Schritt.
+        // Laufend höchstens alle 15 Sekunden auf die Platte – der Schritt ändert sich ständig, und
+        // jedes Mal wird auch der Katalog gesichert (s. persist).
         val now = System.currentTimeMillis()
-        if (!s.running || now - lastSave > 2_000) {
+        if (!s.running || now - lastSave > 15_000) {
             lastSave = now
-            save(s)
+            persist()
+        }
+    }
+
+    /**
+     * Erst den Stand der Liste nehmen, dann den Katalog sichern, dann die Liste: So meldet die Datei
+     * nie einen Link als „übernommen“, dessen Titel noch nicht im gespeicherten Katalog steht.
+     * Stirbt der Prozess, werden höchstens die letzten Links noch einmal gelesen (dann „aktualisiert“).
+     */
+    private fun persist() = io.launch {
+        saveLock.withLock {
+            val s = _state.value
+            app.store.flush()
+            if (s == null) file.delete() else save(s)
         }
     }
 
     private fun save(s: State) = runCatching {
-        val o = JSONObject().put("links", JSONArray().apply {
-            s.links.forEach { put(JSONObject().put("u", it.url).put("n", it.name).put("s", it.status).put("e", it.error)) }
-        })
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(o.toString())
+        tmp.bufferedWriter().use { w ->
+            w.write("{\"links\":[")
+            s.links.forEachIndexed { i, it ->
+                if (i > 0) w.write(",")
+                w.write("\n")
+                w.write(JSONObject().put("u", it.url).put("n", it.name).put("s", it.status).put("e", it.error).toString())
+            }
+            w.write("\n]}\n")
+        }
         tmp.renameTo(file)
     }
 

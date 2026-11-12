@@ -35,8 +35,8 @@ android {
         applicationId = "de.marne.streamplayer.creator"
         minSdk = 29
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.8.0"
+        versionCode = 11
+        versionName = "1.9.0"
     }
 
     buildTypes {
@@ -79,4 +79,6 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
+    testImplementation(libs.junit)
+    testImplementation(libs.orgjson)
 }

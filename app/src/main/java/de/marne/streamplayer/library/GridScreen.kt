@@ -77,7 +77,7 @@ fun gridTitles(spec: GridSpec, state: LibState): List<LibTitle> {
         "watched" -> t.filter { Recommend.seen(it, p) == Recommend.Seen.DONE }
         "nogenre" -> t.filter { it.genres.isEmpty() }
         "collection" -> state.collections.firstOrNull { it.id == spec.arg }?.items?.mapNotNull(state::byId).orEmpty()
-        "notmdb" -> t.filter { it.tmdb == null }.sortedBy { it.title.lowercase() }
+        "notmdb" -> t.filter { it.tmdb == null && it.tmdbId == null }.sortedBy { it.title.lowercase() }
         "person" -> t.filter { spec.arg in it.tmdb?.cast.orEmpty() || spec.arg in it.tmdb?.creators.orEmpty() }.sortedByDescending { it.shownYear ?: 0 }
         else -> t.sortedBy { it.title.lowercase() }
     }

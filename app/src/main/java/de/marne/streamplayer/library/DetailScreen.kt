@@ -114,12 +114,16 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     val seen = Recommend.seen(t, progress)
     val list = rememberLazyListState()
     val solid by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
+    // Noch ohne TMDB-Daten oder ohne Folgen: jetzt holen, an der Warteschlange vorbei (bei großen
+    // Bibliotheken wartet sie sonst lange, und Folgen holt sie dort gar nicht).
+    androidx.compose.runtime.LaunchedEffect(t.id) { de.marne.streamplayer.App.instance.enricher.prioritize(t.id) }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "hero") { DetailHero(t, origin) }
-            // Ohne TMDB-Treffer (und nichts mehr unterwegs): darauf hinweisen, Zuordnen anbieten.
-            val unmatched = detail.matchTmdb != null && de.marne.streamplayer.App.instance.enricher.available && t.tmdb == null && !state.enrich.running &&
+            // Ohne TMDB-Treffer (und nichts mehr unterwegs): darauf hinweisen, Zuordnen anbieten. Steht die
+            // TMDB-ID schon fest (aus dem Katalog), ist der Titel gefunden – die Daten kommen gleich.
+            val unmatched = detail.matchTmdb != null && de.marne.streamplayer.App.instance.enricher.available && t.tmdb == null && t.tmdbId == null && !state.enrich.running &&
                 state.libraries.firstOrNull { it.id == t.library }?.readOnly != true
             item(key = "info") { Info(t, state, actions, next, seen, onMatch = if (unmatched) ({ matching = true }) else null) }
 

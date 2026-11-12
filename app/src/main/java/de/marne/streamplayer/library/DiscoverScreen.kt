@@ -178,7 +178,7 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
                         ListRow(tr("Am besten bewertet", "Top rated"), icon = Ic.bookmark, value = rated.toString(), onClick = { actions.grid(GridSpec("top")) })
                     }
                     // Ohne TMDB-Treffer: hier gesammelt, um sie auf der Detailseite zuzuordnen.
-                    val unmatched = t.count { it.tmdb == null }
+                    val unmatched = t.count { it.tmdb == null && it.tmdbId == null }
                     if (unmatched > 0 && de.marne.streamplayer.App.instance.enricher.available && !state.enrich.running) {
                         RowDivider()
                         ListRow(tr("Ohne TMDB-Treffer", "No TMDB match"), icon = Ic.search, value = unmatched.toString(), onClick = { actions.grid(GridSpec("notmdb")) })

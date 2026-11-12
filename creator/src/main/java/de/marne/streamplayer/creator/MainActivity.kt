@@ -12,6 +12,17 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import de.marne.streamplayer.ui.design.Bar
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,6 +98,12 @@ class MainActivity : ComponentActivity() {
             }
             IvoryInkTheme(dark) { CreatorRoot() }
         }
+    }
+
+    // Große Kataloge werden nur alle paar Sekunden gesichert – beim Verlassen der App sofort.
+    override fun onStop() {
+        super.onStop()
+        CreatorApp.instance.store.flushLater()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -172,37 +189,68 @@ private fun CreatorRoot() {
 @Composable
 private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onImport: () -> Unit, toast: (String) -> Unit) {
     val context = LocalContext.current
-    val store = CreatorApp.instance.store
-    val catalog by store.catalog.collectAsState()
-    val bulk by CreatorApp.instance.imports.bulk.state.collectAsState()
-    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    // Filter: alles, ohne TMDB (von Hand zuordnen), oder verknüpft, aber Cover/Text noch von der Seite.
-    var filter by rememberSaveable { mutableStateOf("all") }
-    val unlinked = catalog.titles.count(::needsTmdb)
-    val siteInfo = catalog.titles.count(::hasSiteInfo)
-    // Nichts mehr übrig im gewählten Filter (alles zugeordnet): wieder alles zeigen.
-    val active = if (filter == "notmdb" && unlinked == 0 || filter == "site" && siteInfo == 0) "all" else filter
-    val shown = when (active) {
-        "notmdb" -> catalog.titles.filter(::needsTmdb)
-        "site" -> catalog.titles.filter(::hasSiteInfo)
-        else -> catalog.titles
+    val app = CreatorApp.instance
+    val store = app.store
+    val ready by store.ready.collectAsState()
+    if (!ready) {
+        // Großer Katalog: wird im Hintergrund gelesen. Bis dahin nichts bearbeiten – sonst überschriebe ein halber Stand den ganzen.
+        Box(Modifier.fillMaxSize().background(Palette.bg), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.material3.CircularProgressIndicator(color = Palette.ink, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+                VSpace(16.dp)
+                Text("Opening your catalog …", style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+            }
+        }
+        return
     }
-    val series = shown.filter { it.type == CatalogType.SERIES }.sortedBy { it.title.lowercase() }
-    val movies = shown.filter { it.type == CatalogType.MOVIE }.sortedBy { it.title.lowercase() }
+    val catalog by store.catalog.collectAsState()
+    val bulk by app.imports.bulk.state.collectAsState()
+    val spares by store.spares.collectAsState()
+    val filling by app.fill.state.collectAsState()
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val scope = rememberCoroutineScope()
-    var filling by remember { mutableStateOf<String?>(null) }
     val playerThere = remember { Share.playerInstalled(context) }
 
+    var kind by rememberSaveable { mutableStateOf(CatalogType.SERIES) }
+    var filter by rememberSaveable { mutableStateOf(CatalogView.Filter.ALL) }
+    var sort by rememberSaveable { mutableStateOf(CatalogView.Sort.AZ) }
+    var query by rememberSaveable { mutableStateOf("") }
+    // Filtern, Sortieren und Zählen über Tausende Titel: im Hintergrund, die Liste bleibt dabei stehen.
+    val view by androidx.compose.runtime.produceState(CatalogView.EMPTY, catalog, kind, filter, sort, query) {
+        if (query.isNotEmpty()) kotlinx.coroutines.delay(120)
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { CatalogView.of(catalog, kind, filter, sort, query) }
+    }
+    // Die gewählte Art ist leer, die andere nicht (nur Filme im Katalog): dorthin wechseln.
+    LaunchedEffect(view.series, view.movies) {
+        if (kind == CatalogType.SERIES && view.series == 0 && view.movies > 0) kind = CatalogType.MOVIE
+        if (kind == CatalogType.MOVIE && view.movies == 0 && view.series > 0) kind = CatalogType.SERIES
+    }
+    val list = androidx.compose.foundation.lazy.rememberLazyListState()
+
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { it.write(store.exportJson().first.toByteArray()) }
-        }.onSuccess { toast("Saved.") }.onFailure { toast("Couldn’t save.") }
+        if (uri != null) scope.launch {
+            runCatching {
+                val (c, _) = store.forExport()
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)!!.bufferedWriter().use { CatalogJson.write(c, it) }
+                }
+            }.onSuccess { toast("Saved.") }.onFailure { toast("Couldn’t save.") }
+        }
     }
     val open = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            val text = context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
-            store.merge(CatalogJson.parse(text))
-        }.onSuccess { toast(if (it == 1) "1 title imported." else "$it titles imported.") }.onFailure { toast(it.message ?: "Can’t read the file.") }
+        if (uri != null) scope.launch {
+            runCatching {
+                val c = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)!!.bufferedReader().use { CatalogJson.read(it, strict = true, skipBroken = false).first }
+                }
+                store.merge(c)
+            }.onSuccess { toast(if (it == 1) "1 title imported." else "%,d titles imported.".format(it)) }.onFailure { toast(it.message ?: "Can’t read the file.") }
+        }
+    }
+    fun send() = scope.launch {
+        val (c, left) = store.forExport()
+        if (left > 0) toast(if (left == 1) "1 title without a name stays here." else "$left titles without a name stay here.")
+        runCatching { Share.sendToPlayer(context, c, catalog.name ?: "katalog") }.onFailure { toast("Couldn’t prepare the catalog.") }
     }
 
     fun create(type: CatalogType) {
@@ -211,114 +259,206 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
         onEdit(t.id)
     }
 
-    LazyColumn(
-        Modifier.fillMaxSize().background(Palette.bg),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 48.dp),
-    ) {
-        item {
-            ScreenHeader(
-                title = when (catalog.titles.size) { 0 -> "What are you planning?"; 1 -> "One title."; else -> "${catalog.titles.size} titles." },
-                eyebrow = "Creator",
-                subtitle = catalog.name,
-                trailing = { IconButton(onClick = onSettings) { GIcon(Ic.settings, tint = Palette.text) } },
-            )
-        }
-        item {
-            VSpace(28.dp)
-            SecondaryButton("Import from link", icon = Ic.browser, onClick = onImport)
-            VSpace(12.dp)
-            Row {
-                Box(Modifier.weight(1f)) { SecondaryButton("Show", icon = Ic.tv) { create(CatalogType.SERIES) } }
-                HSpace(12.dp)
-                Box(Modifier.weight(1f)) { SecondaryButton("Movie", icon = Ic.movie) { create(CatalogType.MOVIE) } }
-            }
-        }
-        // Große Liste in Arbeit (oder angehalten): Stand hier sichtbar, ein Tipp öffnet sie.
-        bulk?.let { b ->
-            item {
-                VSpace(16.dp)
-                ListGroup {
-                    ListRow(
-                        "Big link list",
-                        subtitle = "%,d of %,d · %,d added · %,d failed".format(b.done, b.total, b.added, b.failed) + if (b.running) "" else " · paused",
-                        icon = Ic.importFile,
-                        onClick = onImport,
-                    )
-                }
-            }
-        }
-        if (catalog.titles.isEmpty()) {
-            item {
-                VSpace(28.dp)
-                NoticeCard(
-                    icon = Ic.importFile,
-                    title = "Already have a catalog?",
-                    text = "Open a JSON file and keep editing.",
-                    action = "Open",
-                    onAction = { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+    // Index der ersten Titelzeile in der LazyColumn – für die Buchstabenleiste und „nach oben“:
+    // Kopf, Knöpfe, ggf. Linkliste und alte Kopien, dann Suche und Filter.
+    val firstRow = 3 + (if (bulk != null) 1 else 0) + (if (spares != null) 1 else 0)
+
+    Box(Modifier.fillMaxSize().background(Palette.bg)) {
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = list,
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = top + 16.dp, bottom = 96.dp),
+        ) {
+            item(key = "header") {
+                ScreenHeader(
+                    title = when (catalog.titles.size) { 0 -> "What are you planning?"; 1 -> "One title."; else -> "%,d titles.".format(catalog.titles.size) },
+                    eyebrow = "Creator",
+                    subtitle = catalog.name,
+                    trailing = {
+                        Row {
+                            if (catalog.titles.isNotEmpty()) ShareMenu(
+                                playerThere = playerThere,
+                                onSend = { send() },
+                                onSave = { save.launch(CatalogJson.slug(catalog.name ?: "katalog") + ".json") },
+                                onOpen = { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                            )
+                            IconButton(onClick = onSettings) { GIcon(Ic.settings, tint = Palette.text) }
+                        }
+                    },
                 )
             }
-        }
-        if (unlinked > 0 || siteInfo > 0) {
-            item {
-                VSpace(20.dp)
-                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
-                    item { OutlinePill("All", selected = active == "all", onClick = { filter = "all" }) }
-                    if (unlinked > 0) item { OutlinePill("No TMDB · $unlinked", selected = active == "notmdb", onClick = { filter = "notmdb" }) }
-                    if (siteInfo > 0) item { OutlinePill("Site cover · $siteInfo", selected = active == "site", onClick = { filter = "site" }) }
+            item(key = "actions") {
+                VSpace(24.dp)
+                SecondaryButton("Import from link", icon = Ic.browser, onClick = onImport)
+                VSpace(12.dp)
+                Row {
+                    Box(Modifier.weight(1f)) { SecondaryButton("Show", icon = Ic.tv) { create(CatalogType.SERIES) } }
+                    HSpace(12.dp)
+                    Box(Modifier.weight(1f)) { SecondaryButton("Movie", icon = Ic.movie) { create(CatalogType.MOVIE) } }
                 }
-                when (active) {
-                    "notmdb" -> {
-                        VSpace(10.dp)
-                        Text("Not linked to TMDB – the Player can't find cover, text and episodes. Tap a title → TMDB → search and pick.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                if (catalog.titles.isNotEmpty()) {
+                    VSpace(12.dp)
+                    PrimaryButton(if (playerThere) "Send to Streamplayer" else "Share catalog", icon = Ic.share) { send() }
+                }
+            }
+            // Große Liste in Arbeit (oder angehalten): Stand hier sichtbar, ein Tipp öffnet sie.
+            bulk?.let { b ->
+                item(key = "bulk") {
+                    VSpace(16.dp)
+                    ListGroup {
+                        ListRow(
+                            "Big link list",
+                            subtitle = "%,d of %,d · %,d added · %,d failed".format(b.done, b.total, b.added, b.failed) + if (b.running) "" else " · paused",
+                            icon = Ic.importFile,
+                            onClick = onImport,
+                        )
                     }
-                    "site" -> {
-                        VSpace(10.dp)
-                        Text("Linked to TMDB, but cover and description still come from the website.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-                        VSpace(10.dp)
-                        SecondaryButton(filling ?: "Take cover & text from TMDB ($siteInfo)", icon = Ic.refresh, enabled = filling == null) {
-                            val app = CreatorApp.instance
-                            if (app.prefs.tmdbKey.value.isBlank()) { toast("Add a TMDB key in Settings first."); return@SecondaryButton }
-                            val todo = catalog.titles.filter(::hasSiteInfo)
-                            scope.launch {
-                                var done = 0
-                                for (t in todo) {
-                                    filling = "${done + 1} of ${todo.size} …"
-                                    val kind = if (t.type == CatalogType.SERIES) de.marne.streamplayer.catalog.Tmdb.Kind.TV else de.marne.streamplayer.catalog.Tmdb.Kind.MOVIE
-                                    runCatching { app.tmdb.details(kind, t.tmdb!!.id!!) }.getOrNull()?.let { d ->
-                                        // Neu aus dem Speicher holen: der Titel kann inzwischen bearbeitet sein.
-                                        app.store.catalog.value.titles.firstOrNull { it.id == t.id }?.let { cur -> app.store.put(fromTmdb(cur, d.result)); done++ }
-                                    }
-                                    kotlinx.coroutines.delay(250) // TMDB nicht hetzen
+                }
+            }
+            spares?.let { sp ->
+                item(key = "spares") {
+                    VSpace(16.dp)
+                    SparesCard(sp, toast)
+                }
+            }
+            if (catalog.titles.isEmpty()) {
+                item(key = "empty") {
+                    VSpace(28.dp)
+                    NoticeCard(
+                        icon = Ic.importFile,
+                        title = "Already have a catalog?",
+                        text = "Open a JSON file and keep editing.",
+                        action = "Open",
+                        onAction = { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                    )
+                }
+            } else {
+                item(key = "controls") {
+                    VSpace(28.dp)
+                    Segmented(
+                        listOf(CatalogType.SERIES.name to "Shows · %,d".format(view.series), CatalogType.MOVIE.name to "Movies · %,d".format(view.movies)),
+                        kind.name,
+                        onSelect = { kind = CatalogType.valueOf(it); filter = CatalogView.Filter.ALL },
+                    )
+                    VSpace(12.dp)
+                    IvoryField(query, { query = it }, if (view.total > 0) "Search %,d %s".format(view.total, if (kind == CatalogType.SERIES) "shows" else "movies") else "Search")
+                    VSpace(4.dp)
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                        item { OutlinePill(if (sort == CatalogView.Sort.AZ) "A–Z" else "Newest", icon = Ic.expandMore, onClick = { sort = if (sort == CatalogView.Sort.AZ) CatalogView.Sort.NEW else CatalogView.Sort.AZ }) }
+                        item { OutlinePill("All", selected = filter == CatalogView.Filter.ALL, onClick = { filter = CatalogView.Filter.ALL }) }
+                        if (view.unlinked > 0 || filter == CatalogView.Filter.NO_TMDB) item {
+                            OutlinePill("No TMDB · %,d".format(view.unlinked), selected = filter == CatalogView.Filter.NO_TMDB, onClick = { filter = CatalogView.Filter.NO_TMDB })
+                        }
+                        if (view.siteInfo > 0 || filter == CatalogView.Filter.SITE) item {
+                            OutlinePill("Site cover · %,d".format(view.siteInfo), selected = filter == CatalogView.Filter.SITE, onClick = { filter = CatalogView.Filter.SITE })
+                        }
+                    }
+                    when (filter) {
+                        CatalogView.Filter.NO_TMDB -> {
+                            VSpace(10.dp)
+                            Text("Not linked to TMDB – the Player can't find cover, text and episodes. Tap a title → TMDB → search and pick.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                        }
+                        CatalogView.Filter.SITE -> {
+                            VSpace(10.dp)
+                            Text("Linked to TMDB, but cover and description still come from the website.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                            VSpace(10.dp)
+                            val f = filling
+                            if (f != null) {
+                                Bar(if (f.total == 0) 0f else f.done.toFloat() / f.total, height = 4.dp)
+                                VSpace(6.dp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("%,d of %,d updated …".format(f.done, f.total), style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.weight(1f))
+                                    QuietButton("Stop", color = Palette.wine) { app.fill.stop() }
                                 }
-                                filling = null
-                                toast(if (done == todo.size) "$done titles updated." else "$done of ${todo.size} updated – the rest TMDB didn't answer.")
+                            } else SecondaryButton("Take cover & text from TMDB (%,d)".format(view.siteInfo), icon = Ic.refresh) {
+                                if (app.prefs.tmdbKey.value.isBlank()) toast("Add a TMDB key in Settings first.")
+                                else app.fill.start(catalog.titles.filter(::hasSiteInfo).map { it.id })
                             }
                         }
+                        else -> {}
+                    }
+                    VSpace(16.dp)
+                    if (view.rows.isEmpty() && view.total > 0) {
+                        Text(if (query.isNotBlank()) "Nothing matches “$query”." else "Nothing here.", style = MaterialTheme.typography.bodyMedium, color = Palette.muted, modifier = Modifier.padding(vertical = 24.dp))
+                    }
+                }
+                // Jede Zeile ein eigenes Element: gezeichnet wird nur, was zu sehen ist. Früher standen alle
+                // Titel in einer einzigen Karte – bei 11 000 Serien samt Covern stürzte der Creator ab.
+                itemsIndexed(view.rows, key = { _, r -> r.key }, contentType = { _, r -> if (r is CatalogView.Row.Head) 0 else 1 }) { _, r ->
+                    when (r) {
+                        is CatalogView.Row.Head -> Text(
+                            r.label, style = MaterialTheme.typography.labelLarge, color = Palette.muted,
+                            modifier = Modifier.padding(start = 6.dp, top = 18.dp, bottom = 8.dp),
+                        )
+                        is CatalogView.Row.Item -> TitleRow(r, onEdit)
                     }
                 }
             }
         }
-        if (series.isNotEmpty()) {
-            item { SectionTitle("Shows") }
-            item { TitleList(series, onEdit) }
+        if (sort == CatalogView.Sort.AZ && view.letters.size > 3 && view.rows.size > 60) {
+            LetterRail(view.letters, list, firstRow, Modifier.align(Alignment.CenterEnd))
         }
-        if (movies.isNotEmpty()) {
-            item { SectionTitle("Movies") }
-            item { TitleList(movies, onEdit) }
+        // Weit unten in einer langen Liste: ein Tipp zurück zu Suche und Filtern.
+        val far by remember { androidx.compose.runtime.derivedStateOf { list.firstVisibleItemIndex > firstRow + 30 } }
+        androidx.compose.animation.AnimatedVisibility(
+            far,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.scaleIn(initialScale = 0.9f),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.scaleOut(targetScale = 0.9f),
+        ) {
+            Row(
+                Modifier.clip(RoundedCornerShape(50)).background(Palette.ink)
+                    .clickable { scope.launch { list.animateScrollToItem((firstRow - 1).coerceAtLeast(0)) } }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GIcon(Ic.search, tint = Palette.onInk, size = 18.dp)
+                HSpace(8.dp)
+                Text("Search & filter", style = MaterialTheme.typography.labelLarge, color = Palette.onInk)
+            }
         }
-        if (catalog.titles.isNotEmpty()) {
-            item {
-                SectionTitle("Share")
-                PrimaryButton(if (playerThere) "Send to Streamplayer" else "Share catalog", icon = Ic.share) {
-                    val (json, left) = store.exportJson()
-                    if (left > 0) toast(if (left == 1) "1 title without a name stays here." else "$left titles without a name stay here.")
-                    Share.sendToPlayer(context, json, catalog.name ?: "katalog")
-                }
-                VSpace(8.dp)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {
-                    QuietButton("Save as file", color = Palette.text) { save.launch(CatalogJson.slug(catalog.name ?: "katalog") + ".json") }
-                    QuietButton("Open file", color = Palette.muted) { open.launch(arrayOf("application/json", "text/*", "application/octet-stream")) }
+    }
+}
+
+@Composable
+private fun ShareMenu(playerThere: Boolean, onSend: () -> Unit, onSave: () -> Unit, onOpen: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { GIcon(Ic.more, tint = Palette.text) }
+        androidx.compose.material3.DropdownMenu(open, onDismissRequest = { open = false }, shape = RoundedCornerShape(16.dp), containerColor = Palette.surface) {
+            androidx.compose.material3.DropdownMenuItem(text = { Text(if (playerThere) "Send to Streamplayer" else "Share catalog") }, leadingIcon = { GIcon(Ic.share, size = 20.dp) }, onClick = { open = false; onSend() })
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Save as file") }, leadingIcon = { GIcon(Ic.download, size = 20.dp) }, onClick = { open = false; onSave() })
+            androidx.compose.material3.DropdownMenuItem(text = { Text("Open file") }, leadingIcon = { GIcon(Ic.importFile, size = 20.dp) }, onClick = { open = false; onOpen() })
+        }
+    }
+}
+
+/** Beiseitegelegte Stände (z. B. aus Startversuchen der alten Version): zurückholen oder löschen. */
+@Composable
+private fun SparesCard(sp: CatalogStore.Spares, toast: (String) -> Unit) {
+    val store = CreatorApp.instance.store
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val date = remember(sp.newest) { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(sp.newest)) }
+    ListGroup {
+        ListRow(
+            if (sp.files.size == 1) "Older copy of your catalog" else "${sp.files.size} older copies of your catalog",
+            subtitle = "%,d titles · %s".format(sp.titles, date),
+            icon = Ic.info, showChevron = false,
+        )
+        RowDivider()
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End) {
+            QuietButton("Delete", color = Palette.wine) {
+                if (!busy) { busy = true; scope.launch { store.deleteSpares(); busy = false; toast("Copies deleted.") } }
+            }
+            QuietButton(if (busy) "Working …" else "Add missing titles", color = Palette.text) {
+                if (!busy) {
+                    busy = true
+                    scope.launch {
+                        val n = store.restoreSpares()
+                        busy = false
+                        toast(if (n == 0) "Nothing was missing – copies removed." else "%,d titles added back.".format(n))
+                    }
                 }
             }
         }
@@ -326,18 +466,80 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
 }
 
 @Composable
-private fun TitleList(list: List<CatalogTitle>, onEdit: (String) -> Unit) {
-    ListGroup {
-        list.forEachIndexed { i, t ->
-            if (i > 0) RowDivider(inset = 84.dp)
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Thumb(t.poster, Modifier.size(width = 48.dp, height = 72.dp), radius = 8.dp)
-                Box(Modifier.weight(1f)) {
-                    ListRow(title = t.title.ifBlank { "Untitled" }, subtitle = summary(t).ifBlank { null }, titleMaxLines = 2, onClick = { onEdit(t.id) })
+private fun TitleRow(r: CatalogView.Row.Item, onEdit: (String) -> Unit) {
+    val t = r.title
+    val big = 22.dp
+    val shape = RoundedCornerShape(topStart = if (r.first) big else 0.dp, topEnd = if (r.first) big else 0.dp, bottomStart = if (r.last) big else 0.dp, bottomEnd = if (r.last) big else 0.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(Palette.surface)) {
+        if (!r.first) RowDivider(inset = 76.dp)
+        Row(
+            Modifier.fillMaxWidth().clickable { onEdit(t.id) }.padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Thumb(t.poster, Modifier.size(width = 44.dp, height = 66.dp), radius = 8.dp)
+            HSpace(16.dp)
+            Column(Modifier.weight(1f)) {
+                Text(t.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.bodyLarge, color = Palette.text, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                r.summary.takeIf { it.isNotBlank() }?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Palette.muted, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+            }
+            if (r.unlinked) { HSpace(8.dp); de.marne.streamplayer.ui.design.Pill("No TMDB", color = Palette.surface2, textColor = Palette.muted) }
+            HSpace(4.dp)
+            GIcon(Ic.chevron, tint = Palette.faint, size = 18.dp)
+        }
+    }
+}
+
+/**
+ * Buchstabenleiste am rechten Rand: Tippen oder Ziehen springt zum Buchstaben. Bei Tausenden Titeln
+ * ist das der Weg durch die Liste; beim Ziehen zeigt eine Blase den Buchstaben unter dem Finger.
+ */
+@Composable
+private fun LetterRail(letters: List<Pair<String, Int>>, list: androidx.compose.foundation.lazy.LazyListState, firstRow: Int, modifier: Modifier) {
+    val scope = rememberCoroutineScope()
+    var active by remember { mutableStateOf<Int?>(null) }
+    var height by remember { mutableStateOf(1) }
+    val scrolling = list.isScrollInProgress || active != null
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (scrolling) 1f else 0.55f, androidx.compose.animation.core.tween(220), label = "rail")
+    // Erst sichtbar, wenn die Titel erreicht sind – oben stehen Knöpfe, keine Buchstaben.
+    val inList by remember { androidx.compose.runtime.derivedStateOf { list.firstVisibleItemIndex >= firstRow - 1 } }
+    val shown by androidx.compose.animation.core.animateFloatAsState(if (inList) 1f else 0f, androidx.compose.animation.core.tween(320), label = "railIn")
+    if (shown == 0f) return
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    fun pick(y: Float) {
+        val i = ((y / height) * letters.size).toInt().coerceIn(0, letters.lastIndex)
+        if (i != active) {
+            active = i
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            scope.launch { list.scrollToItem(firstRow + letters[i].second) }
+        }
+    }
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.CenterEnd) {
+        active?.let { i ->
+            Box(
+                Modifier.align(Alignment.Center).size(72.dp).clip(RoundedCornerShape(20.dp)).background(Palette.ink),
+                contentAlignment = Alignment.Center,
+            ) { Text(letters[i].first, style = MaterialTheme.typography.headlineMedium, color = Palette.onInk) }
+        }
+        Column(
+            Modifier
+                .padding(end = 2.dp)
+                .fillMaxHeight(0.62f)
+                .width(20.dp)
+                .alpha(alpha * shown)
+                .onSizeChanged { height = it.height.coerceAtLeast(1) }
+                .pointerInput(letters) {
+                    detectVerticalDragGestures(
+                        onDragStart = { pick(it.y) },
+                        onDragEnd = { active = null },
+                        onDragCancel = { active = null },
+                    ) { change, _ -> pick(change.position.y) }
                 }
+                .pointerInput(letters) { detectTapGestures(onPress = { pick(it.y); tryAwaitRelease(); active = null }) },
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            letters.forEachIndexed { i, (l, _) ->
+                Text(l, style = MaterialTheme.typography.labelSmall, color = if (i == active) Palette.text else Palette.muted)
             }
         }
     }

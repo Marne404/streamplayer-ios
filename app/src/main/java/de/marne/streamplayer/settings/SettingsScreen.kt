@@ -452,28 +452,34 @@ private fun TmdbSheet(settings: Settings, onDone: (String?) -> Unit) {
 private fun ArtworkRow(onToast: (String) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = de.marne.streamplayer.App.instance
-    val run by de.marne.streamplayer.library.Artwork.run.collectAsStateWithLifecycle()
+    val Artwork = de.marne.streamplayer.library.Artwork
+    val run by Artwork.run.collectAsStateWithLifecycle()
     var ask by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var episodes by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     // Platz neu messen, wenn ein Lauf fertig ist oder geleert wurde.
-    val bytes = androidx.compose.runtime.remember(run?.running, run?.done == run?.total, ask) { de.marne.streamplayer.library.Artwork.cacheBytes(context) }
+    val bytes = androidx.compose.runtime.remember(run?.running, run?.done == run?.total, ask) { Artwork.cacheBytes(context) }
+    val max = androidx.compose.runtime.remember { Artwork.cacheMax(context) }
     val r = run
+    val bytesText = de.marne.streamplayer.ui.Format.bytes(bytes)
     ListRow(
         title = tr("Alle Bilder vorab laden", "Download all artwork"),
         subtitle = when {
-            r != null && r.running -> tr("${r.done} von ${r.total} …", "${r.done} of ${r.total} …")
-            r != null && r.total > 0 -> tr("Fertig: ${r.done - r.failed} von ${r.total}", "Done: ${r.done - r.failed} of ${r.total}") + " · " + de.marne.streamplayer.ui.Format.bytes(bytes)
-            else -> tr("Cover und Banner auch ohne Netz · ${de.marne.streamplayer.ui.Format.bytes(bytes)} belegt", "Covers and banners offline too · ${de.marne.streamplayer.ui.Format.bytes(bytes)} used")
+            r != null && r.running && r.waiting -> tr("Wartet auf Netz · %,d von %,d", "Waiting for network · %,d of %,d").format(r.done, r.total)
+            r != null && r.running && r.total == 0 -> tr("Wird vorbereitet …", "Preparing …")
+            r != null && r.running -> tr("%,d von %,d … · läuft auch bei geschlossener App", "%,d of %,d … · keeps going when the app is closed").format(r.done, r.total)
+            r != null && r.total > 0 -> tr("Fertig: %,d von %,d", "Done: %,d of %,d").format(r.done - r.failed, r.total) + " · " + bytesText
+            else -> tr("Cover und Banner auch ohne Netz · $bytesText belegt", "Covers and banners offline too · $bytesText used")
         },
         icon = Ic.image,
         showChevron = false,
-        onClick = { if (r?.running == true) de.marne.streamplayer.library.Artwork.cancel() else ask = true },
-        trailing = if (r?.running == true) ({ QuietButton(tr("Stopp", "Stop"), color = Palette.muted) { de.marne.streamplayer.library.Artwork.cancel() } }) else null,
+        onClick = { if (r?.running == true) Artwork.cancel(context) else ask = true },
+        trailing = if (r?.running == true) ({ QuietButton(tr("Stopp", "Stop"), color = Palette.muted) { Artwork.cancel(context) } }) else null,
     )
     if (ask) {
-        val titles = app.library.titles.value
-        val base = de.marne.streamplayer.library.Artwork.urls(titles, false).size
-        val withEps = de.marne.streamplayer.library.Artwork.urls(titles, true).size
+        // Zählen über Tausende Titel: im Hintergrund, nicht bei jedem Neuzeichnen auf dem Haupt-Thread.
+        val counts by androidx.compose.runtime.produceState<de.marne.streamplayer.library.Artwork.Counts?>(null) {
+            value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Artwork.count(app.library.titles.value) }
+        }
         val metered = runCatching { context.getSystemService(android.net.ConnectivityManager::class.java).isActiveNetworkMetered }.getOrDefault(false)
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { ask = false },
@@ -481,21 +487,35 @@ private fun ArtworkRow(onToast: (String) -> Unit) {
             title = { Text(tr("Bilder vorab laden", "Download artwork"), style = MaterialTheme.typography.headlineSmall) },
             text = {
                 Column {
-                    Text(
-                        tr("$base Cover und Banner. Schon geladene kommen aus dem Speicher und kosten nichts.", "$base covers and banners. Ones already stored cost nothing.") +
-                            if (metered) tr(" Du bist gerade nicht im WLAN.", " You're not on Wi-Fi right now.") else "",
-                        style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
-                    )
-                    if (withEps > base) {
-                        VSpace(12.dp)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr("Auch Folgenbilder (+${withEps - base})", "Episode images too (+${withEps - base})"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            IvorySwitch(episodes) { episodes = it }
+                    val c = counts
+                    if (c == null) Text(tr("Zähle …", "Counting …"), style = MaterialTheme.typography.bodyMedium, color = Palette.muted)
+                    else {
+                        val need = c.bytes(episodes)
+                        val fmt = de.marne.streamplayer.ui.Format::bytes
+                        Text(
+                            tr("%,d Cover und Banner, etwa ${fmt(c.bytes(false))}. Schon geladene kosten nichts. Läuft auch weiter, wenn du die App schließt.", "%,d covers and banners, about ${fmt(c.bytes(false))}. Ones already stored cost nothing. Keeps going when you close the app.").format(c.covers + c.banners) +
+                                if (metered && app.settings.wifiOnly.value) tr(" Wartet aufs WLAN.", " Waits for Wi-Fi.") else if (metered) tr(" Du bist gerade nicht im WLAN.", " You're not on Wi-Fi right now.") else "",
+                            style = MaterialTheme.typography.bodyMedium, color = Palette.muted,
+                        )
+                        if (c.stills > 0) {
+                            VSpace(12.dp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("Auch Folgenbilder (+%,d, ${fmt(c.stills * Artwork.STILL_BYTES)})", "Episode images too (+%,d, ${fmt(c.stills * Artwork.STILL_BYTES)})").format(c.stills), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                IvorySwitch(episodes) { episodes = it }
+                            }
+                        }
+                        // Passt nicht: ehrlich sagen, was passiert (der Speicher wirft Ältestes hinaus).
+                        if (max > 0 && need > max) {
+                            VSpace(10.dp)
+                            Text(
+                                tr("Platz für Bilder: ${fmt(max)}. Nicht alles passt – zuerst fallen Folgenbilder wieder heraus.", "Room for images: ${fmt(max)}. Not everything fits – episode images are dropped first."),
+                                style = MaterialTheme.typography.bodySmall, color = Palette.wine,
+                            )
                         }
                     }
                     VSpace(12.dp)
                     QuietButton(tr("Bild-Speicher leeren", "Clear artwork storage"), color = Palette.wine) {
-                        de.marne.streamplayer.library.Artwork.clear(context)
+                        Artwork.clear(context)
                         ask = false
                         onToast(tr("Bild-Speicher geleert.", "Artwork storage cleared."))
                     }
@@ -504,7 +524,7 @@ private fun ArtworkRow(onToast: (String) -> Unit) {
             confirmButton = {
                 QuietButton(tr("Laden", "Download"), color = Palette.text) {
                     ask = false
-                    de.marne.streamplayer.library.Artwork.start(context, titles, episodes)
+                    Artwork.start(context, episodes)
                 }
             },
             dismissButton = { QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted) { ask = false } },

@@ -127,8 +127,31 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
      * wird stattdessen übernommen wie mit „Datei öffnen“, statt seine Muster als Links zu lesen.
      */
     fun openFile(context: android.content.Context, uri: android.net.Uri) {
+        // Ein Katalog kann viel größer sein als jede Linkliste: am Anfang erkennen, dann Titel für Titel lesen.
+        if (looksLikeCatalog(context, uri)) {
+            scope.launch {
+                notice.value = runCatching {
+                    val c = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)!!.bufferedReader().use { CatalogJson.read(it, strict = false).first }
+                    }
+                    val n = app.store.merge(c)
+                    if (n == 1) "1 title imported from the catalog." else "%,d titles imported from the catalog.".format(n)
+                }.getOrElse { it.message ?: "Can’t read the catalog." }
+            }
+            return
+        }
         val text = runCatching {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes().take(MAX_FILE).toByteArray().toString(Charsets.UTF_8) }
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                // Nur so viel lesen wie erlaubt – nicht erst die ganze Datei und dann kürzen.
+                val buf = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(64 * 1024)
+                while (buf.size() < MAX_FILE) {
+                    val n = input.read(chunk, 0, minOf(chunk.size, MAX_FILE - buf.size()))
+                    if (n < 0) break
+                    buf.write(chunk, 0, n)
+                }
+                buf.toString("UTF-8")
+            }
         }.getOrNull()
         when {
             text == null -> fail("Can’t read the file.")
@@ -140,6 +163,15 @@ class ImportSession(private val app: CreatorApp, private val http: OkHttpClient)
             else -> request(text)
         }
     }
+
+    private fun looksLikeCatalog(context: android.content.Context, uri: android.net.Uri): Boolean = runCatching {
+        val head = context.contentResolver.openInputStream(uri)?.use { input ->
+            val b = ByteArray(4096)
+            val n = input.read(b)
+            if (n <= 0) "" else String(b, 0, n, Charsets.UTF_8)
+        }.orEmpty()
+        head.trimStart('\uFEFF', ' ', '\n', '\r', '\t').startsWith("{") && "\"streamplayer-catalog\"" in head
+    }.getOrDefault(false)
 
     private fun fail(message: String) {
         stopJob()

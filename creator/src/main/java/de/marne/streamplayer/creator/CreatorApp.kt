@@ -19,10 +19,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -37,6 +42,8 @@ class CreatorApp : Application() {
         private set
     lateinit var imports: ImportSession
         private set
+    lateinit var fill: TmdbFill
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +57,7 @@ class CreatorApp : Application() {
         val http = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
         tmdb = Tmdb(http, key = { prefs.tmdbKey.value }, language = { prefs.language.value })
         imports = ImportSession(this, http)
+        fill = TmdbFill(this)
     }
 
     companion object {
@@ -81,25 +89,75 @@ class CreatorPrefs(context: Context) {
     fun setTheme(v: String) { _theme.value = v; p.edit().putString("theme", v).apply() }
 }
 
-/** Der Katalog, an dem gearbeitet wird – im selben Format, das der Player importiert. */
+/**
+ * Der Katalog, an dem gearbeitet wird – im selben Format, das der Player importiert.
+ *
+ * Gelesen wird im Hintergrund und Titel für Titel, gespeichert ebenso: Ein Katalog mit 11 000
+ * Serien ließ den Creator früher beim Start (Lesen als ein Text auf dem Haupt-Thread) und beim
+ * Speichern (ein Text für alles, alle paar Sekunden) aus dem Speicher laufen.
+ */
 @OptIn(FlowPreview::class)
 class CatalogStore(private val context: Context) {
     private val file = File(context.filesDir, "catalog.json")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    private val _catalog = MutableStateFlow(load())
+    private val _catalog = MutableStateFlow(EMPTY)
     val catalog: StateFlow<Catalog> = _catalog.asStateFlow()
 
+    /** false, solange die Datei gelesen wird. Bis dahin wird nichts gespeichert – sonst überschriebe ein leerer Stand den echten. */
+    private val _ready = MutableStateFlow(false)
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
+    /** Beiseitegelegte Stände (unlesbar oder mit kaputten Einträgen) – zum Zurückholen statt still verloren. */
+    data class Spares(val files: List<File>, val titles: Int, val newest: Long)
+    private val _spares = MutableStateFlow<Spares?>(null)
+    val spares: StateFlow<Spares?> = _spares.asStateFlow()
+
+    private val saveLock = Mutex()
+    /** Was zuletzt auf der Platte steht (gleiches Objekt = nichts zu tun). */
+    @Volatile private var saved: Catalog? = null
+    @Volatile private var lastSave = 0L
+
     init {
-        scope.launch { _catalog.drop(1).debounce(400).collect { save(it) } }
+        scope.launch {
+            val loaded = load()
+            // Was schon vor dem Ende des Lesens dazukam (geteilter Link …), bleibt vorn.
+            _catalog.update { cur ->
+                if (cur.titles.isEmpty()) loaded
+                else loaded.copy(titles = cur.titles + loaded.titles.filter { t -> cur.titles.none { it.id == t.id } })
+            }
+            saved = loaded
+            _ready.value = true
+            findSpares()
+            // Kurz gesammelt speichern; große Kataloge seltener (jedes Speichern schreibt alles).
+            _catalog.debounce(400).collectLatest { c ->
+                if (c === saved) return@collectLatest
+                val gap = if (c.titles.size > 2_000) BIG_GAP_MS else 0L
+                val wait = lastSave + gap - System.currentTimeMillis()
+                if (wait > 0) delay(wait)
+                flush()
+            }
+        }
     }
+
+    /** Jetzt speichern, falls sich etwas geändert hat (beim Verlassen der App, vor dem Merken einer Linkliste). */
+    suspend fun flush() = withContext(NonCancellable + Dispatchers.IO) {
+        saveLock.withLock {
+            val c = _catalog.value
+            if (!_ready.value || c === saved) return@withLock
+            if (save(c)) saved = c
+            lastSave = System.currentTimeMillis()
+        }
+    }
+
+    fun flushLater() { scope.launch { flush() } }
 
     fun get(id: String): CatalogTitle? = _catalog.value.titles.firstOrNull { it.id == id }
 
     /** Speichert einen Titel; ändert sich die ID (z. B. durch Umbenennen), wird der alte ersetzt. */
     fun put(t: CatalogTitle, replacingId: String = t.id) = _catalog.update { c ->
-        val exists = c.titles.any { it.id == replacingId }
-        c.copy(titles = if (exists) c.titles.map { if (it.id == replacingId) t else it } else listOf(t) + c.titles)
+        val i = c.titles.indexOfFirst { it.id == replacingId }
+        c.copy(titles = if (i >= 0) c.titles.toMutableList().also { it[i] = t } else listOf(t) + c.titles)
     }
 
     fun remove(id: String) = _catalog.update { c -> c.copy(titles = c.titles.filterNot { it.id == id }) }
@@ -111,8 +169,21 @@ class CatalogStore(private val context: Context) {
         var n = 0
         _catalog.update { c ->
             val byId = c.titles.associateBy { it.id }.toMutableMap()
+            n = 0
             other.titles.forEach { byId[it.id] = it; n++ }
             c.copy(titles = byId.values.toList(), name = c.name ?: other.name)
+        }
+        return n
+    }
+
+    /** Nur hinzufügen, was fehlt – beim Zurückholen eines alten Stands gewinnt, was seitdem bearbeitet wurde. */
+    private fun addMissing(other: Catalog): Int {
+        var n = 0
+        _catalog.update { c ->
+            val have = c.titles.mapTo(HashSet()) { it.id }
+            val extra = other.titles.filter { it.id !in have }
+            n = extra.size
+            c.copy(titles = c.titles + extra, name = c.name ?: other.name)
         }
         return n
     }
@@ -136,46 +207,103 @@ class CatalogStore(private val context: Context) {
 
     /** Eine noch nicht vergebene ID. */
     fun uniqueId(base: String, except: String? = null): String {
-        val taken = _catalog.value.titles.map { it.id }.filter { it != except }.toSet()
+        val taken = _catalog.value.titles.mapTo(HashSet()) { it.id }.apply { except?.let { remove(it) } }
         if (base !in taken) return base
         var i = 2
         while ("$base-$i" in taken) i++
         return "$base-$i"
     }
 
-    fun json(): String = CatalogJson.write(_catalog.value)
-
     /** Für die Weitergabe: nur Titel mit Namen. Zweiter Wert: wie viele zurückbleiben. */
-    fun exportJson(): Pair<String, Int> {
+    fun forExport(): Pair<Catalog, Int> {
         val c = _catalog.value
         val ready = c.titles.filter { it.title.isNotBlank() }
-        return CatalogJson.write(c.copy(titles = ready)) to (c.titles.size - ready.size)
+        return c.copy(titles = ready) to (c.titles.size - ready.size)
     }
 
+    // ---------- Beiseitegelegte Stände ----------
+
+    private fun spareFiles() = context.filesDir.listFiles { f -> f.name.startsWith("catalog.broken-") && f.name.endsWith(".json") }.orEmpty().sortedByDescending { it.lastModified() }
+
+    private fun findSpares() {
+        val files = spareFiles()
+        if (files.isEmpty()) { _spares.value = null; return }
+        // Gezählt wird der größte Stand – mehrere Kopien sind meist dieselbe Datei aus mehreren Startversuchen.
+        val most = files.maxOf { f -> runCatching { f.bufferedReader().use { CatalogJson.read(it, strict = false, partial = true).first.titles.size } }.getOrDefault(0) }
+        _spares.value = Spares(files, most, files.first().lastModified())
+    }
+
+    /** Fehlendes aus allen beiseitegelegten Ständen übernehmen, danach die Kopien löschen. Rückgabe: wie viele Titel dazukamen. */
+    suspend fun restoreSpares(): Int = withContext(Dispatchers.IO) {
+        var n = 0
+        val files = spareFiles()
+        for (f in files) {
+            val c = runCatching { f.bufferedReader().use { CatalogJson.read(it, strict = false, partial = true).first } }.getOrNull() ?: continue
+            n += addMissing(c)
+        }
+        // Erst sicher gespeichert, dann die Kopien weg.
+        flush()
+        if (saved === _catalog.value) files.forEach { it.delete() }
+        findSpares()
+        n
+    }
+
+    suspend fun deleteSpares() = withContext(Dispatchers.IO) {
+        spareFiles().forEach { it.delete() }
+        findSpares()
+    }
+
+    // ---------- Datei ----------
+
     private fun load(): Catalog {
-        if (!file.exists()) return Catalog(emptyList(), "My catalog")
-        return runCatching { CatalogJson.parse(file.readText(), strict = false) }.getOrElse {
-            // Nie still verwerfen: die unlesbare Datei beiseitelegen, statt sie beim nächsten Speichern zu überschreiben.
-            file.copyTo(File(file.parentFile, "catalog.broken-${System.currentTimeMillis()}.json"), overwrite = true)
-            Catalog(emptyList(), "My catalog")
+        if (!file.exists()) {
+            // Abgebrochenes Speichern: die fertige Zwischendatei ist dann der neueste Stand.
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            if (!tmp.exists() || tmp.length() == 0L || !tmp.renameTo(file)) return EMPTY
+        }
+        return try {
+            val (c, problems) = file.bufferedReader().use { CatalogJson.read(it, strict = false, skipBroken = true, partial = true) }
+            // Einzelne kaputte Einträge: der Rest wird gelesen, die Datei bleibt als Kopie – das nächste Speichern ließe sie sonst weg.
+            if (problems.isNotEmpty()) file.copyTo(spareFile(), overwrite = true)
+            c
+        } catch (e: Throwable) {
+            // Auch OutOfMemoryError: nie still verwerfen. Umbenennen statt kopieren – kostet keinen Platz,
+            // und das nächste Speichern kann die Datei nicht mehr überschreiben.
+            if (!file.renameTo(spareFile())) file.copyTo(spareFile(), overwrite = true)
+            EMPTY
         }
     }
 
-    private fun save(c: Catalog) {
+    private fun spareFile() = File(file.parentFile, "catalog.broken-${System.currentTimeMillis()}.json")
+
+    private fun save(c: Catalog): Boolean = try {
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(CatalogJson.write(c))
+        tmp.outputStream().buffered(256 * 1024).writer(Charsets.UTF_8).use { CatalogJson.write(c, it) }
         tmp.renameTo(file)
+    } catch (e: Exception) {
+        // Platte voll o. Ä.: alter Stand bleibt, beim nächsten Mal wieder versuchen.
+        android.util.Log.w("CatalogStore", "save failed", e)
+        false
+    }
+
+    companion object {
+        private val EMPTY = Catalog(emptyList(), "My catalog")
+        /** Große Kataloge: höchstens so oft speichern (ein Import ändert alle paar Sekunden etwas). */
+        private const val BIG_GAP_MS = 15_000L
     }
 }
 
 object Share {
     private val players = listOf("de.marne.streamplayer", "de.marne.streamplayer.debug")
 
-    /** Katalog an den Player geben: direkt, wenn er installiert ist, sonst über die Auswahl. */
-    fun sendToPlayer(context: Context, json: String, name: String) {
+    /**
+     * Katalog an den Player geben: direkt, wenn er installiert ist, sonst über die Auswahl.
+     * Die Datei wird Titel für Titel geschrieben (große Kataloge passen nicht als ein Text in den Speicher).
+     */
+    suspend fun sendToPlayer(context: Context, catalog: Catalog, name: String) {
         val dir = File(context.cacheDir, "share").apply { mkdirs() }
         val f = File(dir, CatalogJson.slug(name).ifEmpty { "katalog" } + ".json")
-        f.writeText(json)
+        kotlinx.coroutines.withContext(Dispatchers.IO) { f.bufferedWriter().use { CatalogJson.write(catalog, it) } }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", f)
         val send = Intent(Intent.ACTION_SEND).setType("application/json")
             .putExtra(Intent.EXTRA_STREAM, uri)

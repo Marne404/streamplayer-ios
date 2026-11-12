@@ -15,6 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,7 +48,16 @@ class LibraryStore(context: Context) {
     @Volatile var target: String = Library.MAIN
 
     init {
-        scope.launch { _titles.drop(1).debounce(400).collect { save(it) } }
+        // Kurz gesammelt speichern. Laufen ständig Änderungen ein (TMDB-Abgleich Tausender Titel), wartete
+        // ein reines debounce bis zum Ende – Stunden ohne Sicherung. Darum spätestens alle 15 Sekunden.
+        scope.launch {
+            var last = System.currentTimeMillis()
+            _titles.drop(1).collectLatest { list ->
+                if (System.currentTimeMillis() - last < MAX_UNSAVED_MS) delay(400)
+                withContext(NonCancellable) { save(list) }
+                last = System.currentTimeMillis()
+            }
+        }
         scope.launch { _libraries.drop(1).collect { saveLibraries(it) } }
         if (!file.exists() && _titles.value.isNotEmpty()) scope.launch { save(_titles.value) }
     }
@@ -440,6 +453,7 @@ class LibraryStore(context: Context) {
     }
 
     companion object {
+        private const val MAX_UNSAVED_MS = 15_000L
         /**
          * Titel als JSON-Liste schreiben – ein Titel je Zeile, Stück für Stück. Anlass (1.13.4):
          * Mit 2500 Titeln samt Folgen-Infos wurde die Liste vorher als ein Text von über 20 Mio.
