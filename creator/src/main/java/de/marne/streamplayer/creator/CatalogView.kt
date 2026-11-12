@@ -157,6 +157,7 @@ class TmdbFill(private val app: CreatorApp) {
     fun start(ids: List<String>, mode: Mode) {
         if (running || ids.isEmpty()) return
         _state.value = State(mode, 0, ids.size, 0)
+        keyProblem = null
         if (!app.imports.bulk.running) BulkService.start(app)
         job = scope.launch {
             val next = java.util.concurrent.atomic.AtomicInteger(0)
@@ -187,6 +188,7 @@ class TmdbFill(private val app: CreatorApp) {
                 if (!app.imports.bulk.running) BulkService.stop(app)
                 // Über die App melden: Der Bildschirm, der es gestartet hat, ist vielleicht längst zu.
                 app.imports.notice.value = when {
+                    keyProblem != null -> "Stopped: ${keyProblem}. Check the TMDB key in Settings."
                     mode == Mode.MATCH && n < ids.size -> "Stopped – %,d of %,d checked, %,d matched. Tap again for the rest.".format(n, ids.size, f)
                     mode == Mode.MATCH -> "%,d of %,d matched on TMDB. The rest: pick by hand.".format(f, ids.size)
                     n < ids.size -> "Stopped – %,d of %,d updated.".format(f, ids.size)
@@ -204,16 +206,18 @@ class TmdbFill(private val app: CreatorApp) {
         return when (mode) {
             Mode.COVERS -> {
                 val tid = t.tmdb?.id ?: return false
-                val d = runCatching { app.tmdb.details(kind, tid) }.getOrNull() ?: return false
+                val d = patiently { app.tmdb.details(kind, tid) } ?: return false
                 // Neu aus dem Speicher holen: der Titel kann inzwischen bearbeitet sein.
                 app.store.get(id)?.let { cur -> app.store.put(fromTmdb(cur, d.result)); true } ?: false
             }
             Mode.MATCH -> {
                 if (t.tmdb?.id != null || t.title.isBlank()) return false
-                val results = runCatching {
-                    app.tmdb.search(t.title, kind, t.year).ifEmpty { if (t.year != null) app.tmdb.search(t.title, kind) else emptyList() }
-                }.getOrNull() ?: return false
-                val r = pickMatch(t.title, t.year, results) ?: return false
+                // Derselbe Suchbegriff wie im Editor (eigener Suchbegriff vor dem Namen).
+                val query = t.tmdb?.query ?: t.title
+                val results = patiently {
+                    app.tmdb.search(query, kind, t.year).ifEmpty { if (t.year != null) app.tmdb.search(query, kind) else emptyList() }
+                } ?: return false
+                val r = pickMatch(query, t.year, results) ?: return false
                 app.store.get(id)?.takeIf { it.tmdb?.id == null }?.let { cur ->
                     app.store.put(fromTmdb(cur.copy(tmdb = de.marne.streamplayer.catalog.TmdbRef(r.id), year = cur.year ?: r.year), r))
                     true
@@ -222,25 +226,62 @@ class TmdbFill(private val app: CreatorApp) {
         }
     }
 
+    /**
+     * Mit Geduld: Zu viele Anfragen (429), Server- oder Netzfehler sind kein „nicht gefunden“ –
+     * früher zählte jeder solche Aussetzer als nicht erkannt. Abgelehnter Schlüssel: alles anhalten.
+     */
+    private suspend fun <T> patiently(block: suspend () -> T): T? {
+        var attempt = 0
+        while (true) {
+            try {
+                return block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Tmdb.TmdbException) {
+                when (e.code) {
+                    0, 401 -> { keyProblem = e.message; job?.cancel(); return null }
+                    404 -> return null
+                }
+                if (++attempt >= 5) return null
+                delay(2_000L * attempt)
+            } catch (e: java.io.IOException) {
+                if (++attempt >= 8) return null
+                delay(2_000L * attempt)
+            } catch (e: Exception) {
+                return null
+            }
+        }
+    }
+
+    /** Warum angehalten wurde, wenn TMDB den Schlüssel ablehnt. */
+    @Volatile private var keyProblem: String? = null
+
     fun stop() {
         job?.cancel()
     }
 
     companion object {
         /**
-         * Sicher genug für eine Zuordnung ohne Nachfrage? Nur bei gleichem Namen (ohne Akzente und
-         * Satzzeichen) wie der TMDB-Titel oder dessen Originaltitel und passendem Jahr (±1) – oder wenn
-         * TMDB bei bekanntem Jahr genau einen Treffer mit genau diesem Jahr hat. Alles andere bleibt
-         * unter „No TMDB“ zum Aussuchen: lieber kein Cover als das einer fremden Serie.
+         * Sicher genug für eine Zuordnung ohne Nachfrage?
+         * - Gleicher Name (ohne Akzente und Satzzeichen) wie der TMDB-Titel oder dessen Originaltitel,
+         *   Jahr passt (±1) oder ist unbekannt.
+         * - Oder TMDB findet genau einen Titel und das Jahr widerspricht nicht. Anlass: Mehr als 4 000
+         *   Serien blieben ohne Zuordnung, obwohl die Suche im Editor genau einen – richtigen – Treffer
+         *   zeigte; Titel aus Linklisten haben meist kein Jahr, und das war hier Pflicht.
+         * - Oder unter mehreren Treffern enthält genau einer den Namen (bzw. umgekehrt), Jahr passt.
+         * Alles andere bleibt unter „No TMDB“ zum Aussuchen.
          */
         fun pickMatch(title: String, year: Int?, results: List<Tmdb.Result>): Tmdb.Result? {
             val want = CatalogView.fold(title)
             if (want.isEmpty()) return null
             fun yearOk(r: Tmdb.Result) = year == null || r.year == null || kotlin.math.abs(r.year!! - year) <= 1
-            results.take(8).firstOrNull { r ->
+            val top = results.take(8)
+            top.firstOrNull { r ->
                 yearOk(r) && (CatalogView.fold(r.title) == want || r.originalTitle?.let(CatalogView::fold) == want)
             }?.let { return it }
-            return results.singleOrNull()?.takeIf { year != null && it.year == year }
+            results.singleOrNull()?.let { return it.takeIf(::yearOk) }
+            fun near(a: String) = want.length >= 4 && a.length >= 4 && (a.contains(want) || want.contains(a))
+            return top.filter { r -> yearOk(r) && (near(CatalogView.fold(r.title)) || r.originalTitle?.let { near(CatalogView.fold(it)) } == true) }.singleOrNull()
         }
     }
 }

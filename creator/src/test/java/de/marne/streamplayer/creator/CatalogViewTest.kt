@@ -71,5 +71,11 @@ class PickMatchTest {
         assertEquals(null, TmdbFill.pickMatch("Lost", null, listOf(r(5, "Lost Girl", 2010), r(6, "Lost in Space", 2018))))
         // Einziger Treffer mit genau dem Jahr: ja.
         assertEquals(7, TmdbFill.pickMatch("Paartherapie mal anders", 2023, listOf(r(7, "Couples Therapy", 2023)))?.id)
+        // Einziger Treffer, Titel ohne Jahr (Linklisten): ja – so blieben über 4 000 Serien liegen.
+        assertEquals(8, TmdbFill.pickMatch("Saber Rider und die Star Sheriffs", null, listOf(r(8, "Saber Rider", 1987)))?.id)
+        // Einziger Treffer, Jahr widerspricht: nein.
+        assertEquals(null, TmdbFill.pickMatch("Painkiller", 2023, listOf(r(9, "Painkiller", 1999))))
+        // Mehrere Treffer, nur einer enthält den Namen: ja.
+        assertEquals(10, TmdbFill.pickMatch("Sabiiro no Armor", null, listOf(r(10, "Sabiiro no Armor: Reimei", 2024), r(11, "Armored Trooper", 1983)))?.id)
     }
 }
