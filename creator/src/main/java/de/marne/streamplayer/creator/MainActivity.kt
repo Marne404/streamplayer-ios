@@ -353,26 +353,43 @@ private fun CatalogScreen(onEdit: (String) -> Unit, onSettings: () -> Unit, onIm
                             OutlinePill("Site cover · %,d".format(view.siteInfo), selected = filter == CatalogView.Filter.SITE, onClick = { filter = CatalogView.Filter.SITE })
                         }
                     }
+                    // Läuft schon etwas mit TMDB: Fortschritt zeigen, egal unter welchem Filter.
+                    filling?.let { f ->
+                        VSpace(12.dp)
+                        Bar(if (f.total == 0) 0f else f.done.toFloat() / f.total, height = 4.dp)
+                        VSpace(6.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                (if (f.mode == TmdbFill.Mode.MATCH) "Matching: %,d of %,d · %,d found" else "Updating: %,d of %,d").format(f.done, f.total, f.found),
+                                style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.weight(1f),
+                            )
+                            QuietButton("Stop", color = Palette.wine) { app.fill.stop() }
+                        }
+                    }
                     when (filter) {
                         CatalogView.Filter.NO_TMDB -> {
                             VSpace(10.dp)
-                            Text("Not linked to TMDB – the Player can't find cover, text and episodes. Tap a title → TMDB → search and pick.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
+                            Text(
+                                "Not linked to TMDB – the Player can't find cover, text and episodes. Match them all at once (only exact name matches are taken), or tap a title → TMDB → search and pick.",
+                                style = MaterialTheme.typography.bodySmall, color = Palette.muted,
+                            )
+                            if (filling == null) {
+                                VSpace(10.dp)
+                                SecondaryButton("Match automatically (%,d)".format(view.unlinked), icon = Ic.sparkle) {
+                                    if (app.prefs.tmdbKey.value.isBlank()) toast("Add a TMDB key in Settings first.")
+                                    else app.fill.start(catalog.titles.filter { it.type == kind && needsTmdb(it) }.map { it.id }, TmdbFill.Mode.MATCH)
+                                }
+                            }
                         }
                         CatalogView.Filter.SITE -> {
                             VSpace(10.dp)
                             Text("Linked to TMDB, but cover and description still come from the website.", style = MaterialTheme.typography.bodySmall, color = Palette.muted)
-                            VSpace(10.dp)
-                            val f = filling
-                            if (f != null) {
-                                Bar(if (f.total == 0) 0f else f.done.toFloat() / f.total, height = 4.dp)
-                                VSpace(6.dp)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("%,d of %,d updated …".format(f.done, f.total), style = MaterialTheme.typography.bodySmall, color = Palette.muted, modifier = Modifier.weight(1f))
-                                    QuietButton("Stop", color = Palette.wine) { app.fill.stop() }
+                            if (filling == null) {
+                                VSpace(10.dp)
+                                SecondaryButton("Take cover & text from TMDB (%,d)".format(view.siteInfo), icon = Ic.refresh) {
+                                    if (app.prefs.tmdbKey.value.isBlank()) toast("Add a TMDB key in Settings first.")
+                                    else app.fill.start(catalog.titles.filter { it.type == kind && hasSiteInfo(it) }.map { it.id }, TmdbFill.Mode.COVERS)
                                 }
-                            } else SecondaryButton("Take cover & text from TMDB (%,d)".format(view.siteInfo), icon = Ic.refresh) {
-                                if (app.prefs.tmdbKey.value.isBlank()) toast("Add a TMDB key in Settings first.")
-                                else app.fill.start(catalog.titles.filter(::hasSiteInfo).map { it.id })
                             }
                         }
                         else -> {}

@@ -54,3 +54,22 @@ class CatalogViewTest {
         assertEquals(v.unlinked, unlinked.rows.size)
     }
 }
+
+class PickMatchTest {
+    private fun r(id: Int, title: String, year: Int?, original: String? = null) =
+        de.marne.streamplayer.catalog.Tmdb.Result(id, de.marne.streamplayer.catalog.Tmdb.Kind.TV, title, original, year, null, null, null)
+
+    /** Anlass: 11 007 Serien ohne TMDB – automatisch zuordnen, aber nie das Cover einer fremden Serie. */
+    @Test fun onlySafeMatches() {
+        // Gleicher Name, Satzzeichen egal.
+        assertEquals(2, TmdbFill.pickMatch("Pachinko - Ein einfaches Leben", 2022, listOf(r(1, "Pachinko", 2022), r(2, "Pachinko – Ein einfaches Leben", 2022)))?.id)
+        // Originaltitel zählt auch.
+        assertEquals(3, TmdbFill.pickMatch("Sabikui Bisco", null, listOf(r(3, "Sabikui Bisco – Der Rostfresser", 2022, original = "Sabikui Bisco")))?.id)
+        // Falsches Jahr: nein.
+        assertEquals(null, TmdbFill.pickMatch("S.W.A.T.", 2017, listOf(r(4, "S.W.A.T.", 1975))))
+        // Ähnlich, aber nicht gleich, mehrere Treffer: lieber von Hand.
+        assertEquals(null, TmdbFill.pickMatch("Lost", null, listOf(r(5, "Lost Girl", 2010), r(6, "Lost in Space", 2018))))
+        // Einziger Treffer mit genau dem Jahr: ja.
+        assertEquals(7, TmdbFill.pickMatch("Paartherapie mal anders", 2023, listOf(r(7, "Couples Therapy", 2023)))?.id)
+    }
+}

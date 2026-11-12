@@ -345,6 +345,26 @@ class BulkService : Service() {
             runCatching { context.getSystemService(NotificationManager::class.java).notify(ID, notification(context, s)) }
         }
 
+        /** TMDB für viele Titel ([TmdbFill]) nutzt denselben Dienst; Fortschritt in derselben Meldung. */
+        fun fillProgress(context: Context, s: TmdbFill.State?) {
+            s ?: return
+            val now = System.currentTimeMillis()
+            if (now - lastShown < 1_000) return
+            lastShown = now
+            channel(context)
+            val title = if (s.mode == TmdbFill.Mode.MATCH) "Matching on TMDB" else "Taking covers from TMDB"
+            val n = NotificationCompat.Builder(context, CHANNEL)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(title)
+                .setContentText("%,d of %,d · %,d found".format(s.done, s.total, s.found))
+                .setProgress(s.total, s.done, false)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(open(context))
+                .build()
+            runCatching { context.getSystemService(NotificationManager::class.java).notify(ID, n) }
+        }
+
         /** Fertig oder angehalten: eine bleibende Meldung mit dem Ergebnis. */
         fun finished(context: Context, s: BulkImport.State?) {
             s ?: return

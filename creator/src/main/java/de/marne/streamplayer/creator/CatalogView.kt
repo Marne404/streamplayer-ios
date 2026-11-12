@@ -77,9 +77,12 @@ class CatalogView(
                 while (!seen.add(k)) k = "t:" + t.id + "#" + n++
                 return k
             }
+            // Das Schild „No TMDB“ nur, wenn es etwas unterscheidet – nicht an jeder Zeile, wenn alle so sind.
+            val unlinkedCount = ofKind.count(::needsTmdb)
+            val mark = filter != Filter.NO_TMDB && unlinkedCount in 1 until ofKind.size
             fun section(items: List<CatalogTitle>) {
                 items.forEachIndexed { i, t ->
-                    rows += Row.Item(t, key(t), summary(t), needsTmdb(t), first = i == 0, last = i == items.lastIndex)
+                    rows += Row.Item(t, key(t), summary(t), mark && needsTmdb(t), first = i == 0, last = i == items.lastIndex)
                 }
             }
             if (sort == Sort.AZ) {
@@ -103,7 +106,7 @@ class CatalogView(
                 series = c.titles.count { it.type == CatalogType.SERIES },
                 movies = c.titles.count { it.type == CatalogType.MOVIE },
                 total = ofKind.size,
-                unlinked = ofKind.count(::needsTmdb),
+                unlinked = unlinkedCount,
                 siteInfo = ofKind.count(::hasSiteInfo),
                 rows = rows,
                 letters = letters,
@@ -134,52 +137,110 @@ class CatalogView(
 }
 
 /**
- * „Cover & Text von TMDB“ für viele Titel. Läuft in der App, nicht im Bildschirm: Bei Tausenden
- * Titeln dauert das lange, und früher brach es ab, sobald man einen Titel zum Bearbeiten öffnete.
+ * TMDB für viele Titel auf einmal: Cover & Text nachziehen ([Mode.COVERS]) oder Titel ohne TMDB
+ * automatisch zuordnen ([Mode.MATCH]). Läuft in der App, nicht im Bildschirm (früher brach es ab,
+ * sobald man einen Titel öffnete), und hält sie über den Dienst der Linkliste am Leben. Was
+ * fertig ist, steht sofort im Katalog – abgebrochen, noch einmal tippen: weiter mit dem Rest.
  */
 class TmdbFill(private val app: CreatorApp) {
-    data class State(val done: Int, val total: Int)
+    enum class Mode { COVERS, MATCH }
+
+    data class State(val mode: Mode, val done: Int, val total: Int, val found: Int)
 
     private val _state = MutableStateFlow<State?>(null)
     val state: StateFlow<State?> = _state.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var job: Job? = null
 
-    fun start(ids: List<String>) {
-        if (job?.isActive == true || ids.isEmpty()) return
-        _state.value = State(0, ids.size)
+    val running: Boolean get() = job?.isActive == true
+
+    fun start(ids: List<String>, mode: Mode) {
+        if (running || ids.isEmpty()) return
+        _state.value = State(mode, 0, ids.size, 0)
+        if (!app.imports.bulk.running) BulkService.start(app)
         job = scope.launch {
-            var ok = 0
-            var tried = 0
+            val next = java.util.concurrent.atomic.AtomicInteger(0)
+            val done = java.util.concurrent.atomic.AtomicInteger(0)
+            val found = java.util.concurrent.atomic.AtomicInteger(0)
+            fun publish() {
+                _state.value = State(mode, done.get(), ids.size, found.get())
+                BulkService.fillProgress(app, _state.value)
+            }
             try {
-                for (id in ids) {
-                    val t = app.store.get(id)
-                    val tid = t?.tmdb?.id
-                    if (t != null && tid != null) {
-                        val kind = if (t.type == CatalogType.SERIES) Tmdb.Kind.TV else Tmdb.Kind.MOVIE
-                        runCatching { app.tmdb.details(kind, tid) }.getOrNull()?.let { d ->
-                            // Neu aus dem Speicher holen: der Titel kann inzwischen bearbeitet sein.
-                            app.store.get(id)?.let { cur -> app.store.put(fromTmdb(cur, d.result)); ok++ }
+                // Drei gleichzeitig: 11 000 Titel einzeln wären über eine Stunde; TMDB erlaubt deutlich mehr.
+                List(3) {
+                    launch {
+                        while (true) {
+                            val i = next.getAndIncrement()
+                            if (i >= ids.size) break
+                            if (one(ids[i], mode)) found.incrementAndGet()
+                            done.incrementAndGet()
+                            publish()
+                            delay(120) // TMDB nicht hetzen
                         }
-                        delay(250) // TMDB nicht hetzen
                     }
-                    tried++
-                    _state.value = State(tried, ids.size)
-                }
+                }.forEach { it.join() }
             } finally {
+                val n = done.get()
+                val f = found.get()
                 _state.value = null
-                val msg = when {
-                    tried < ids.size -> "Stopped – %,d of %,d updated.".format(ok, ids.size)
-                    ok == ids.size -> "%,d titles updated.".format(ok)
-                    else -> "%,d of %,d updated – TMDB didn't answer for the rest.".format(ok, ids.size)
-                }
+                if (!app.imports.bulk.running) BulkService.stop(app)
                 // Über die App melden: Der Bildschirm, der es gestartet hat, ist vielleicht längst zu.
-                app.imports.notice.value = msg
+                app.imports.notice.value = when {
+                    mode == Mode.MATCH && n < ids.size -> "Stopped – %,d of %,d checked, %,d matched. Tap again for the rest.".format(n, ids.size, f)
+                    mode == Mode.MATCH -> "%,d of %,d matched on TMDB. The rest: pick by hand.".format(f, ids.size)
+                    n < ids.size -> "Stopped – %,d of %,d updated.".format(f, ids.size)
+                    f == ids.size -> "%,d titles updated.".format(f)
+                    else -> "%,d of %,d updated – TMDB didn't answer for the rest.".format(f, ids.size)
+                }
+            }
+        }
+    }
+
+    /** Ein Titel. Rückgabe: geändert (zugeordnet bzw. aktualisiert). */
+    private suspend fun one(id: String, mode: Mode): Boolean {
+        val t = app.store.get(id) ?: return false
+        val kind = if (t.type == CatalogType.SERIES) Tmdb.Kind.TV else Tmdb.Kind.MOVIE
+        return when (mode) {
+            Mode.COVERS -> {
+                val tid = t.tmdb?.id ?: return false
+                val d = runCatching { app.tmdb.details(kind, tid) }.getOrNull() ?: return false
+                // Neu aus dem Speicher holen: der Titel kann inzwischen bearbeitet sein.
+                app.store.get(id)?.let { cur -> app.store.put(fromTmdb(cur, d.result)); true } ?: false
+            }
+            Mode.MATCH -> {
+                if (t.tmdb?.id != null || t.title.isBlank()) return false
+                val results = runCatching {
+                    app.tmdb.search(t.title, kind, t.year).ifEmpty { if (t.year != null) app.tmdb.search(t.title, kind) else emptyList() }
+                }.getOrNull() ?: return false
+                val r = pickMatch(t.title, t.year, results) ?: return false
+                app.store.get(id)?.takeIf { it.tmdb?.id == null }?.let { cur ->
+                    app.store.put(fromTmdb(cur.copy(tmdb = de.marne.streamplayer.catalog.TmdbRef(r.id), year = cur.year ?: r.year), r))
+                    true
+                } ?: false
             }
         }
     }
 
     fun stop() {
         job?.cancel()
+    }
+
+    companion object {
+        /**
+         * Sicher genug für eine Zuordnung ohne Nachfrage? Nur bei gleichem Namen (ohne Akzente und
+         * Satzzeichen) wie der TMDB-Titel oder dessen Originaltitel und passendem Jahr (±1) – oder wenn
+         * TMDB bei bekanntem Jahr genau einen Treffer mit genau diesem Jahr hat. Alles andere bleibt
+         * unter „No TMDB“ zum Aussuchen: lieber kein Cover als das einer fremden Serie.
+         */
+        fun pickMatch(title: String, year: Int?, results: List<Tmdb.Result>): Tmdb.Result? {
+            val want = CatalogView.fold(title)
+            if (want.isEmpty()) return null
+            fun yearOk(r: Tmdb.Result) = year == null || r.year == null || kotlin.math.abs(r.year!! - year) <= 1
+            results.take(8).firstOrNull { r ->
+                yearOk(r) && (CatalogView.fold(r.title) == want || r.originalTitle?.let(CatalogView::fold) == want)
+            }?.let { return it }
+            return results.singleOrNull()?.takeIf { year != null && it.year == year }
+        }
     }
 }
