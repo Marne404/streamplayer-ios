@@ -77,6 +77,13 @@ for spec in "${TODO[@]}"; do
   IFS=: read -r module prefix stem dist <<<"$spec"
   code=$(code_of "$module"); name=$(name_of "$module")
   apk="$WORK/src/$module/build/outputs/apk/release/$module-release.apk"
+  store=""
+  # Der Player hat zwei Varianten: standalone (Selbst-Update, kommt hier auf den Worker) und store
+  # (für Atelier; landet nur in dist/, von dort holt sie ~/claude/appstore/tools/publish.sh).
+  if [ "$module" = app ]; then
+    apk="$WORK/src/app/build/outputs/apk/standalone/release/app-standalone-release.apk"
+    store="$WORK/src/app/build/outputs/apk/store/release/app-store-release.apk"
+  fi
   mkdir -p "$STAGE/$prefix"
   # In Stücken: eine Datei des Workers darf höchstens 25 MB groß sein.
   split -b 20M -d "$apk" "$STAGE/$prefix$stem-$code.part"
@@ -84,6 +91,7 @@ for spec in "${TODO[@]}"; do
   printf '{"versionCode":%s,"versionName":"%s","size":%s,"sha256":"%s","parts":[%s]}\n' \
     "$code" "$name" "$(stat -c %s "$apk")" "$(sha256sum "$apk" | cut -d' ' -f1)" "$parts" > "$STAGE/${prefix}version.json"
   cp "$apk" "dist/$dist-$name.apk"
+  [ -n "$store" ] && cp "$store" "dist/$dist-store-$name.apk"
 done
 
 (cd update && npx --yes wrangler deploy)

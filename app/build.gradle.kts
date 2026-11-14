@@ -44,8 +44,8 @@ android {
         applicationId = "de.marne.streamplayer"
         minSdk = 29
         targetSdk = 36
-        versionCode = 31
-        versionName = "1.14.0"
+        versionCode = 32
+        versionName = "1.15.0"
     }
 
     buildTypes {
@@ -76,6 +76,22 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // Zwei Varianten derselben App (gleiche Paket-ID, gleiche Signatur – man kann wechseln):
+    //   standalone  aktualisiert sich selbst über den Worker (tools/publish.sh → streamplayer-update)
+    //   store       für Atelier: lädt nichts selbst, fragt Atelier und schickt zum Aktualisieren dorthin
+    flavorDimensions += "channel"
+    productFlavors {
+        create("standalone") {
+            dimension = "channel"
+            isDefault = true
+            buildConfigField("Boolean", "STORE", "false")
+        }
+        create("store") {
+            dimension = "channel"
+            buildConfigField("Boolean", "STORE", "true")
+        }
     }
 }
 

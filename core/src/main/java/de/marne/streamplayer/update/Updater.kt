@@ -26,6 +26,8 @@ sealed interface UpdateState {
     data object None : UpdateState
     data class Downloading(val version: String, val progress: Float) : UpdateState
     data class Ready(val version: String) : UpdateState
+    /** Store-Variante: neuere Version liegt in Atelier, aktualisiert wird dort. */
+    data class InStore(val version: String) : UpdateState
 }
 
 /**
@@ -43,6 +45,14 @@ object Updater {
     private var versionUrl = ""
 
     fun configure(versionJsonUrl: String) { versionUrl = versionJsonUrl }
+
+    /**
+     * Store-Variante (Flavor „store“): nichts selbst laden, sondern Atelier fragen ([AtelierLink]) und
+     * zum Aktualisieren dorthin schicken. Die Standalone-Variante ruft stattdessen [configure].
+     */
+    fun configureStore() { storeMode = true }
+    private var storeMode = false
+    val isStore get() = storeMode
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow<UpdateState>(UpdateState.None)
     val state: StateFlow<UpdateState> = _state.asStateFlow()
@@ -51,7 +61,7 @@ object Updater {
     private val _offer = MutableStateFlow(false)
     val offer: StateFlow<Boolean> = _offer.asStateFlow()
 
-    val enabled get() = versionUrl.isNotEmpty()
+    val enabled get() = versionUrl.isNotEmpty() || storeMode
     private var checked = false
 
     private fun apk(context: Context) = File(File(context.cacheDir, "update").apply { mkdirs() }, "update.apk")
@@ -81,7 +91,22 @@ object Updater {
     suspend fun checkNow(context: Context): CheckResult =
         if (!enabled) CheckResult.UpToDate else look(context.applicationContext)
 
-    private suspend fun look(app: Context): CheckResult = lock.withLock {
+    private suspend fun look(app: Context): CheckResult = if (storeMode) lookStore(app) else lookSelf(app)
+
+    /** Store-Variante: Atelier kennt die neueste Version. Ohne Atelier gilt „aktuell“ – es gibt ja keinen Weg zum Update. */
+    private suspend fun lookStore(app: Context): CheckResult = lock.withLock {
+        val latest = withContext(Dispatchers.IO) { AtelierLink.latest(app) }
+        if (latest != null && latest.code > currentCode(app)) {
+            _state.value = UpdateState.InStore(latest.name)
+            _offer.value = true
+            CheckResult.Found
+        } else {
+            _state.value = UpdateState.None
+            CheckResult.UpToDate
+        }
+    }
+
+    private suspend fun lookSelf(app: Context): CheckResult = lock.withLock {
         // Schon geladen, aber „Später“ getippt: wieder anbieten.
         (_state.value as? UpdateState.Ready)?.takeIf { apk(app).exists() }?.let {
             _offer.value = true
@@ -172,6 +197,7 @@ object Updater {
      * installieren“ – dann führt der Knopf zuerst dorthin, und das Angebot bleibt stehen.
      */
     fun install(context: Context) {
+        if (_state.value is UpdateState.InStore) { _offer.value = false; AtelierLink.open(context); return }
         val file = apk(context)
         if (!file.exists()) { _state.value = UpdateState.None; _offer.value = false; return }
         if (!context.packageManager.canRequestPackageInstalls()) {

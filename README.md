@@ -416,6 +416,21 @@ git config core.hooksPath tools/git-hooks
 - Testen ohne Worker: `./gradlew :app:assembleRelease -Pupdate.url=http://10.0.2.2:8766` (bzw.
   `:creator:…`) und `version.json` samt Stücken lokal ausliefern (`creator/` als Unterordner).
 
+## Zwei Varianten: standalone und Atelier
+
+Der Player gibt es in zwei Flavors mit gleicher Paket-ID und gleicher Signatur (man kann wechseln,
+die Daten bleiben):
+
+- **standalone** – aktualisiert sich selbst über `streamplayer-update` (siehe „Selbst-Update“).
+- **store** – für Atelier, Marnes App-Store (`~/claude/appstore`). Lädt nichts selbst: `Updater`
+  fragt beim Start Atelier über dessen ContentProvider (`core/…/update/AtelierLink.kt`), und gibt es
+  eine neuere Version, öffnet „In Atelier öffnen“ den Eintrag dort. Ohne die Erlaubnis
+  „Apps installieren“.
+
+`tools/publish.sh` baut beide: standalone geht auf den Worker und nach `dist/streamplayer-<v>.apk`,
+store nur nach `dist/streamplayer-store-<v>.apk`. Von dort holt sie Ateliers `tools/publish.sh`.
+Creator und Admin haben nur die standalone-Variante.
+
 ## Konto, Profile, Abgleich (Firebase)
 
 Profile wie bei Netflix: eine gemeinsame Bibliothek, jedes Profil mit eigenem Fortschritt.

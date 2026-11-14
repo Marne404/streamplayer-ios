@@ -31,9 +31,27 @@ import kotlinx.coroutines.launch
 fun UpdateOffer(appName: String) {
     val offer by Updater.offer.collectAsStateWithLifecycle()
     val state by Updater.state.collectAsStateWithLifecycle()
-    val ready = state as? UpdateState.Ready ?: return
     if (!offer) return
     val context = LocalContext.current
+    (state as? UpdateState.InStore)?.let { s ->
+        AlertDialog(
+            onDismissRequest = Updater::later,
+            title = { Text(tr("$appName ${s.version} ist da.", "$appName ${s.version} is here.")) },
+            text = {
+                Text(
+                    tr("Diese Fassung kommt aus Atelier und wird dort aktualisiert. Deine Daten bleiben.",
+                        "This version comes from Atelier and is updated there. Your data stays."),
+                    color = Palette.muted,
+                )
+            },
+            confirmButton = { QuietButton(tr("In Atelier öffnen", "Open in Atelier")) { Updater.install(context) } },
+            dismissButton = { QuietButton(tr("Später", "Later"), color = Palette.muted, onClick = Updater::later) },
+            containerColor = Palette.bg,
+            shape = RoundedCornerShape(28.dp),
+        )
+        return
+    }
+    val ready = state as? UpdateState.Ready ?: return
     AlertDialog(
         onDismissRequest = Updater::later,
         title = { Text(tr("$appName ${ready.version} ist da.", "$appName ${ready.version} is here.")) },
@@ -74,10 +92,12 @@ fun UpdateRow() {
                 tr("Lädt ${u.version} … $percent %", "Downloading ${u.version} … $percent%")
             }
             is UpdateState.Ready -> tr("${u.version} ist bereit – tippen zum Installieren", "${u.version} is ready – tap to install")
+            is UpdateState.InStore -> tr("${u.version} ist in Atelier – tippen zum Aktualisieren", "${u.version} is in Atelier – tap to update")
             UpdateState.None -> when (note) {
                 Updater.CheckResult.UpToDate -> tr("Version $version ist die neueste.", "Version $version is the latest.")
                 Updater.CheckResult.Failed -> tr("Keine Verbindung zum Update-Server.", "Can’t reach the update server.")
-                else -> if (Updater.enabled) tr("Version $version · prüft bei jedem Start", "Version $version · checks on every launch")
+                else -> if (Updater.isStore) tr("Version $version · Updates über Atelier", "Version $version · updates via Atelier")
+                else if (Updater.enabled) tr("Version $version · prüft bei jedem Start", "Version $version · checks on every launch")
                 else tr("Version $version · Testversion, ohne Updates", "Version $version · test build, no updates")
             }
         },
@@ -85,7 +105,7 @@ fun UpdateRow() {
         showChevron = false,
         trailing = if (checking) ({ CircularProgressIndicator(Modifier.size(22.dp), color = Palette.text, strokeWidth = 2.dp) }) else null,
         onClick = {
-            if (update is UpdateState.Ready) Updater.install(context)
+            if (update is UpdateState.Ready || update is UpdateState.InStore) Updater.install(context)
             else if (!checking) scope.launch {
                 checking = true
                 // Immer kurz „prüfen“ – auch wenn die letzte Antwort noch gilt und gar keine Anfrage rausgeht.

@@ -9,6 +9,12 @@
     <!-- Selbst-Update: die geladene APK an Androids Installationsdialog geben. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Store-Variante: Atelier nach Updates fragen und dorthin weiterleiten. -->
+    <queries>
+        <package android:name="de.marne.atelier" />
+        <provider android:authorities="de.marne.atelier.updates" />
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="false"
