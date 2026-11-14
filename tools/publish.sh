@@ -68,7 +68,9 @@ cp app/google-services.json "$WORK/src/app/"
 TASKS=(:core:testDebugUnitTest)
 for spec in "${TODO[@]}"; do
   IFS=: read -r module _ <<<"$spec"
-  TASKS+=(":$module:testDebugUnitTest" ":$module:assembleRelease")
+  # Der Player hat Varianten (standalone/store): dort heißt der Test testStandaloneDebugUnitTest.
+  if [ "$module" = app ]; then TASKS+=(":app:testStandaloneDebugUnitTest"); else TASKS+=(":$module:testDebugUnitTest"); fi
+  TASKS+=(":$module:assembleRelease")
 done
 (cd "$WORK/src" && ./gradlew -q "${TASKS[@]}" -Pupdate.url="$BASE" -Pstats.noToken=1)
 
