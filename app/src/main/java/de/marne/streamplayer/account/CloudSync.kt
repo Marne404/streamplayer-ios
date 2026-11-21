@@ -1,5 +1,9 @@
 package de.marne.streamplayer.account
 
+import de.marne.streamplayer.library.fromJson
+
+import de.marne.streamplayer.library.toJson
+
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory

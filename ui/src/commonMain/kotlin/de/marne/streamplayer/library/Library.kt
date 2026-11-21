@@ -1,7 +1,7 @@
 package de.marne.streamplayer.library
 
 import de.marne.streamplayer.ui.tr
-import org.json.JSONObject
+import de.marne.streamplayer.ui.nowMillis
 
 /**
  * Eine Bibliothek: eigene Welt mit eigener Startseite, eigenen Regalen und eigenem Weiterschauen
@@ -14,7 +14,7 @@ data class Library(
     val name: String,
     /** Farbe als Index in die Profilfarben (ProfileColors) – markiert die Bibliothek im Wechsler. */
     val color: Int = 0,
-    val createdAt: Long = System.currentTimeMillis(),
+    val createdAt: Long = nowMillis(),
     /** Eigene Bibliothek, die geteilt ist: ihre Titel liegen gespiegelt unter shared/{id}. */
     val shared: Boolean = false,
     /** Gültiger Einladungscode (nur der Besitzer kennt ihn). */
@@ -28,27 +28,9 @@ data class Library(
 
     val label: String get() = name.ifBlank { tr("Meine Bibliothek", "My Library") }
 
-    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("color", color).put("createdAt", createdAt).apply {
-        if (shared) put("shared", true)
-        invite?.let { put("invite", it) }
-        if (joined) put("joined", true)
-        owner?.let { put("owner", it) }
-    }
-
     companion object {
         const val MAIN = "main"
         /** Auswahl „Alle“: kein Filter. Keine echte Bibliothek. */
         const val ALL = "*"
-
-        fun fromJson(o: JSONObject) = Library(
-            id = o.getString("id"),
-            name = o.optString("name"),
-            color = o.optInt("color"),
-            createdAt = o.optLong("createdAt"),
-            shared = o.optBoolean("shared"),
-            invite = o.optString("invite").takeIf { it.isNotBlank() },
-            joined = o.optBoolean("joined"),
-            owner = o.optString("owner").takeIf { it.isNotBlank() },
-        )
     }
 }
