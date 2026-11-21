@@ -113,6 +113,8 @@ internal class ShellEdits(
     val setWatched: ((List<String>, Boolean) -> Unit)?,
     val rename: ((LibTitle, String) -> Unit)?,
     val remove: ((LibTitle) -> Unit)?,
+    /** Fortschritt beim Abspielen (Konto: wird gespeichert, Beispieltitel: nur im Speicher). */
+    val progress: de.marne.streamplayer.ios.play.ProgressSink,
 )
 
 /**
@@ -139,6 +141,17 @@ internal fun LibraryShell(
     var collecting by remember { mutableStateOf<LibTitle?>(null) }
     var activeLibrary by remember { mutableStateOf(Library.ALL) }
     var pickingLibrary by remember { mutableStateOf(false) }
+    var playing by remember { mutableStateOf<de.marne.streamplayer.ios.play.PlayRequest?>(null) }
+
+    /** Wie auf Android: Serie ohne Folge → die nächste fällige; angefangen → dort weiter. */
+    fun playRequest(t: LibTitle, ep: de.marne.streamplayer.library.Episode?): de.marne.streamplayer.ios.play.PlayRequest? {
+        val e = if (t.kind == TitleKind.SERIES) ep ?: de.marne.streamplayer.library.Shelves.nextFor(t, data.progress)?.first ?: t.episodes().firstOrNull() else null
+        if (t.kind == TitleKind.SERIES && e == null) return null
+        val key = if (e != null) Keys.episode(t, e) else Keys.movie(t)
+        val p = data.progress[key]
+        val start = if (p != null && !p.finished && p.positionMs > Progress.MIN_RESUME_MS) p.positionMs else 0L
+        return de.marne.streamplayer.ios.play.PlayRequest(t, e, key, start)
+    }
 
     fun push(r: Route) { forward = true; stack.add(r) }
     fun pop() { if (stack.isNotEmpty()) { forward = false; stack.removeAt(stack.lastIndex) } }
@@ -159,8 +172,8 @@ internal fun LibraryShell(
         newCollection = { if (edits.toggleList != null) host.createCollection(tr("Neue Sammlung", "New collection")) else readOnly() },
         settings = onSettings,
         preview = { quick = it },
-        play = { t, _ -> later(tr("Abspielen von „${t.title}“", "Playing “${t.title}”")) },
-        playContinue = { later(tr("Abspielen", "Playing")) },
+        play = { t, ep -> playing = playRequest(t, ep) ?: run { onNotice(tr("Keine Folge zum Abspielen.", "No episode to play.")); null } },
+        playContinue = { c -> playing = playRequest(c.title, c.episode) },
         download = { _, _ -> later(tr("Laden", "Downloading")) },
         offlineMenu = { _, _ -> later(tr("Laden", "Downloading")) },
         downloadSeason = { _, _ -> later(tr("Laden", "Downloading")) },
@@ -201,12 +214,19 @@ internal fun LibraryShell(
         Box(Modifier.fillMaxSize().background(Palette.bg)) {
             Pages(tab, stack.lastOrNull(), forward, state, actions, detail, onMissing = ::pop)
             AnimatedVisibility(
-                visible = stack.isEmpty(),
+                visible = stack.isEmpty() && playing == null,
                 enter = fadeIn(tween(220)),
                 exit = fadeOut(tween(160)),
                 modifier = Modifier.align(Alignment.BottomCenter),
             ) {
                 FloatingNav(tab) { tab = it }
+            }
+            playing?.let { req ->
+                de.marne.streamplayer.ios.play.PlayFlow(
+                    req, edits.progress,
+                    onNext = { e -> playing = playRequest(req.title, e)?.copy(startMs = 0) },
+                    onClose = { playing = null },
+                )
             }
             notice?.let { text ->
                 LaunchedEffect(text) { delay(2800); onNotice(null) }
@@ -274,6 +294,11 @@ internal fun DemoLibrary(onProfiles: () -> Unit, onSettings: () -> Unit) {
             setWatched = { keys, w -> progress = if (w) progress + keys.associateWith { Progress(1, 1, true, nowMillis(), 0) } else progress - keys.toSet() },
             rename = { t, name -> titles = titles.map { if (it.id == t.id) it.copy(title = name) else it } },
             remove = { t -> titles = titles.filterNot { it.id == t.id } },
+            progress = { key, pos, dur, ended, played ->
+                val finished = ended || (dur > 0 && dur - pos < maxOf(120_000L, dur / 20))
+                val before = progress[key]?.countedMs ?: 0
+                progress = progress + (key to Progress(pos, dur, finished, nowMillis(), before + played))
+            },
         ),
         onProfiles = onProfiles,
         onSettings = onSettings,
