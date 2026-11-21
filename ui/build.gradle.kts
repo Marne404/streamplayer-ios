@@ -15,7 +15,13 @@ kotlin {
         minSdk = 29
         androidResources { enable = true }
     }
-    iosArm64()
+    iosArm64 {
+        // iPad-App (ios/): XcodeGen-Hülle, gebaut auf GitHub Actions (macOS).
+        binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+        }
+    }
 
     compilerOptions {
         optIn.addAll(

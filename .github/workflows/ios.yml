@@ -1,0 +1,156 @@
+# iPad-App ohne Mac: baut ios/ (XcodeGen-Hülle um das Kotlin-Framework aus :ui) auf einem
+# macOS-Runner, legt die unsignierte .ipa als Release ab und veröffentlicht die SideStore-Quelle
+# auf GitHub Pages. Läuft nur im öffentlichen Build-Repo – im privaten Repo kostet er nichts.
+name: iPad-App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - 'ui/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ipad
+  cancel-in-progress: true
+
+env:
+  BUILD: ${{ github.run_number }}
+  VERSION: 0.1.${{ github.run_number }}
+
+jobs:
+  build:
+    if: github.repository == 'Marne404/streamplayer-ios'
+    runs-on: macos-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Kotlin/Native- und Gradle-Zwischenspeicher
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.konan
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ipad-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties', '**/*.gradle.kts') }}
+          restore-keys: ipad-${{ runner.os }}-
+
+      - name: Werkzeuge
+        run: |
+          xcodebuild -version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          brew install xcodegen
+
+      - name: Xcode-Projekt erzeugen
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: App bauen (unsigniert)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Streamplayer.xcodeproj -scheme Streamplayer \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            build 2>&1 | tee build.log | grep -E '(error|BUILD (SUCCEEDED|FAILED)|\*\* )' || true
+          test -d build/Build/Products/Release-iphoneos/Streamplayer.app || { tail -n 200 build.log; exit 1; }
+
+      - name: IPA packen
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Streamplayer.app Payload/
+          zip -qry ../Streamplayer.ipa Payload
+          ls -la ../Streamplayer.ipa
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' -c 'Print :CFBundleVersion' -c 'Print :CFBundleIdentifier' Payload/Streamplayer.app/Info.plist
+
+      - name: Build-Protokoll sichern
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log
+          path: ios/build.log
+          if-no-files-found: ignore
+
+      - name: Release anlegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "ipad-$BUILD" Streamplayer.ipa \
+            --title "Streamplayer iPad $VERSION" \
+            --notes "Gebaut aus ${GITHUB_SHA::7}. Installation über SideStore." \
+            --latest
+
+      - name: SideStore-Quelle und Seiten
+        run: |
+          mkdir -p _site
+          cp -R ios/pages/. _site/
+          python3 - <<'PY'
+          import json, os, datetime
+          base = "https://marne404.github.io/streamplayer-ios/"
+          build = os.environ["BUILD"]; version = os.environ["VERSION"]
+          size = os.path.getsize("Streamplayer.ipa")
+          source = {
+            "name": "Streamplayer iPad",
+            "identifier": "io.github.marne404.streamplayer-ios",
+            "sourceURL": base + "source.json",
+            "iconURL": base + "icon.png",
+            "website": base,
+            "tintColor": "#8E6F43",
+            "apps": [{
+              "name": "Streamplayer",
+              "bundleIdentifier": "de.marne.streamplayer.ipad",
+              "developerName": "Marne",
+              "subtitle": "Deine Mediathek auf dem iPad",
+              "localizedDescription": "Dieselbe Oberfläche wie die Android-App (Ivory & Ink, Compose Multiplatform). Vorschau mit Beispieltiteln.",
+              "iconURL": base + "icon.png",
+              "tintColor": "#8E6F43",
+              "versions": [{
+                "version": version,
+                "buildVersion": build,
+                "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "size": size,
+                "downloadURL": f"https://github.com/Marne404/streamplayer-ios/releases/download/ipad-{build}/Streamplayer.ipa",
+                "minOSVersion": "17.0",
+                "localizedDescription": f"Build {build}"
+              }],
+              "appPermissions": {"entitlements": [], "privacy": {}}
+            }],
+            "news": []
+          }
+          json.dump(source, open("_site/source.json", "w"), ensure_ascii=False, indent=2)
+          print(json.dumps(source["apps"][0]["versions"][0], indent=2))
+          PY
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.repository == 'Marne404/streamplayer-ios'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
