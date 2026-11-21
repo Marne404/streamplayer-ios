@@ -21,7 +21,7 @@ struct StreamplayerApp: App {
 /// Die ganze Oberfläche kommt aus Kotlin (Modul :ui, Compose Multiplatform) – dieselben Screens wie auf Android.
 struct ComposeView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        PreviewAppKt.MainViewController()
+        IpadAppKt.MainViewController()
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}

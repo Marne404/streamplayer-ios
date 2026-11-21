@@ -17,6 +17,14 @@ kotlin {
     }
     iosArm64 {
         // iPad-App (ios/): XcodeGen-Hülle, gebaut auf GitHub Actions (macOS).
+        compilerOptions {
+            optIn.addAll(
+                "kotlinx.cinterop.ExperimentalForeignApi",
+                "kotlinx.cinterop.BetaInteropApi",
+                "kotlin.io.encoding.ExperimentalEncodingApi",
+                "kotlin.time.ExperimentalTime",
+            )
+        }
         binaries.framework {
             baseName = "Shared"
             isStatic = true
@@ -42,6 +50,8 @@ kotlin {
             api(libs.coil.compose)
             api("org.jetbrains.kotlinx:kotlinx-coroutines-core:${libs.versions.coroutines.get()}")
             api("org.jetbrains.kotlinx:kotlinx-datetime:${libs.versions.kotlinxDatetime.get()}")
+            // JSON aus dem Konto lesen (SyncJson) – ohne org.json, das es nur auf Android gibt.
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
         }
         iosMain.dependencies {
             implementation("io.coil-kt.coil3:coil-network-ktor3:${libs.versions.coil.get()}")
