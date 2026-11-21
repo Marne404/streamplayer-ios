@@ -1,5 +1,7 @@
 package de.marne.streamplayer.library
 
+import de.marne.streamplayer.ui.screenHeightDp
+import de.marne.streamplayer.ui.screenWidthDp
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,6 +127,7 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     // Noch ohne TMDB-Daten oder ohne Folgen: jetzt holen, an der Warteschlange vorbei (bei großen
     // Bibliotheken wartet sie sonst lange, und Folgen holt sie dort gar nicht).
     val host = LocalLibraryHost.current
+    val simColumns = maxOf(3, (screenWidthDp() - 40 + 12) / (140 + 12))
     androidx.compose.runtime.LaunchedEffect(t.id) { host.prioritizeEnrich(t.id) }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
@@ -163,10 +166,10 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
                     items(episodes.filter { it.season == season }, key = { "e${it.season}:${it.number}" }) { e ->
                         EpisodeRow(t, e, progress[Keys.episode(t, e)], state.offline(t, Keys.episode(t, e)), actions, onMenu = { episodeMenu = e })
                     }
-                } else similarGrid(similar, state, actions)
+                } else similarGrid(similar, state, actions, simColumns)
             } else if (similar.isNotEmpty()) {
                 item(key = "simtitle") { ShelfTitle(tr("Ähnliche Titel", "More like this"), null) }
-                similarGrid(similar, state, actions)
+                similarGrid(similar, state, actions, simColumns)
             }
         }
 
@@ -229,7 +232,11 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
 /** Randloses Bild; oben abgedunkelt für Statusleiste und Knöpfe, unten in den Grund verlaufend. */
 @Composable
 private fun DetailHero(t: LibTitle, origin: String?) {
-    Box(Modifier.fillMaxWidth().aspectRatio(16f / 11f)) {
+    // 16:11 über die volle Breite – auf breiten Bildschirmen (iPad quer) höchstens 62 % der Höhe,
+    // sonst füllt das Bild den ganzen Schirm und der Titel liegt unter dem Rand. Handy: unverändert.
+    val w = screenWidthDp()
+    val h = minOf(w * 11f / 16f, screenHeightDp() * 0.62f)
+    Box(Modifier.fillMaxWidth().then(if (h < w * 11f / 16f) Modifier.height(h.dp) else Modifier.aspectRatio(16f / 11f))) {
         // Das angetippte Cover landet hier: dieselbe Ebene, die wandert und wächst (sharedCover).
         // Die Verläufe gehören zum Bild und fliegen mit: daneben lägen sie unter dem fliegenden
         // Cover und erschienen erst bei der Landung – als harter Schatten, der aufploppt.
@@ -399,7 +406,7 @@ private fun Tabs(labels: List<String>, selected: Int, onSelect: (Int) -> Unit, m
 }
 
 /** Ähnliche als Raster in der Liste: drei Poster je Zeile. */
-private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: List<LibTitle>, state: LibState, actions: LibActions) {
+private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: List<LibTitle>, state: LibState, actions: LibActions, columns: Int) {
     if (similar.isEmpty()) {
         item(key = "nosim") {
             Text(
@@ -412,11 +419,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.similarGrid(similar: 
         }
         return
     }
-    val rows = similar.chunked(3)
+    // Handy: drei Spalten. Breiter Bildschirm (iPad): so viele, wie mit mindestens 140 dp passen.
+    val rows = similar.chunked(columns)
     items(rows.size, key = { "sim$it" }) { i ->
         Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             rows[i].forEach { s -> Box(Modifier.weight(1f)) { TitlePoster(s, state, actions, width = 400.dp, origin = "sim") } }
-            repeat(3 - rows[i].size) { Spacer(Modifier.weight(1f)) }
+            repeat(columns - rows[i].size) { Spacer(Modifier.weight(1f)) }
         }
     }
 }

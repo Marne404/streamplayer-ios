@@ -7,4 +7,7 @@ import java.text.Normalizer
 @Composable
 actual fun screenHeightDp(): Int = LocalConfiguration.current.screenHeightDp
 
+@Composable
+actual fun screenWidthDp(): Int = LocalConfiguration.current.screenWidthDp
+
 actual fun decomposeAccents(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD)
