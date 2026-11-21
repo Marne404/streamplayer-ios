@@ -68,4 +68,16 @@ class SyncJsonParityTest {
         val text = ProgressMerge.toJson(prog).toString()
         assertEquals(ProgressMerge.fromJson(JSONObject(text)), SyncJson.progress(text))
     }
+
+    /** Was das iPad schreibt, muss Android genauso lesen wie seine eigenen Texte. */
+    @Test fun writesReadByAndroid() {
+        val p = Profile("main", "Marne „M“", 3, 9, listOf("a", "b"), "pbkdf2|20000|x|y", listOf(TitleCollection("c", "Abend", listOf("a"), 4)))
+        for (q in listOf(p, p.copy(lock = null, collections = emptyList(), list = emptyList()))) {
+            assertEquals(q, Profile.fromJson(JSONObject(SyncJson.profileText(q))))
+            assertEquals(q, SyncJson.profile(SyncJson.profileText(q)))
+        }
+        val prog = mapOf("e:t1:1:1" to Progress(1000, 2000, false, 5, 900), "m:t2" to Progress(7, 8, true, 9), "e:t1:1:2" to Progress(0, 3000, false, 11, 0))
+        assertEquals(prog, ProgressMerge.fromJson(JSONObject(SyncJson.progressText(prog))))
+        assertEquals(prog, SyncJson.progress(SyncJson.progressText(prog)))
+    }
 }

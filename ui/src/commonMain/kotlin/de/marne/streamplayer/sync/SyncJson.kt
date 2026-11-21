@@ -19,7 +19,10 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 /**
  * Liest die JSON-Texte, die die Android-App ins Konto schreibt (LibTitle.toJson & Co. mit
@@ -127,6 +130,42 @@ object SyncJson {
             k to Progress(p.long("p") ?: 0, p.long("d") ?: 0, p.bool("f") ?: false, p.long("u") ?: 0, p.long("w") ?: -1)
         }
     }.toMap()
+
+    /**
+     * Profil als Text, wie Profile.toJson auf Android (org.json lässt null-Felder weg, darum
+     * „lock“ nur mit Sperre).
+     */
+    fun profileText(p: Profile): String = buildJsonObject {
+        put("id", p.id)
+        put("name", p.name)
+        put("color", p.color)
+        put("createdAt", p.createdAt)
+        putJsonArray("list") { p.list.forEach { add(JsonPrimitive(it)) } }
+        p.lock?.let { put("lock", it) }
+        putJsonArray("collections") {
+            p.collections.forEach { c ->
+                add(buildJsonObject {
+                    put("id", c.id)
+                    put("name", c.name)
+                    putJsonArray("items") { c.items.forEach { add(JsonPrimitive(it)) } }
+                    put("createdAt", c.createdAt)
+                })
+            }
+        }
+    }.toString()
+
+    /** Fortschritt eines Titels als Text, wie ProgressMerge.toJson („w“ nur, wenn bekannt). */
+    fun progressText(map: Map<String, Progress>): String = buildJsonObject {
+        map.toList().sortedBy { it.first }.forEach { (k, p) ->
+            put(k, buildJsonObject {
+                put("p", p.positionMs)
+                put("d", p.durationMs)
+                put("f", p.finished)
+                put("u", p.updatedAt)
+                if (p.watchedMs >= 0) put("w", p.watchedMs)
+            })
+        }
+    }.toString()
 
     /** Namen der eigenen Bilder (covers/{name}), die ein Titel braucht. */
     fun coverNames(o: JsonObject): List<String> =
