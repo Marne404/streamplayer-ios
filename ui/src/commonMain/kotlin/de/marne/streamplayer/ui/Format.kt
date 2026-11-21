@@ -1,19 +1,17 @@
 package de.marne.streamplayer.ui
 
-import de.marne.streamplayer.detect.Candidate
 import de.marne.streamplayer.detect.MediaKind
 import de.marne.streamplayer.download.DlState
 import de.marne.streamplayer.download.DownloadItem
 
 /** Zahlen je nach Sprache (Komma bzw. Punkt), Mittelpunkt als Trenner, keine Ausrufezeichen. */
 object Format {
-    private val loc get() = Lang.locale
 
     fun bytes(b: Long): String = when {
-        b >= 1_000_000_000 -> String.format(loc, "%.1f GB", b / 1e9)
-        b >= 10_000_000 -> String.format(loc, "%.0f MB", b / 1e6)
-        b >= 1_000_000 -> String.format(loc, "%.1f MB", b / 1e6)
-        b >= 1_000 -> String.format(loc, "%.0f kB", b / 1e3)
+        b >= 1_000_000_000 -> "${decimal(b / 1e9, 1)} GB"
+        b >= 10_000_000 -> "${decimal(b / 1e6, 0)} MB"
+        b >= 1_000_000 -> "${decimal(b / 1e6, 1)} MB"
+        b >= 1_000 -> "${decimal(b / 1e3, 0)} kB"
         else -> "$b B"
     }
 
@@ -24,7 +22,7 @@ object Format {
         val h = s / 3600
         val m = (s % 3600) / 60
         val sec = s % 60
-        return if (h > 0) String.format(loc, "%d:%02d:%02d", h, m, sec) else String.format(loc, "%d:%02d", m, sec)
+        return if (h > 0) "$h:${two(m)}:${two(sec)}" else "$m:${two(sec)}"
     }
 
     fun percent(p: Float): String = (p * 100).toInt().let { tr("$it %", "$it%") }
@@ -37,17 +35,9 @@ object Format {
             "audio/mpeg" -> "MP3"
             "video/x-matroska" -> "MKV"
             "video/quicktime" -> "MOV"
-            else -> m.substringAfter('/').removePrefix("x-").uppercase(loc)
+            else -> m.substringAfter('/').removePrefix("x-").uppercase()
         }
     }
-
-    /** Metazeile eines Fundes: „HLS · 12:31 · bis 1080p“ */
-    fun candidateMeta(c: Candidate): String = buildList {
-        add(kind(c.kind, c.mime))
-        c.durationMs?.let { add(duration(it)) }
-        c.sizeBytes?.let { add(bytes(it)) }
-        c.variants.firstOrNull()?.label?.takeIf { it != "Original" && c.variants.size > 1 }?.let { add(tr("bis $it", "up to $it")) }
-    }.joinToString(" · ")
 
     /** Metazeile eines Downloads, passend zum Zustand. */
     fun metaLine(d: DownloadItem): String = when (d.state) {
@@ -70,6 +60,23 @@ object Format {
         }.joinToString(" · ").ifBlank { tr("Geladen", "Downloaded") }
     }
 
-    fun host(url: String): String =
-        runCatching { java.net.URI(url).host?.removePrefix("www.") }.getOrNull() ?: url
+    fun host(url: String): String = de.marne.streamplayer.library.hostOf(url) ?: url
+
+    /**
+     * Zahl mit [places] Nachkommastellen, kaufmännisch gerundet (wie früher mit Formatstring) –
+     * auf Deutsch mit Komma („7,4“), auf Englisch mit Punkt („7.4“).
+     */
+    fun decimal(x: Double, places: Int): String {
+        var f = 1L
+        repeat(places) { f *= 10 }
+        val neg = x < 0
+        val n = kotlin.math.floor(kotlin.math.abs(x) * f + 0.5).toLong()
+        val whole = (n / f).toString()
+        val sign = if (neg && n != 0L) "-" else ""
+        if (places == 0) return sign + whole
+        val frac = (n % f).toString().padStart(places, '0')
+        return sign + whole + (if (Lang.isGerman) "," else ".") + frac
+    }
+
+    private fun two(n: Long) = n.toString().padStart(2, '0')
 }

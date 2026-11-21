@@ -1,5 +1,7 @@
 package de.marne.streamplayer.browser
 
+import de.marne.streamplayer.ui.candidateMeta
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut

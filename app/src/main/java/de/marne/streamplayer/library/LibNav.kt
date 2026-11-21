@@ -26,7 +26,7 @@ class LibState(
     val titles: List<LibTitle>,
     val progress: Map<String, Progress>,
     val profile: Profile,
-    val enrich: Enricher.Status,
+    val enrich: EnrichStatus,
     val downloads: List<DownloadItem>,
     /** Downloads, deren Video noch gesucht wird: Schlüssel → sucht gerade (true) oder wartet (false). */
     val pending: Map<String, Boolean> = emptyMap(),

@@ -1,5 +1,7 @@
 package de.marne.streamplayer.browser
 
+import de.marne.streamplayer.ui.candidateMeta
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

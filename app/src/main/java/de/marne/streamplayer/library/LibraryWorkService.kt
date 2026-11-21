@@ -85,7 +85,7 @@ class LibraryWorkService : Service() {
             )
         }
 
-        private fun notification(context: Context, a: Artwork.Run?, e: Enricher.Status): Notification {
+        private fun notification(context: Context, a: Artwork.Run?, e: EnrichStatus): Notification {
             val artwork = a?.takeIf { it.running }
             val title = when {
                 artwork?.waiting == true -> tr("Bilder: warte auf Netz", "Artwork: waiting for network")
