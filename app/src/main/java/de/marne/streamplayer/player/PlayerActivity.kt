@@ -1,5 +1,9 @@
 package de.marne.streamplayer.player
 
+import de.marne.streamplayer.subtitles.listFromJson
+import de.marne.streamplayer.subtitles.listToJson
+import de.marne.streamplayer.subtitles.toConfiguration
+
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
 import android.app.RemoteAction

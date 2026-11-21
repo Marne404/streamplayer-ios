@@ -1,5 +1,7 @@
 package de.marne.streamplayer.download
 
+import de.marne.streamplayer.detect.toStreamKey
+
 import android.content.Context
 import android.os.Handler
 import android.os.Looper

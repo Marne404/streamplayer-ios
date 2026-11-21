@@ -21,40 +21,37 @@ import java.util.Locale
  * Eine Untertitel-Datei: auf der Seite gefunden (http), selbst gewählt oder mit einem Download
  * gesichert (Datei hier). [lang]: Sprachcode, wenn bekannt; [label]: Name für die Auswahl.
  */
-data class SubTrack(val url: String, val lang: String? = null, val label: String? = null, val referer: String? = null) {
+// SubTrack selbst liegt im gemeinsamen Modul :ui; hier die Android-Teile mit gleichen Namen.
 
-    /** Format aus der Endung; ohne erkennbare Endung WebVTT – das ist im Netz bei Weitem am häufigsten. */
-    val mime: String get() = Subtitles.mimeFor(url)
+/** Format aus der Endung; ohne erkennbare Endung WebVTT – das ist im Netz bei Weitem am häufigsten. */
+val SubTrack.mime: String get() = Subtitles.mimeFor(url)
 
-    val name: String get() = label?.takeIf { it.isNotBlank() }
-        ?: lang?.let { runCatching { Locale.forLanguageTag(it).getDisplayLanguage(de.marne.streamplayer.ui.Lang.locale).takeIf(String::isNotBlank) }.getOrNull() }
-        ?: url.substringBefore('?').substringAfterLast('/').ifBlank { "Untertitel" }
+val SubTrack.name: String get() = label?.takeIf { it.isNotBlank() }
+    ?: lang?.let { runCatching { Locale.forLanguageTag(it).getDisplayLanguage(de.marne.streamplayer.ui.Lang.locale).takeIf(String::isNotBlank) }.getOrNull() }
+    ?: url.substringBefore('?').substringAfterLast('/').ifBlank { "Untertitel" }
 
-    fun toJson(): JSONObject = JSONObject().put("url", url).put("lang", lang).put("label", label).put("referer", referer)
+fun SubTrack.toJson(): JSONObject = JSONObject().put("url", url).put("lang", lang).put("label", label).put("referer", referer)
 
-    /** Für den Player. [default]: gleich einschalten (selbst gewählte Datei). */
-    fun toConfiguration(default: Boolean = false): MediaItem.SubtitleConfiguration {
-        val uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
-        return MediaItem.SubtitleConfiguration.Builder(uri)
-            .setMimeType(mime)
-            .setLanguage(lang)
-            .setLabel(name)
-            .setSelectionFlags(if (default) C.SELECTION_FLAG_DEFAULT else 0)
-            .build()
-    }
-
-    companion object {
-        fun fromJson(o: JSONObject) = SubTrack(
-            o.getString("url"),
-            o.optString("lang").takeIf { it.isNotBlank() && it != "null" },
-            o.optString("label").takeIf { it.isNotBlank() && it != "null" },
-            o.optString("referer").takeIf { it.isNotBlank() && it != "null" },
-        )
-
-        fun listToJson(l: List<SubTrack>) = JSONArray().apply { l.forEach { put(it.toJson()) } }
-        fun listFromJson(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { fromJson(a.getJSONObject(it)) }
-    }
+/** Für den Player. [default]: gleich einschalten (selbst gewählte Datei). */
+fun SubTrack.toConfiguration(default: Boolean = false): MediaItem.SubtitleConfiguration {
+    val uri = if (url.startsWith("/")) Uri.fromFile(File(url)) else Uri.parse(url)
+    return MediaItem.SubtitleConfiguration.Builder(uri)
+        .setMimeType(mime)
+        .setLanguage(lang)
+        .setLabel(name)
+        .setSelectionFlags(if (default) C.SELECTION_FLAG_DEFAULT else 0)
+        .build()
 }
+
+fun SubTrack.Companion.fromJson(o: JSONObject) = SubTrack(
+    o.getString("url"),
+    o.optString("lang").takeIf { it.isNotBlank() && it != "null" },
+    o.optString("label").takeIf { it.isNotBlank() && it != "null" },
+    o.optString("referer").takeIf { it.isNotBlank() && it != "null" },
+)
+
+fun SubTrack.Companion.listToJson(l: List<SubTrack>) = JSONArray().apply { l.forEach { put(it.toJson()) } }
+fun SubTrack.Companion.listFromJson(a: JSONArray?) = if (a == null) emptyList() else List(a.length()) { fromJson(a.getJSONObject(it)) }
 
 object Subtitles {
     private val exts = setOf("vtt", "webvtt", "srt", "ass", "ssa", "ttml", "dfxp")

@@ -3,9 +3,8 @@ package de.marne.streamplayer.detect
 import androidx.media3.common.StreamKey
 
 /** Ein StreamKey ohne Parcelable-Ballast, damit er sich als JSON speichern lässt. */
-data class Key(val period: Int, val group: Int, val stream: Int) {
-    fun toStreamKey() = StreamKey(period, group, stream)
-}
+/** Key selbst liegt im gemeinsamen Modul :ui (detect/Media.kt). */
+fun Key.toStreamKey() = StreamKey(period, group, stream)
 
 /** Eine wählbare Qualität eines adaptiven Streams. */
 data class Variant(

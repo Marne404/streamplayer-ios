@@ -51,10 +51,10 @@ object Pattern {
         if (numbers.isEmpty()) return null
         val sb = StringBuilder(path)
         val last = numbers.last()
-        sb.replace(last.range.first, last.range.last + 1, placeholder(last.value, "e"))
+        sb.setRange(last.range.first, last.range.last + 1, placeholder(last.value, "e"))
         if (numbers.size >= 2) {
             val prev = numbers[numbers.size - 2]
-            sb.replace(prev.range.first, prev.range.last + 1, placeholder(prev.value, "s"))
+            sb.setRange(prev.range.first, prev.range.last + 1, placeholder(prev.value, "s"))
         }
         return head + sb
     }

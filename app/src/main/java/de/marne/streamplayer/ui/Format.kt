@@ -53,7 +53,8 @@ object Format {
     fun metaLine(d: DownloadItem): String = when (d.state) {
         DlState.RUNNING -> buildList {
             add(percent(d.progress))
-            if (d.kind == MediaKind.FILE && d.bytesTotal != null) add(tr("${bytes(d.bytesDone)} von ${bytes(d.bytesTotal)}", "${bytes(d.bytesDone)} of ${bytes(d.bytesTotal)}"))
+            val total = d.bytesTotal
+            if (d.kind == MediaKind.FILE && total != null) add(tr("${bytes(d.bytesDone)} von ${bytes(total)}", "${bytes(d.bytesDone)} of ${bytes(total)}"))
             else if (d.bytesDone > 0) add(bytes(d.bytesDone))
             if (d.speedBps > 0) add(speed(d.speedBps))
         }.joinToString(" · ")

@@ -1,7 +1,5 @@
 package de.marne.streamplayer.download
 
-import android.os.Environment
-import android.os.StatFs
 
 /**
  * Wie es um einen Film oder eine Folge auf diesem Gerät steht – ein Zustand für alle Stellen der
@@ -48,10 +46,4 @@ object Offline {
     fun bytes(d: DownloadItem): Long = if (d.state == DlState.DONE) d.bytesTotal ?: d.bytesDone else d.bytesDone
 
     fun bytes(list: List<DownloadItem>): Long = list.sumOf(::bytes)
-
-    /** Freier und gesamter Platz des geteilten Speichers, in dem „Filme/Streamplayer“ liegt. */
-    fun storage(): Pair<Long, Long>? = runCatching {
-        val s = StatFs(Environment.getExternalStorageDirectory().path)
-        s.availableBytes to s.totalBytes
-    }.getOrNull()
 }

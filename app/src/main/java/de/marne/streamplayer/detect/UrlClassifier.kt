@@ -2,7 +2,7 @@ package de.marne.streamplayer.detect
 
 import java.util.Locale
 
-enum class MediaKind { FILE, HLS, DASH }
+// MediaKind liegt im gemeinsamen Modul :ui (detect/Media.kt).
 
 /**
  * Entscheidet allein anhand von Adresse und (falls bekannt) MIME-Typ, ob eine Anfrage
