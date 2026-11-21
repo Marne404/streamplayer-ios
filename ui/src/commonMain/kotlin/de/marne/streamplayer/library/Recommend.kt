@@ -1,5 +1,6 @@
 package de.marne.streamplayer.library
 
+import kotlin.concurrent.Volatile
 import de.marne.streamplayer.ui.tr
 import kotlin.math.sqrt
 
@@ -63,7 +64,7 @@ object Recommend {
             val id = Keys.parse(key)?.first ?: continue
             val v = when {
                 p.finished -> 1.0
-                p.positionMs > ProgressStore.MIN_RESUME_MS -> 0.5
+                p.positionMs > Progress.MIN_RESUME_MS -> 0.5
                 else -> 0.0
             }
             if (v > 0) engagement[id] = ((engagement[id] ?: 0.0) + v).coerceAtMost(3.0)
@@ -113,7 +114,7 @@ object Recommend {
     ): Pair<LibTitle, List<LibTitle>>? {
         val byId = titles.associateBy { it.id }
         val recent = progress.entries
-            .filter { it.value.finished || it.value.positionMs > ProgressStore.MIN_RESUME_MS }
+            .filter { it.value.finished || it.value.positionMs > Progress.MIN_RESUME_MS }
             .sortedByDescending { it.value.updatedAt }
             .mapNotNull { Keys.parse(it.key)?.first?.let(byId::get) }
             .distinctBy { it.id }
@@ -242,7 +243,7 @@ object Recommend {
      * [days]: Sehzeit je Epochentag (ProgressStore.days) – daraus „diese Woche“. Ohne (Tests, alte
      * Daten) die Schätzung über die zuletzt bewegten Einträge.
      */
-    fun stats(titles: List<LibTitle>, progress: Map<String, Progress>, myList: List<String>, days: Map<Long, Long>? = null, now: Long = System.currentTimeMillis()): Stats {
+    fun stats(titles: List<LibTitle>, progress: Map<String, Progress>, myList: List<String>, days: Map<Long, Long>? = null, now: Long = de.marne.streamplayer.ui.nowMillis()): Stats {
         val ids = titles.mapTo(HashSet()) { it.id }
         var total = 0L
         var week = 0L
@@ -258,7 +259,7 @@ object Recommend {
             if (p.finished) if (parsed.second != null) episodes++ else movies++
         }
         if (days != null) {
-            val today = java.time.Instant.ofEpochMilli(now).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toEpochDay()
+            val today = de.marne.streamplayer.ui.epochDay(now)
             week = days.filterKeys { it > today - 7 }.values.sum()
         }
         val taste = taste(titles, progress, myList)

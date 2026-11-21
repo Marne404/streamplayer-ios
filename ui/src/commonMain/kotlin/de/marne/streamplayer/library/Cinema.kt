@@ -46,11 +46,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.catalog.TmdbImages
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.Palette
@@ -159,7 +158,7 @@ fun CinematicCard(t: LibTitle, origin: String, actions: LibActions, width: Dp = 
             .clip(RoundedCornerShape(20.dp)).background(Palette.ink)
             .combinedClickable(interactionSource = press, indication = null, onClick = { actions.show(t, coverKey(origin, t.id)) }, onLongClick = { actions.preview(t) }),
     ) {
-        Thumb(Tmdb.largeModel(t.wide ?: t.cover), Modifier.fillMaxSize(), radius = 0.dp)
+        Thumb(TmdbImages.largeModel(t.wide ?: t.cover), Modifier.fillMaxSize(), radius = 0.dp)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f))))
         Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
             val g = genreLine(t, 2)
@@ -189,7 +188,7 @@ fun CinematicCard(t: LibTitle, origin: String, actions: LibActions, width: Dp = 
  */
 @Composable
 fun HeroStage(items: List<LibTitle>, state: LibState, actions: LibActions, topInset: Dp) {
-    val height = (LocalConfiguration.current.screenHeightDp * 0.64f).dp.coerceIn(440.dp, 640.dp)
+    val height = (de.marne.streamplayer.ui.screenHeightDp() * 0.64f).dp.coerceIn(440.dp, 640.dp)
     if (items.isEmpty()) { Box(Modifier.height(topInset)); return }
     val pager = rememberPagerState { items.size }
     LaunchedEffect(pager.currentPage, pager.isScrollInProgress, items.size) {
@@ -230,7 +229,7 @@ private fun HeroPage(t: LibTitle, page: Int, pager: PagerState, state: LibState,
         // landet es mit dem Bild und blendet darin auf, statt nach der Landung hervorzuspringen.
         Box(Modifier.fillMaxSize().sharedCover(key, 0.dp)) {
             Thumb(
-                Tmdb.largeModel(t.wide ?: t.cover),
+                TmdbImages.largeModel(t.wide ?: t.cover),
                 Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom },
                 radius = 0.dp,
             )

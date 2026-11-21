@@ -1,6 +1,7 @@
 package de.marne.streamplayer.library
 
-import java.text.Normalizer
+import kotlin.concurrent.Volatile
+
 
 /**
  * Vorbereitete Suche über eine Titelliste. Früher wurde bei jedem Tastendruck jeder Titel neu
@@ -117,7 +118,7 @@ class SearchIndex private constructor(
          * läuft für jeden Titel, jede Beschreibung und jeden Namen.
          */
         fun fold(s: String): String {
-            val src = if (s.any { it.code >= 128 }) Normalizer.normalize(s, Normalizer.Form.NFD) else s
+            val src = if (s.any { it.code >= 128 }) de.marne.streamplayer.ui.decomposeAccents(s) else s
             val out = StringBuilder(src.length)
             var space = false
             for (ch in src) {
@@ -127,15 +128,15 @@ class SearchIndex private constructor(
                     c.code < 128 -> if (!space) { out.append(' '); space = true }
                     isMark(c) -> {}
                     // Andere Schriften (Kyrillisch, Japanisch …) bleiben suchbar.
-                    Character.isLetterOrDigit(c) -> { out.append(c); space = false }
+                    c.isLetterOrDigit() -> { out.append(c); space = false }
                     else -> if (!space) { out.append(' '); space = true }
                 }
             }
             return out.toString()
         }
 
-        private fun isMark(c: Char) = when (Character.getType(c).toByte()) {
-            Character.NON_SPACING_MARK, Character.ENCLOSING_MARK, Character.COMBINING_SPACING_MARK -> true
+        private fun isMark(c: Char) = when (c.category) {
+            CharCategory.NON_SPACING_MARK, CharCategory.ENCLOSING_MARK, CharCategory.COMBINING_SPACING_MARK -> true
             else -> false
         }
     }

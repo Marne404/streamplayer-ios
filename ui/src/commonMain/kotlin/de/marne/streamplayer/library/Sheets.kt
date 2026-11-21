@@ -32,7 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.catalog.TmdbImages
 import de.marne.streamplayer.ui.design.Bar
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Hairline
@@ -73,7 +73,7 @@ fun QuickSheet(t: LibTitle, state: LibState, actions: LibActions, onDismiss: () 
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp).navigationBarsPadding()) {
             Row(verticalAlignment = Alignment.Top) {
-                Thumb(Tmdb.largeModel(t.cover ?: t.offline.values.firstOrNull()), Modifier.size(width = 92.dp, height = 138.dp), radius = 14.dp)
+                Thumb(TmdbImages.largeModel(t.cover ?: t.offline.values.firstOrNull()), Modifier.size(width = 92.dp, height = 138.dp), radius = 14.dp)
                 Column(Modifier.weight(1f).padding(start = 16.dp, top = 2.dp)) {
                     Text(t.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     VSpace(6.dp)
@@ -90,7 +90,7 @@ fun QuickSheet(t: LibTitle, state: LibState, actions: LibActions, onDismiss: () 
             }
             VSpace(18.dp)
             PrimaryButton(playLabel(t, state.progress), icon = Ic.play) { then { actions.play(t, null) } }
-            if (movieP != null && !movieP.finished && movieP.positionMs > ProgressStore.MIN_RESUME_MS) {
+            if (movieP != null && !movieP.finished && movieP.positionMs > Progress.MIN_RESUME_MS) {
                 VSpace(10.dp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Bar(movieP.fraction, height = 4.dp, modifier = Modifier.weight(1f))
@@ -189,7 +189,7 @@ fun CategorySheet(state: LibState, kind: TitleKind?, actions: LibActions, onDism
  */
 @Composable
 fun CollectionSheet(t: LibTitle, state: LibState, onDismiss: () -> Unit) {
-    val app = de.marne.streamplayer.App.instance
+    val host = LocalLibraryHost.current
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var naming by remember { mutableStateOf(false) }
     ModalBottomSheet(
@@ -218,7 +218,7 @@ fun CollectionSheet(t: LibTitle, state: LibState, onDismiss: () -> Unit) {
                             subtitle = if (c.items.size == 1) tr("1 Titel", "1 title") else tr("${c.items.size} Titel", "${c.items.size} titles"),
                             icon = Ic.bookmark,
                             showChevron = false,
-                            onClick = { app.profiles.toggleInCollection(c.id, t.id) },
+                            onClick = { host.toggleInCollection(c.id, t.id) },
                             trailing = { CheckDot(inside) },
                         )
                     }
@@ -229,7 +229,7 @@ fun CollectionSheet(t: LibTitle, state: LibState, onDismiss: () -> Unit) {
         }
     }
     if (naming) CollectionNameDialog(tr("Neue Sammlung", "New collection"), "", onDismiss = { naming = false }) { name ->
-        app.profiles.createCollection(name, t.id)
+        host.createCollection(name, t.id)
         naming = false
     }
 }

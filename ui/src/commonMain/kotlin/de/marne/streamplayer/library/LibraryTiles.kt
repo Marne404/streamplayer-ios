@@ -45,9 +45,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.catalog.TmdbImages
 import de.marne.streamplayer.ui.Lang
-import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.OutlinePill
@@ -57,8 +56,8 @@ import de.marne.streamplayer.ui.design.Serif
 import de.marne.streamplayer.ui.design.Thumb
 import de.marne.streamplayer.ui.tr
 
-internal val SpringEase = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
-internal val BouncyEase = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
+val SpringEase = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
+val BouncyEase = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
 /** Druck unter dem Finger: je kleiner das Element, desto tiefer (Karte 0,96, breite Fläche 0,97). */
 fun Modifier.pressScale(source: MutableInteractionSource, pressed: Float = 0.96f): Modifier = composed {
@@ -68,7 +67,7 @@ fun Modifier.pressScale(source: MutableInteractionSource, pressed: Float = 0.96f
 }
 
 /** „★ 7,9“ – Komma bzw. Punkt je nach Sprache, eine Stelle. */
-fun ratingText(r: Double): String = "★ " + String.format(Lang.locale, "%.1f", r)
+fun ratingText(r: Double): String = "★ " + de.marne.streamplayer.ui.Format.decimal(r, 1)
 
 /** „Krimi · Drama · Thriller“ */
 fun genreLine(t: LibTitle, max: Int = 3): String = t.genres.take(max).joinToString(" · ")
@@ -92,7 +91,7 @@ fun minutesText(ms: Long): String? {
 
 /** Neu = in den letzten sieben Tagen dazugekommen und noch nicht angefangen. */
 fun isNew(t: LibTitle, progress: Map<String, Progress>): Boolean =
-    System.currentTimeMillis() - t.addedAt < 7L * 24 * 3600 * 1000 && Recommend.seen(t, progress) == Recommend.Seen.NONE
+    de.marne.streamplayer.ui.nowMillis() - t.addedAt < 7L * 24 * 3600 * 1000 && Recommend.seen(t, progress) == Recommend.Seen.NONE
 
 /** Poster mit allem, was aus dem Zustand folgt: Fortschritt (Film), Haken (fertig), „NEU“. */
 @Composable
@@ -138,7 +137,7 @@ fun TopTenTile(rank: Int, t: LibTitle, onClick: () -> Unit, onLongClick: () -> U
             modifier = Modifier.align(Alignment.BottomStart).offset(y = 22.dp),
         )
         Thumb(
-            Tmdb.largeModel(t.cover ?: t.offline.values.firstOrNull()),
+            TmdbImages.largeModel(t.cover ?: t.offline.values.firstOrNull()),
             Modifier.align(Alignment.CenterEnd).width(108.dp).aspectRatio(2f / 3f).sharedCover(sharedKey, 16.dp),
             radius = 16.dp,
         )
@@ -153,7 +152,7 @@ fun GenreCard(name: String, count: Int, image: Any?, modifier: Modifier = Modifi
         modifier.aspectRatio(16f / 10f).pressScale(press, 0.97f).clip(RoundedCornerShape(20.dp))
             .background(Palette.ink).clickable(interactionSource = press, indication = null, onClick = onClick)
     ) {
-        if (image != null) Thumb(Tmdb.largeModel(image), Modifier.fillMaxSize(), radius = 0.dp)
+        if (image != null) Thumb(TmdbImages.largeModel(image), Modifier.fillMaxSize(), radius = 0.dp)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.05f), 1f to Color.Black.copy(alpha = 0.78f))))
         Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
             Text(name, style = MaterialTheme.typography.titleLarge.copy(fontFamily = Serif), color = Color(0xFFF4F1EA), maxLines = 1, overflow = TextOverflow.Ellipsis)

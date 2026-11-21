@@ -179,7 +179,7 @@ fun DiscoverScreen(state: LibState, actions: LibActions, focusSearch: Boolean, o
                     }
                     // Ohne TMDB-Treffer: hier gesammelt, um sie auf der Detailseite zuzuordnen.
                     val unmatched = t.count { it.tmdb == null && it.tmdbId == null }
-                    if (unmatched > 0 && de.marne.streamplayer.App.instance.enricher.available && !state.enrich.running) {
+                    if (unmatched > 0 && LocalLibraryHost.current.tmdbAvailable && !state.enrich.running) {
                         RowDivider()
                         ListRow(tr("Ohne TMDB-Treffer", "No TMDB match"), icon = Ic.search, value = unmatched.toString(), onClick = { actions.grid(GridSpec("notmdb")) })
                     }
@@ -207,7 +207,7 @@ private fun EpisodeHit(t: LibTitle, e: Episode, watched: Boolean, onClick: () ->
         verticalAlignment = Alignment.CenterVertically,
     ) {
         de.marne.streamplayer.ui.design.Thumb(
-            de.marne.streamplayer.catalog.Tmdb.largeModel(e.still ?: t.wide),
+            de.marne.streamplayer.catalog.TmdbImages.largeModel(e.still ?: t.wide),
             Modifier.width(116.dp).aspectRatio(16f / 9f).clickable(onClick = onOpen), radius = 12.dp,
         )
         Column(Modifier.weight(1f).padding(start = 14.dp)) {

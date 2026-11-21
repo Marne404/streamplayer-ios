@@ -44,7 +44,7 @@ import de.marne.streamplayer.ui.tr
  */
 @Composable
 fun MineScreen(state: LibState, actions: LibActions) {
-    val days by de.marne.streamplayer.App.instance.progress.days.collectAsState()
+    val days by LocalLibraryHost.current.watchDays.collectAsState()
     val stats = remember(state.titles, state.progress, state.myList, days) { Recommend.stats(state.titles, state.progress, state.myList, days) }
     val cont = remember(state.titles, state.progress) { Shelves.continueWatching(state.titles, state.progress) }
     val myList = remember(state.titles, state.myList) { state.myList.mapNotNull(state::byId) }
@@ -195,11 +195,11 @@ private fun CollectionCard(c: de.marne.streamplayer.account.TitleCollection, sta
         ) {
             if (covers.isEmpty()) de.marne.streamplayer.ui.design.GIcon(Ic.bookmark, tint = Palette.faint, size = 28.dp, modifier = Modifier.align(Alignment.Center))
             // Ein Cover füllt die Karte; erst ab zwei wird es eine Collage (sonst stünde eine leere Hälfte da).
-            else if (covers.size == 1) de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.Tmdb.largeModel(covers[0]), Modifier.fillMaxSize(), radius = 0.dp)
+            else if (covers.size == 1) de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.TmdbImages.largeModel(covers[0]), Modifier.fillMaxSize(), radius = 0.dp)
             else Column {
                 (if (covers.size == 2) listOf(covers) else covers.chunked(2)).forEach { row ->
                     Row(Modifier.weight(1f)) {
-                        row.forEach { m -> de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.Tmdb.largeModel(m), Modifier.weight(1f).fillMaxSize(), radius = 0.dp) }
+                        row.forEach { m -> de.marne.streamplayer.ui.design.Thumb(de.marne.streamplayer.catalog.TmdbImages.largeModel(m), Modifier.weight(1f).fillMaxSize(), radius = 0.dp) }
                         if (row.size == 1) Box(Modifier.weight(1f))
                     }
                 }

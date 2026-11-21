@@ -47,7 +47,6 @@ import de.marne.streamplayer.ui.design.PrimaryButton
 import de.marne.streamplayer.ui.design.QuietButton
 import de.marne.streamplayer.ui.design.VSpace
 import de.marne.streamplayer.ui.tr
-import java.time.LocalTime
 
 /**
  * Startseite. Oben eine Bühne: bis zu sechs Empfehlungen randlos und groß, zum Durchwischen.
@@ -78,9 +77,9 @@ fun HomeScreen(state: LibState, actions: LibActions) {
     val newest = remember(titles) { titles.sortedByDescending { it.addedAt }.take(15) }
     val offline = remember(titles) { titles.filter { it.offline.isNotEmpty() } }
 
-    val settings = de.marne.streamplayer.App.instance.settings
-    val showContinue by settings.homeContinue.collectAsState()
-    val showMyList by settings.homeMyList.collectAsState()
+    val host = LocalLibraryHost.current
+    val showContinue by host.homeContinue.collectAsState()
+    val showMyList by host.homeMyList.collectAsState()
 
     val list = rememberLazyListState()
     // Deckend erst, wenn die Bühne fast weg ist: vorher liegt die Kopfzeile auf dem Bild.
@@ -257,11 +256,11 @@ private fun CategoryPill(onClick: () -> Unit) {
 fun playLabel(t: LibTitle, progress: Map<String, Progress>): String {
     if (t.kind == TitleKind.MOVIE) {
         val p = progress[Keys.movie(t)]
-        return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) tr("Fortsetzen", "Resume") else tr("Abspielen", "Play")
+        return if (p != null && !p.finished && p.positionMs > Progress.MIN_RESUME_MS) tr("Fortsetzen", "Resume") else tr("Abspielen", "Play")
     }
     val next = Shelves.nextFor(t, progress) ?: return tr("Von vorn", "Play from start")
     val (e, p) = next
-    return if (p != null && !p.finished && p.positionMs > ProgressStore.MIN_RESUME_MS) tr("Weiter · ${e.label}", "Resume · ${e.label}")
+    return if (p != null && !p.finished && p.positionMs > Progress.MIN_RESUME_MS) tr("Weiter · ${e.label}", "Resume · ${e.label}")
     else if (progress.keys.any { it.startsWith("e:${t.id}:") }) e.label else tr("Abspielen", "Play")
 }
 
@@ -285,7 +284,7 @@ private fun EmptyLibrary(actions: LibActions) {
     }
 }
 
-private fun greeting(): String = when (LocalTime.now().hour) {
+private fun greeting(): String = when (de.marne.streamplayer.ui.localHour()) {
     in 5..10 -> tr("Guten Morgen", "Good morning")
     in 11..17 -> tr("Guten Tag", "Good afternoon")
     else -> tr("Guten Abend", "Good evening")

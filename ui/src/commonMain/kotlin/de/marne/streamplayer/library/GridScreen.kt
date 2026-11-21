@@ -186,7 +186,7 @@ private fun GridHead(title: String, eyebrow: String, count: String, onBack: () -
 /** Sammlung umbenennen oder löschen. Löschen nimmt nur die Sammlung weg, nicht die Titel. */
 @Composable
 private fun CollectionEditDialog(c: de.marne.streamplayer.account.TitleCollection, onDismiss: () -> Unit, onDeleted: () -> Unit) {
-    val app = de.marne.streamplayer.App.instance
+    val host = LocalLibraryHost.current
     var name by remember { mutableStateOf(c.name) }
     var confirm by remember { mutableStateOf(false) }
     androidx.compose.material3.AlertDialog(
@@ -202,8 +202,8 @@ private fun CollectionEditDialog(c: de.marne.streamplayer.account.TitleCollectio
             }
         },
         confirmButton = {
-            if (confirm) de.marne.streamplayer.ui.design.QuietButton(tr("Löschen", "Delete"), color = Palette.wine) { app.profiles.deleteCollection(c.id); onDeleted() }
-            else de.marne.streamplayer.ui.design.QuietButton(tr("Speichern", "Save"), color = Palette.text) { app.profiles.renameCollection(c.id, name); onDismiss() }
+            if (confirm) de.marne.streamplayer.ui.design.QuietButton(tr("Löschen", "Delete"), color = Palette.wine) { host.deleteCollection(c.id); onDeleted() }
+            else de.marne.streamplayer.ui.design.QuietButton(tr("Speichern", "Save"), color = Palette.text) { host.renameCollection(c.id, name); onDismiss() }
         },
         dismissButton = { de.marne.streamplayer.ui.design.QuietButton(tr("Abbrechen", "Cancel"), color = Palette.muted, onClick = onDismiss) },
     )

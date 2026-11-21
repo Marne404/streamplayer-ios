@@ -50,7 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.catalog.TmdbImages
 import de.marne.streamplayer.ui.design.Bar
 import de.marne.streamplayer.ui.design.ExpandableText
 import de.marne.streamplayer.ui.design.GIcon
@@ -78,8 +78,16 @@ class DetailActions(
     val rename: (LibTitle, String) -> Unit,
     val changeCover: (LibTitle) -> Unit,
     val resetCover: (LibTitle) -> Unit,
-    /** TMDB-Eintrag von Hand zuordnen (null: kein TMDB-Schlüssel). */
-    val matchTmdb: ((LibTitle, de.marne.streamplayer.catalog.Tmdb.Result) -> Unit)?,
+    /**
+     * Blatt „TMDB-Eintrag von Hand zuordnen“ – die Suche bei TMDB macht die Plattform (Android:
+     * TmdbMatchSheet). null: Zuordnen gibt es hier nicht.
+     */
+    val matchSheet: (@Composable (LibTitle, onDismiss: () -> Unit) -> Unit)?,
+    /**
+     * Blatt „Cover wählen“ mit den Postern von TMDB (Android: CoverSheet). Liefert null für Titel
+     * ohne TMDB-Treffer – dann geht „Cover ändern“ gleich in die Galerie ([changeCover]).
+     */
+    val coverSheet: (LibTitle) -> (@Composable (onDismiss: () -> Unit) -> Unit)?,
     /** In welchen Bibliotheken der Titel steht (mindestens einer). */
     val setLibraries: (LibTitle, List<String>) -> Unit,
     /** Nur aus dieser einen Bibliothek nehmen – in den anderen bleibt er. */
@@ -116,14 +124,15 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     val solid by remember { derivedStateOf { list.firstVisibleItemIndex > 0 } }
     // Noch ohne TMDB-Daten oder ohne Folgen: jetzt holen, an der Warteschlange vorbei (bei großen
     // Bibliotheken wartet sie sonst lange, und Folgen holt sie dort gar nicht).
-    androidx.compose.runtime.LaunchedEffect(t.id) { de.marne.streamplayer.App.instance.enricher.prioritize(t.id) }
+    val host = LocalLibraryHost.current
+    androidx.compose.runtime.LaunchedEffect(t.id) { host.prioritizeEnrich(t.id) }
 
     Box(Modifier.fillMaxSize().background(Palette.bg)) {
         LazyColumn(state = list, contentPadding = PaddingValues(bottom = 48.dp)) {
             item(key = "hero") { DetailHero(t, origin) }
             // Ohne TMDB-Treffer (und nichts mehr unterwegs): darauf hinweisen, Zuordnen anbieten. Steht die
             // TMDB-ID schon fest (aus dem Katalog), ist der Titel gefunden – die Daten kommen gleich.
-            val unmatched = detail.matchTmdb != null && de.marne.streamplayer.App.instance.enricher.available && t.tmdb == null && t.tmdbId == null && !state.enrich.running &&
+            val unmatched = detail.matchSheet != null && host.tmdbAvailable && t.tmdb == null && t.tmdbId == null && !state.enrich.running &&
                 state.libraries.firstOrNull { it.id == t.library }?.readOnly != true
             item(key = "info") { Info(t, state, actions, next, seen, onMatch = if (unmatched) ({ matching = true }) else null) }
 
@@ -167,21 +176,19 @@ fun DetailScreen(t: LibTitle, state: LibState, actions: LibActions, detail: Deta
     if (editing) EditSheet(
         t, detail, onDismiss = { editing = false }, onRename = { renaming = true }, onRemove = { confirmRemove = true },
         // Mit TMDB erst die Auswahl der Poster (eigenes Bild ist dort die erste Kachel), sonst gleich die Galerie.
-        onCover = { if (tmdbCoverSource(t) != null) covering = true else detail.changeCover(t) },
+        onCover = { if (detail.coverSheet(t) != null) covering = true else detail.changeCover(t) },
         libraryLabel = state.libraries.filterNot { it.joined }.takeIf { it.size > 1 }
             ?.let { libs -> libs.filter { t.isIn(it.id) }.joinToString(", ") { it.label }.ifEmpty { libs.first().label } },
         sharedBy = state.libraries.firstOrNull { it.id == t.library }?.takeIf { it.readOnly }?.let { it.owner ?: tr("einem Freund", "a friend") },
         onMove = { moving = true },
-        onMatch = detail.matchTmdb?.takeIf { de.marne.streamplayer.App.instance.enricher.available }?.let { { matching = true } },
+        onMatch = detail.matchSheet?.takeIf { host.tmdbAvailable }?.let { { matching = true } },
     )
-    if (matching) detail.matchTmdb?.let { m -> TmdbMatchSheet(t, onPick = { m(t, it) }, onDismiss = { matching = false }) }
+    if (matching) detail.matchSheet?.invoke(t) { matching = false }
     if (moving) LibraryToggleSheet(
         tr("Bibliotheken", "Libraries"), tr("Wo soll „${t.title}“ stehen?", "Where should “${t.title}” be?"),
         state.libraries.filterNot { it.joined }, t.libraries, onChange = { detail.setLibraries(t, it) }, onDismiss = { moving = false },
     )
-    if (covering) tmdbCoverSource(t)?.let { src ->
-        CoverSheet(t, src, onPick = { detail.setCover(t, it) }, onGallery = { detail.changeCover(t) }, onDismiss = { covering = false })
-    }
+    if (covering) detail.coverSheet(t)?.invoke { covering = false }
     episodeMenu?.let { e ->
         EpisodeSheet(t, e, progress[Keys.episode(t, e)], state.offline(t, Keys.episode(t, e)), actions, detail, onDismiss = { episodeMenu = null })
     }
@@ -227,7 +234,7 @@ private fun DetailHero(t: LibTitle, origin: String?) {
         // Die Verläufe gehören zum Bild und fliegen mit: daneben lägen sie unter dem fliegenden
         // Cover und erschienen erst bei der Landung – als harter Schatten, der aufploppt.
         Box(Modifier.fillMaxSize().sharedCover(origin, 0.dp)) {
-            Thumb(Tmdb.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxSize(), radius = 0.dp)
+            Thumb(TmdbImages.large(t.wide) ?: t.offline.values.firstOrNull(), Modifier.fillMaxSize(), radius = 0.dp)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.45f), 0.3f to Color.Transparent)))
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Palette.bg)))
         }
@@ -256,7 +263,7 @@ private fun Info(t: LibTitle, state: LibState, actions: LibActions, next: Pair<E
         val playsOffline = playKey != null && t.offline[playKey] != null
         PrimaryButton(playLabel(t, p) + if (playsOffline) tr(" · offline", " · offline") else "", icon = Ic.play) { actions.play(t, null) }
         val resume = if (t.kind == TitleKind.MOVIE) p[Keys.movie(t)] else next?.second
-        if (resume != null && !resume.finished && resume.positionMs > ProgressStore.MIN_RESUME_MS) {
+        if (resume != null && !resume.finished && resume.positionMs > Progress.MIN_RESUME_MS) {
             VSpace(10.dp)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Bar(resume.fraction, height = 4.dp, modifier = Modifier.weight(1f))
@@ -429,7 +436,7 @@ private fun EpisodeRow(t: LibTitle, e: Episode, p: Progress?, offline: de.marne.
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(132.dp).aspectRatio(16f / 9f)) {
-                Thumb(Tmdb.largeModel(e.still ?: t.wide), Modifier.fillMaxSize(), radius = 12.dp)
+                Thumb(TmdbImages.largeModel(e.still ?: t.wide), Modifier.fillMaxSize(), radius = 12.dp)
                 Box(
                     Modifier.align(Alignment.Center).size(34.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.45f)),
                     contentAlignment = Alignment.Center,

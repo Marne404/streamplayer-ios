@@ -2,7 +2,7 @@ package de.marne.streamplayer.library
 
 import org.jetbrains.compose.resources.DrawableResource
 
-import de.marne.streamplayer.catalog.Tmdb
+import de.marne.streamplayer.catalog.TmdbImages
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -80,7 +80,7 @@ fun WideTile(
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box {
-            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 22.dp)
+            Thumb(TmdbImages.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 22.dp)
             if (badge != null) {
                 Row(
                     Modifier.align(Alignment.TopStart).padding(8.dp)
@@ -134,7 +134,7 @@ fun PosterTile(
         // Pille, Haken und Fortschritt gehören zum Cover: Sie fliegen mit und blenden darin aus bzw.
         // ein. Neben dem Cover lägen sie während des Flugs unter ihm und sprängen bei der Landung auf.
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).sharedCover(sharedKey, 18.dp)) {
-            Thumb(Tmdb.largeModel(image), Modifier.fillMaxSize(), radius = 18.dp)
+            Thumb(TmdbImages.largeModel(image), Modifier.fillMaxSize(), radius = 18.dp)
             if (badge != null) {
                 Text(
                     badge, style = MaterialTheme.typography.labelSmall, color = Palette.onInk,
@@ -184,7 +184,7 @@ fun HeroCard(
 ) {
     GCard(tone = "ink", padding = 0.dp, radius = 28.dp, onClick = onOpen) {
         Column {
-            Thumb(Tmdb.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 0.dp)
+            Thumb(TmdbImages.largeModel(image), Modifier.fillMaxWidth().aspectRatio(16f / 9f), radius = 0.dp)
             Column(Modifier.padding(22.dp)) {
                 Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.onInk.copy(alpha = 0.7f))
                 VSpace(6.dp)

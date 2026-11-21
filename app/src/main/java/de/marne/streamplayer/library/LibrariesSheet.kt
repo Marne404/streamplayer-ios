@@ -70,12 +70,6 @@ class LibrariesActions(
     val toast: (String) -> Unit,
 )
 
-/** Kleiner Farbpunkt einer Bibliothek – „Alle“ hat einen Ring statt einer Farbe. */
-@Composable
-fun LibraryDot(color: Int?, size: androidx.compose.ui.unit.Dp = 12.dp) {
-    if (color == null) Box(Modifier.size(size).clip(CircleShape).border(1.5.dp, Palette.muted, CircleShape))
-    else Box(Modifier.size(size).clip(CircleShape).background(ProfileColors[color.mod(ProfileColors.size)]))
-}
 
 /**
  * Bibliotheken wechseln, anlegen, bearbeiten. Ein Blatt mit zwei Seiten: die Liste und das
@@ -260,83 +254,7 @@ private fun LibraryForm(lib: Library?, count: Int, onBack: () -> Unit, onSave: (
     }
 }
 
-/** Eine Bibliothek wählen: Ziel eines Katalog-Imports oder wohin ein Titel umzieht. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LibraryPickSheet(eyebrow: String, title: String, libraries: List<Library>, selected: String?, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss, sheetState = sheet, containerColor = Palette.bg, contentColor = Palette.text,
-        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp), tonalElevation = 0.dp, dragHandle = { SheetHandle() },
-    ) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding()) {
-            Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-            VSpace(6.dp)
-            Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            VSpace(18.dp)
-            ListGroup {
-                libraries.forEachIndexed { i, l ->
-                    if (i > 0) RowDivider(inset = 50.dp)
-                    Row(
-                        Modifier.fillMaxWidth().clickable {
-                            scope.launch { sheet.hide() }.invokeOnCompletion { onDismiss(); onPick(l.id) }
-                        }.padding(horizontal = 18.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        LibraryDot(l.color, 14.dp)
-                        Text(l.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(start = 18.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (l.id == selected) GIcon(Ic.check, tint = Palette.text, size = 20.dp)
-                    }
-                }
-            }
-        }
-    }
-}
 
-/**
- * Mehrfachwahl: in welchen Bibliotheken ein Titel steht. Jeder Tipp gilt sofort; die letzte
- * Bibliothek lässt sich nicht abwählen – ein Titel ohne Bibliothek wäre nirgends mehr zu sehen.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun LibraryToggleSheet(eyebrow: String, title: String, libraries: List<Library>, selected: List<String>, onChange: (List<String>) -> Unit, onDismiss: () -> Unit) {
-    var chosen by remember { mutableStateOf(selected) }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = Palette.bg, contentColor = Palette.text,
-        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp), tonalElevation = 0.dp, dragHandle = { SheetHandle() },
-    ) {
-        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp).navigationBarsPadding()) {
-            Text(eyebrow.uppercase(), style = MaterialTheme.typography.labelSmall, color = Palette.muted)
-            VSpace(6.dp)
-            Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            VSpace(4.dp)
-            Text(
-                tr("Derselbe Titel in mehreren Bibliotheken – Fortschritt und Downloads gelten überall.", "The same title in several libraries – progress and downloads count everywhere."),
-                style = MaterialTheme.typography.bodySmall, color = Palette.muted,
-            )
-            VSpace(18.dp)
-            ListGroup {
-                libraries.forEachIndexed { i, l ->
-                    if (i > 0) RowDivider(inset = 50.dp)
-                    val on = l.id in chosen
-                    val last = on && chosen.size == 1
-                    Row(
-                        Modifier.fillMaxWidth().clickable(enabled = !last) {
-                            chosen = if (on) chosen - l.id else chosen + l.id
-                            onChange(chosen)
-                        }.padding(horizontal = 18.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        LibraryDot(l.color, 14.dp)
-                        Text(l.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(start = 18.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (on) GIcon(Ic.check, tint = if (last) Palette.muted else Palette.text, size = 20.dp)
-                    }
-                }
-            }
-        }
-    }
-}
 
 /**
  * Teilen einer eigenen Bibliothek: Einladung schicken, sehen, wer drin ist, jemanden entfernen,
