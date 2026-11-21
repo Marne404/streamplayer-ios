@@ -222,6 +222,7 @@ private fun CloudRoot(auth: FirebaseAuth, uid: String, onSettings: () -> Unit) {
                         setWatched = { keys, w -> edits.setWatched(pid, keys, w) },
                         rename = null,
                         remove = null,
+                        progress = { key, pos, dur, ended, played -> edits.recordProgress(pid, key, pos, dur, ended, played) },
                     ),
                     onProfiles = { if (profiles.size > 1 || profile.lock != null) profileId = null else onSettings() },
                     onSettings = onSettings,

@@ -74,6 +74,25 @@ internal class CloudEdits(
         }
     }
 
+    /**
+     * Fortschritt beim Abspielen wie ProgressStore.update auf Android: fertig am Ende oder wenn weniger
+     * als 2 Minuten bzw. 5 % übrig sind; die geschaute Zeit wird aufaddiert.
+     */
+    fun recordProgress(pid: String, key: String, positionMs: Long, durationMs: Long, ended: Boolean, playedMs: Long) {
+        val d = get() ?: return
+        val map = d.progress[pid].orEmpty()
+        val finished = ended || (durationMs > 0 && durationMs - positionMs < maxOf(120_000L, durationMs / 20))
+        val before = map[key]?.countedMs ?: 0
+        val p = Progress(positionMs, durationMs, finished, nowMillis(), before + playedMs.coerceAtLeast(0))
+        set(d.copy(progress = d.progress + (pid to (map + (key to p)))))
+        val titleId = Keys.parse(key)?.first ?: return
+        save {
+            val latest = get()?.progress?.get(pid).orEmpty().filterKeys { Keys.parse(it)?.first == titleId }
+            store.write("users/$uid/profiles/$pid/progress/$titleId", SyncJson.progressText(latest))
+            library.patchCache(uid, progress = Triple(pid, titleId, latest))
+        }
+    }
+
     /** [LibraryHost] fürs Konto: Sammlungen ändern das Profil wie ProfileStore auf Android. */
     fun host(pid: () -> String): LibraryHost = object : LibraryHost {
         override val tmdbAvailable = false

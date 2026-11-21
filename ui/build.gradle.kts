@@ -60,7 +60,18 @@ kotlin {
     }
 }
 
+// detect.js gibt es nur einmal: in der Android-App (assets). Das iPad bekommt beim Bauen eine Kopie
+// als Compose-Ressource files/detect.js.
+val detectJsForIos by tasks.registering(Sync::class) {
+    from(rootProject.file("app/src/main/assets/detect.js"))
+    into(layout.buildDirectory.dir("generated/iosDetect/files"))
+}
+
 compose.resources {
     packageOfResClass = "de.marne.streamplayer.ui.res"
     publicResClass = true
+    customDirectory(
+        sourceSetName = "iosMain",
+        directoryProvider = detectJsForIos.map { layout.buildDirectory.dir("generated/iosDetect").get() },
+    )
 }
