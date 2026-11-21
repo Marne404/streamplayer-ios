@@ -9,5 +9,8 @@ import platform.Foundation.decomposedStringWithCanonicalMapping
 @Composable
 actual fun screenHeightDp(): Int = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp().value.toInt() }
 
+@Composable
+actual fun screenWidthDp(): Int = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value.toInt() }
+
 @Suppress("CAST_NEVER_SUCCEEDS")
 actual fun decomposeAccents(s: String): String = (s as NSString).decomposedStringWithCanonicalMapping

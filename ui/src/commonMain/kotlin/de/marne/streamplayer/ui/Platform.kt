@@ -11,6 +11,10 @@ import kotlin.time.Instant
 @Composable
 expect fun screenHeightDp(): Int
 
+/** Breite des Bildschirms in dp (Android: Configuration.screenWidthDp). */
+@Composable
+expect fun screenWidthDp(): Int
+
 /** Unicode-Zerlegung (NFD): „é“ → „e“ + Akzent, damit die Suche Akzente ignorieren kann. */
 expect fun decomposeAccents(s: String): String
 
