@@ -115,6 +115,8 @@ internal class PlayState {
 fun PlayerScreen(
     player: ExoPlayer,
     info: PlaybackInfo,
+    /** Läuft als kleines Fenster (Bild im Bild): nur das Bild, keine Steuerung – tippen kann man da nicht. */
+    pip: Boolean = false,
     onBack: () -> Unit,
     onPlayEpisode: (LibTitle, Episode) -> Unit,
     /** Eigene Untertitel-Datei wählen (Dateiwähler der Activity). */
@@ -175,6 +177,9 @@ fun PlayerScreen(
     }
     // Zu Ende ohne nächste Folge (oder abgelehnt): Steuerung zeigen, damit man nicht vor Schwarz sitzt.
     LaunchedEffect(state.ended) { if (state.ended) controls = true }
+    // Ins kleine Fenster: Panel zu. Zurück im Vollbild: Steuerung zeigen (blendet sich beim Abspielen
+    // von selbst aus) – sonst stünde ein im Fenster pausiertes Video ohne Play-Knopf da.
+    LaunchedEffect(pip) { panel = null; controls = !pip; touch() }
 
     BackHandler(enabled = panel != null || locked) {
         when {
@@ -199,101 +204,104 @@ fun PlayerScreen(
                 }
             },
             update = {
-                it.resizeMode = resizeMode
+                // Im Fenster immer ganz zeigen: Es hat schon das Seitenverhältnis des Videos.
+                it.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeMode
                 it.subtitleView?.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subScale)
             },
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (locked) {
-            LockLayer(onUnlock = { locked = false; controls = true; touch() })
-        } else {
-            GestureLayer(
-                player = player,
-                enabled = panel == null && state.error == null,
-                onTap = { controls = !controls; touch() },
-            )
-        }
-
-        // Puffern ohne sichtbare Steuerung: nur der Kreis, sonst sitzt er im Play-Knopf.
-        AnimatedVisibility(
-            visible = state.buffering && !controls && state.error == null,
-            enter = fadeIn(tween(DUR_FADE, delayMillis = 300)),
-            exit = fadeOut(tween(DUR_FADE)),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            CircularProgressIndicator(Modifier.size(44.dp), color = OnVideo, strokeWidth = 2.5.dp, trackColor = OnVideo.copy(alpha = 0.15f))
-        }
-
-        Controls(
-            visible = controls && !locked && panel == null && state.error == null,
-            player = player,
-            info = info,
-            state = state,
-            resizeMode = resizeMode,
-            onBack = onBack,
-            onTouch = ::touch,
-            onScrubbing = { scrubbing = it; touch() },
-            onLock = { locked = true; controls = false; showHint(tr("Bildschirm gesperrt", "Screen locked")) },
-            onResize = {
-                resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                else AspectRatioFrameLayout.RESIZE_MODE_FIT
-                showHint(if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) tr("Füllen", "Fill") else tr("Anpassen", "Fit"))
-                touch()
-            },
-            onPanel = { panel = it },
-            onNext = { nextUp?.let { onPlayEpisode(info.libTitle!!, it) } },
-        )
-
-        NextUpCard(
-            visible = nextVisible,
-            title = info.libTitle,
-            next = nextUp,
-            ended = state.ended,
-            controlsShown = controls,
-            onPlay = { nextUp?.let { onPlayEpisode(info.libTitle!!, it) } },
-            onCancel = { nextDismissed = true; controls = true },
-            modifier = Modifier.align(Alignment.BottomEnd),
-        )
-
-        // Kurze Rückmeldung in der Mitte: „Füllen“, „Bildschirm gesperrt“.
-        AnimatedContent(
-            targetState = hint,
-            transitionSpec = {
-                (fadeIn(tween(DUR_FADE)) + scaleIn(tween(DUR_SWAP, easing = Bouncy), initialScale = 0.9f)) togetherWith
-                    fadeOut(tween(DUR_FADE))
-            },
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp),
-            label = "hint",
-        ) { h ->
-            if (h != null) {
-                Text(
-                    h,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = OnVideo,
-                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.6f))
-                        .padding(horizontal = 16.dp, vertical = 9.dp),
+        if (!pip) {
+            if (locked) {
+                LockLayer(onUnlock = { locked = false; controls = true; touch() })
+            } else {
+                GestureLayer(
+                    player = player,
+                    enabled = panel == null && state.error == null,
+                    onTap = { controls = !controls; touch() },
                 )
-            } else Spacer(Modifier.size(1.dp))
-        }
+            }
 
-        state.error?.let { e ->
-            ErrorCard(e, onClose = onBack, modifier = Modifier.align(Alignment.Center))
-        }
+            // Puffern ohne sichtbare Steuerung: nur der Kreis, sonst sitzt er im Play-Knopf.
+            AnimatedVisibility(
+                visible = state.buffering && !controls && state.error == null,
+                enter = fadeIn(tween(DUR_FADE, delayMillis = 300)),
+                exit = fadeOut(tween(DUR_FADE)),
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                CircularProgressIndicator(Modifier.size(44.dp), color = OnVideo, strokeWidth = 2.5.dp, trackColor = OnVideo.copy(alpha = 0.15f))
+            }
 
-        // Beim Hinausgleiten den Inhalt behalten, sonst schöbe sich ein leeres Panel weg.
-        var shownPanel by remember { mutableStateOf<Panel?>(null) }
-        if (panel != null) shownPanel = panel
-        SidePanel(visible = panel != null, onDismiss = { panel = null }) {
-            when (shownPanel) {
-                Panel.Episodes -> info.libTitle?.let { t ->
-                    EpisodesPanel(t, info.episode, onPick = { e ->
-                        if (e == info.episode) panel = null else onPlayEpisode(t, e)
-                    })
+            Controls(
+                visible = controls && !locked && panel == null && state.error == null,
+                player = player,
+                info = info,
+                state = state,
+                resizeMode = resizeMode,
+                onBack = onBack,
+                onTouch = ::touch,
+                onScrubbing = { scrubbing = it; touch() },
+                onLock = { locked = true; controls = false; showHint(tr("Bildschirm gesperrt", "Screen locked")) },
+                onResize = {
+                    resizeMode = if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_FIT) AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    showHint(if (resizeMode == AspectRatioFrameLayout.RESIZE_MODE_ZOOM) tr("Füllen", "Fill") else tr("Anpassen", "Fit"))
+                    touch()
+                },
+                onPanel = { panel = it },
+                onNext = { nextUp?.let { onPlayEpisode(info.libTitle!!, it) } },
+            )
+
+            NextUpCard(
+                visible = nextVisible,
+                title = info.libTitle,
+                next = nextUp,
+                ended = state.ended,
+                controlsShown = controls,
+                onPlay = { nextUp?.let { onPlayEpisode(info.libTitle!!, it) } },
+                onCancel = { nextDismissed = true; controls = true },
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
+
+            // Kurze Rückmeldung in der Mitte: „Füllen“, „Bildschirm gesperrt“.
+            AnimatedContent(
+                targetState = hint,
+                transitionSpec = {
+                    (fadeIn(tween(DUR_FADE)) + scaleIn(tween(DUR_SWAP, easing = Bouncy), initialScale = 0.9f)) togetherWith
+                        fadeOut(tween(DUR_FADE))
+                },
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 72.dp),
+                label = "hint",
+            ) { h ->
+                if (h != null) {
+                    Text(
+                        h,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = OnVideo,
+                        modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.6f))
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    )
+                } else Spacer(Modifier.size(1.dp))
+            }
+
+            state.error?.let { e ->
+                ErrorCard(e, onClose = onBack, modifier = Modifier.align(Alignment.Center))
+            }
+
+            // Beim Hinausgleiten den Inhalt behalten, sonst schöbe sich ein leeres Panel weg.
+            var shownPanel by remember { mutableStateOf<Panel?>(null) }
+            if (panel != null) shownPanel = panel
+            SidePanel(visible = panel != null, onDismiss = { panel = null }) {
+                when (shownPanel) {
+                    Panel.Episodes -> info.libTitle?.let { t ->
+                        EpisodesPanel(t, info.episode, onPick = { e ->
+                            if (e == info.episode) panel = null else onPlayEpisode(t, e)
+                        })
+                    }
+                    Panel.Speed -> SpeedPanel(state.speed, onPick = { player.setPlaybackSpeed(it); panel = null })
+                    Panel.Tracks -> TracksPanel(player, state.tracksVersion, onPickSubtitles)
+                    null -> Unit
                 }
-                Panel.Speed -> SpeedPanel(state.speed, onPick = { player.setPlaybackSpeed(it); panel = null })
-                Panel.Tracks -> TracksPanel(player, state.tracksVersion, onPickSubtitles)
-                null -> Unit
             }
         }
     }

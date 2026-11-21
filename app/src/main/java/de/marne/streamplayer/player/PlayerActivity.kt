@@ -1,13 +1,25 @@
 package de.marne.streamplayer.player
 
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.graphics.drawable.Icon
+import android.util.Rational
 import android.net.Uri
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -23,7 +35,9 @@ import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.Keys
 import de.marne.streamplayer.library.LibTitle
 import de.marne.streamplayer.net.Http
+import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.IvoryInkTheme
+import de.marne.streamplayer.ui.tr
 
 /**
  * Spielt eine fertige Datei aus der Mediathek oder – als Vorschau – einen gefundenen Stream
@@ -31,6 +45,9 @@ import de.marne.streamplayer.ui.design.IvoryInkTheme
  *
  * Die Oberfläche ist eigene Compose-Steuerung ([PlayerScreen]) über einer nackten PlayerView:
  * Die Standard-Controls von media3 sehen nach Android aus, nicht nach der Mediathek davor.
+ *
+ * Wer die App verlässt, während das Video läuft, bekommt es als kleines Fenster (Bild im Bild)
+ * über allem anderen weitergespielt – mit Zurück/Pause/Vor im Fenster-Menü.
  */
 class PlayerActivity : ComponentActivity() {
 
@@ -39,6 +56,8 @@ class PlayerActivity : ComponentActivity() {
     /** Das Video ohne Untertitel und die Untertitel dazu – eine eigene Datei kommt hinzu, ohne neu anzufangen. */
     private var baseItem: MediaItem? = null
     private var subs: List<Pair<de.marne.streamplayer.subtitles.SubTrack, Boolean>> = emptyList()
+    /** Läuft gerade als kleines Fenster: Compose blendet dann alle Steuerung aus. */
+    private var pip by mutableStateOf(false)
 
     /** Eigene Untertitel-Datei gewählt (Dateiwähler aus PlayerScreen). */
     private fun onSubtitlePicked(picked: Uri?) {
@@ -81,6 +100,10 @@ class PlayerActivity : ComponentActivity() {
             overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, de.marne.streamplayer.R.anim.player_exit)
         }
         val uri = intent.data ?: return finish()
+        // Nur ein Player auf einmal: Wer aus der Bibliothek etwas Neues startet, während das alte
+        // noch im kleinen Fenster läuft, will nicht zwei Tonspuren hören.
+        current?.get()?.takeIf { it !== this }?.finish()
+        current = java.lang.ref.WeakReference(this)
         if (savedInstanceState == null) de.marne.streamplayer.stats.Usage.play()
         val referer = intent.getStringExtra(EXTRA_REFERER)
         val userAgent = intent.getStringExtra(EXTRA_UA) ?: Http.defaultUserAgent(this)
@@ -105,6 +128,16 @@ class PlayerActivity : ComponentActivity() {
         subs = (localSubs + pageSubs).distinctBy { it.url }.map { it to false }
         val p = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, withCookies)))
+            // Im kleinen Fenster läuft es neben anderen Apps: Spielt eine andere Ton ab oder kommt ein
+            // Anruf, hält das Video an; Kopfhörer ab ebenso – sonst tönt es plötzlich aus dem Lautsprecher.
+            .setAudioAttributes(
+                androidx.media3.common.AudioAttributes.Builder()
+                    .setUsage(androidx.media3.common.C.USAGE_MEDIA)
+                    .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
         val item = MediaItem.Builder()
             .setUri(uri)
@@ -118,7 +151,10 @@ class PlayerActivity : ComponentActivity() {
             // Vorspulen zählen nicht (Sprünge ändern die Position, nicht die Uhr).
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) playingSince = android.os.SystemClock.elapsedRealtime() else takePlayed()
+                updatePip()
             }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) = updatePip()
 
             override fun onPlaybackStateChanged(state: Int) {
                 // Zu Ende geschaut: als gesehen merken – das macht „Nächste Folge“ möglich.
@@ -128,6 +164,8 @@ class PlayerActivity : ComponentActivity() {
         p.prepare()
         p.playWhenReady = true
         player = p
+        ContextCompat.registerReceiver(this, pipActions, IntentFilter(ACTION_PIP), ContextCompat.RECEIVER_NOT_EXPORTED)
+        updatePip()
 
         // Notch und Kamera-Loch: das Bild darf bis an den Rand, die Steuerung hält Abstand (Insets im Screen).
         window.attributes = window.attributes.apply {
@@ -148,6 +186,7 @@ class PlayerActivity : ComponentActivity() {
                 PlayerScreen(
                     player = p,
                     info = info,
+                    pip = pip,
                     onBack = ::finish,
                     onPlayEpisode = ::playEpisode,
                     onPickSubtitles = { runCatching { pickSubtitles.launch(arrayOf("*/*")) } },
@@ -164,6 +203,83 @@ class PlayerActivity : ComponentActivity() {
         saveProgress()
         PlayerBridge.playEpisode(t.id, e.season, e.number)
         finish()
+    }
+
+    /** Knöpfe im Fenster-Menü kommen als Broadcast zurück (nur an diese App, s. [pipAction]). */
+    private val pipActions = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val p = player ?: return
+            when (intent.getIntExtra(EXTRA_PIP_CMD, 0)) {
+                PIP_PLAY -> { if (p.playbackState == androidx.media3.common.Player.STATE_ENDED) p.seekTo(0); p.play() }
+                PIP_PAUSE -> p.pause()
+                PIP_BACK -> p.seekTo((p.currentPosition - 10_000).coerceAtLeast(0))
+                PIP_FORWARD -> p.seekTo(p.currentPosition + 10_000)
+            }
+        }
+    }
+
+    private fun pipAction(cmd: Int, icon: Int, title: String): RemoteAction {
+        val pi = PendingIntent.getBroadcast(
+            this, cmd, Intent(ACTION_PIP).setPackage(packageName).putExtra(EXTRA_PIP_CMD, cmd),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        return RemoteAction(Icon.createWithResource(this, icon).setTint(android.graphics.Color.WHITE), title, title, pi)
+    }
+
+    /**
+     * Fenster-Einstellungen aktuell halten: Seitenverhältnis wie das Video, Knöpfe passend zum
+     * Zustand, und ab Android 12 geht es von selbst ins Fenster – aber nur, solange es wirklich läuft.
+     */
+    private fun pipParams(): PictureInPictureParams {
+        val p = player
+        val playing = p?.isPlaying == true
+        val b = PictureInPictureParams.Builder()
+            .setActions(listOf(
+                pipAction(PIP_BACK, Ic.replay10, tr("10 s zurück", "Back 10 s")),
+                if (playing) pipAction(PIP_PAUSE, Ic.pause, tr("Pause", "Pause"))
+                else pipAction(PIP_PLAY, Ic.play, tr("Abspielen", "Play")),
+                pipAction(PIP_FORWARD, Ic.forward10, tr("10 s vor", "Forward 10 s")),
+            ))
+        // Android lässt nur 1:2,39 bis 2,39:1 zu; ohne Bild (Audio, noch am Laden) 16:9.
+        val size = p?.videoSize
+        val w = size?.width ?: 0
+        val h = size?.height ?: 0
+        val ratio = if (w > 0 && h > 0) (w * (size?.pixelWidthHeightRatio ?: 1f)) / h else 16f / 9f
+        val clamped = ratio.coerceIn(1f / 2.39f, 2.39f)
+        b.setAspectRatio(Rational((clamped * 10_000).toInt(), 10_000))
+        if (android.os.Build.VERSION.SDK_INT >= 31) {
+            b.setAutoEnterEnabled(playing)
+            b.setSeamlessResizeEnabled(false) // Video: lieber kurz überblenden als verzerrt ziehen
+        }
+        return b.build()
+    }
+
+    private fun updatePip() {
+        if (player == null || isFinishing) return
+        runCatching { setPictureInPictureParams(pipParams()) }
+    }
+
+    /** Vor Android 12 gibt es kein automatisches Fenster: Beim Verlassen (Home-Taste) selbst hinein. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (android.os.Build.VERSION.SDK_INT < 31 && player?.isPlaying == true) {
+            runCatching { enterPictureInPictureMode(pipParams()) }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        pip = isInPictureInPictureMode
+        if (!isInPictureInPictureMode) {
+            // Fenster weggewischt (nicht groß gemacht): Dann ist die Activity schon gestoppt – ganz schließen,
+            // sonst hängt ein unsichtbarer Player im Verlauf herum.
+            if (!lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
+                finish()
+                return
+            }
+            // Zurück im Vollbild: Leisten wieder weg (das Fenster hat sie mitunter hergeholt).
+            WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.systemBars())
+        }
     }
 
     override fun onStart() {
@@ -201,6 +317,8 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         ticker.removeCallbacks(saveTick)
+        runCatching { unregisterReceiver(pipActions) }
+        if (current?.get() === this) current = null
         player?.release()
         player = null
         super.onDestroy()
@@ -214,6 +332,16 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_KEY = "key"
         private const val EXTRA_START = "start"
         private const val EXTRA_SUBS = "subs"
+
+        private const val ACTION_PIP = "de.marne.streamplayer.PIP"
+        private const val EXTRA_PIP_CMD = "cmd"
+        private const val PIP_PLAY = 1
+        private const val PIP_PAUSE = 2
+        private const val PIP_BACK = 3
+        private const val PIP_FORWARD = 4
+
+        /** Der laufende Player (auch im kleinen Fenster) – ein neuer schließt ihn. */
+        private var current: java.lang.ref.WeakReference<PlayerActivity>? = null
 
         /** key: Fortschritts-Schlüssel aus der Bibliothek; startMs: ab hier weiterspielen. */
         fun intent(
