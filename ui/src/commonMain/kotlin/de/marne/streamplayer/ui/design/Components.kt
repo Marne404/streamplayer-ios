@@ -1,7 +1,6 @@
 // Ivory & Ink – aus dem Design-System übernommen (Quelle: GlowUp). Diagramme aus GlowUp sind weggelassen.
 package de.marne.streamplayer.ui.design
 
-import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateContentSize
@@ -44,16 +43,17 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.marne.streamplayer.ui.tr
+import org.jetbrains.compose.resources.DrawableResource
 
 // ---------- Grundbausteine ----------
 
 @Composable
-fun GIcon(@DrawableRes res: Int, modifier: Modifier = Modifier, tint: Color = Palette.text, size: Dp = 22.dp) {
+fun GIcon(res: DrawableResource, modifier: Modifier = Modifier, tint: Color = Palette.text, size: Dp = 22.dp) {
     Icon(painterResource(res), contentDescription = null, tint = tint, modifier = modifier.size(size))
 }
 
@@ -146,7 +146,7 @@ fun RowDivider(inset: Dp = 56.dp) {
 @Composable
 fun ListRow(
     title: String,
-    @DrawableRes icon: Int? = null,
+    icon: DrawableResource? = null,
     value: String? = null,
     subtitle: String? = null,
     titleColor: Color = Palette.text,
@@ -183,7 +183,7 @@ fun ListRow(
 @Composable
 fun Disclosure(
     title: String,
-    @DrawableRes icon: Int? = null,
+    icon: DrawableResource? = null,
     value: String? = null,
     initiallyOpen: Boolean = false,
     content: @Composable () -> Unit,
@@ -271,7 +271,7 @@ fun BackBar(onBack: () -> Unit, title: String? = null, trailing: (@Composable ()
 }
 
 @Composable
-fun Pill(text: String, @DrawableRes icon: Int? = null, color: Color = Palette.surface2, textColor: Color = Palette.text, modifier: Modifier = Modifier) {
+fun Pill(text: String, icon: DrawableResource? = null, color: Color = Palette.surface2, textColor: Color = Palette.text, modifier: Modifier = Modifier) {
     Row(
         modifier.clip(RoundedCornerShape(50)).background(color).padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -282,7 +282,7 @@ fun Pill(text: String, @DrawableRes icon: Int? = null, color: Color = Palette.su
 }
 
 @Composable
-fun OutlinePill(text: String, @DrawableRes icon: Int? = null, modifier: Modifier = Modifier, selected: Boolean = false, onClick: (() -> Unit)? = null) {
+fun OutlinePill(text: String, icon: DrawableResource? = null, modifier: Modifier = Modifier, selected: Boolean = false, onClick: (() -> Unit)? = null) {
     val shape = RoundedCornerShape(50)
     Row(
         modifier
@@ -300,7 +300,7 @@ fun OutlinePill(text: String, @DrawableRes icon: Int? = null, modifier: Modifier
 }
 
 @Composable
-fun IconBadge(@DrawableRes icon: Int, size: Dp = 40.dp, bg: Color = Palette.surface2, tint: Color = Palette.text) {
+fun IconBadge(icon: DrawableResource, size: Dp = 40.dp, bg: Color = Palette.surface2, tint: Color = Palette.text) {
     Box(Modifier.size(size).clip(CircleShape).background(bg), contentAlignment = Alignment.Center) {
         GIcon(icon, tint = tint, size = size * 0.5f)
     }
@@ -310,7 +310,7 @@ fun IconBadge(@DrawableRes icon: Int, size: Dp = 40.dp, bg: Color = Palette.surf
 // ---------- Buttons (Material 3 Expressive: Form wechselt beim Drücken) ----------
 
 @Composable
-fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, @DrawableRes icon: Int? = null, onClick: () -> Unit) {
+fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: DrawableResource? = null, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         shapes = ButtonDefaults.shapesFor(56.dp),
@@ -325,7 +325,7 @@ fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean 
 }
 
 @Composable
-fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, @DrawableRes icon: Int? = null, onClick: () -> Unit) {
+fun SecondaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, icon: DrawableResource? = null, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick,
         shapes = ButtonDefaults.shapesFor(52.dp),
@@ -345,7 +345,7 @@ fun QuietButton(text: String, modifier: Modifier = Modifier, color: Color = Pale
 }
 
 @Composable
-private fun RowScope.ButtonContent(text: String, @DrawableRes icon: Int?) {
+private fun RowScope.ButtonContent(text: String, icon: DrawableResource?) {
     if (icon != null) { GIcon(icon, tint = androidx.compose.material3.LocalContentColor.current, size = 20.dp); HSpace(10.dp) }
     Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 15.sp))
 }

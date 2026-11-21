@@ -30,6 +30,7 @@ import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import de.marne.streamplayer.core.R
 import de.marne.streamplayer.App
 import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.Keys
@@ -235,10 +236,10 @@ class PlayerActivity : ComponentActivity() {
         val playing = p?.isPlaying == true
         val b = PictureInPictureParams.Builder()
             .setActions(listOf(
-                pipAction(PIP_BACK, Ic.replay10, tr("10 s zurück", "Back 10 s")),
-                if (playing) pipAction(PIP_PAUSE, Ic.pause, tr("Pause", "Pause"))
-                else pipAction(PIP_PLAY, Ic.play, tr("Abspielen", "Play")),
-                pipAction(PIP_FORWARD, Ic.forward10, tr("10 s vor", "Forward 10 s")),
+                pipAction(PIP_BACK, R.drawable.ic_replay_10, tr("10 s zurück", "Back 10 s")),
+                if (playing) pipAction(PIP_PAUSE, R.drawable.ic_pause, tr("Pause", "Pause"))
+                else pipAction(PIP_PLAY, R.drawable.ic_play_arrow, tr("Abspielen", "Play")),
+                pipAction(PIP_FORWARD, R.drawable.ic_forward_10, tr("10 s vor", "Forward 10 s")),
             ))
         // Android lässt nur 1:2,39 bis 2,39:1 zu; ohne Bild (Audio, noch am Laden) 16:9.
         val size = p?.videoSize

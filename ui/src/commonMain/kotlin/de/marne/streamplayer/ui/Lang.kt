@@ -3,7 +3,6 @@ package de.marne.streamplayer.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import java.util.Locale
 
 /**
  * Sprache der Oberfläche: Englisch oder Deutsch. Bei zwei Sprachen stehen beide Texte direkt
@@ -23,11 +22,10 @@ object Lang {
 
     val isGerman: Boolean get() = current == Code.DE
 
-    /** Locale für Zahlen und Datum („7,4“ / „7.4“, „10. November“ / „November 10“). */
-    val locale: Locale get() = if (isGerman) Locale.GERMANY else Locale.US
+    // Lang.locale (java.util.Locale für Zahlen und Datum) gibt es nur auf Android: core/…/ui/LangAndroid.kt.
 
     /** Sprache des Geräts, sofern es eine der beiden ist – sonst null. */
-    fun system(): Code? = when (Locale.getDefault().language) {
+    fun system(): Code? = when (deviceLanguage()) {
         "de" -> Code.DE
         "en" -> Code.EN
         else -> null
@@ -38,3 +36,6 @@ object Lang {
 
 /** Text in der aktuellen Sprache: `tr("Abspielen", "Play")`. */
 fun tr(de: String, en: String): String = if (Lang.current == Lang.Code.DE) de else en
+
+/** Zweibuchstabiger Sprachcode des Geräts („de“, „en“ …). */
+internal expect fun deviceLanguage(): String

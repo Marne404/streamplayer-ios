@@ -77,6 +77,7 @@ import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.Keys
 import de.marne.streamplayer.library.LibTitle
 import de.marne.streamplayer.ui.Lang
+import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.design.Bar
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace

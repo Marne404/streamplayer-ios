@@ -27,6 +27,7 @@ import de.marne.streamplayer.backup.Backup
 import de.marne.streamplayer.backup.Backup.Part
 import de.marne.streamplayer.library.CheckDot
 import de.marne.streamplayer.ui.design.Ic
+import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.design.ListGroup
 import de.marne.streamplayer.ui.design.ListRow
 import de.marne.streamplayer.ui.design.Palette

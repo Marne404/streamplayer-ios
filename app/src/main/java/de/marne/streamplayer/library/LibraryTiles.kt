@@ -1,5 +1,7 @@
 package de.marne.streamplayer.library
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.marne.streamplayer.catalog.Tmdb
 import de.marne.streamplayer.ui.Lang
+import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.Ic
 import de.marne.streamplayer.ui.design.OutlinePill
@@ -197,7 +200,7 @@ fun LazyListScope.shelf(
 
 /** Runder Aktionsknopf mit Beschriftung darunter (Meine Liste, Gesehen, Laden) – wie bei Netflix. */
 @Composable
-fun ActionIcon(icon: Int, label: String, modifier: Modifier = Modifier, active: Boolean = false, onClick: () -> Unit) {
+fun ActionIcon(icon: DrawableResource, label: String, modifier: Modifier = Modifier, active: Boolean = false, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     Column(
         modifier.pressScale(press, 0.92f).clip(RoundedCornerShape(16.dp)).clickable(interactionSource = press, indication = null, onClick = onClick)
@@ -214,7 +217,7 @@ fun ActionIcon(icon: Int, label: String, modifier: Modifier = Modifier, active: 
 
 /** Gefüllter Knopf auf Bildern (Hero): hell auf dunkel, unabhängig vom Theme. */
 @Composable
-fun ImageButton(text: String, icon: Int, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun ImageButton(text: String, icon: DrawableResource, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     val ivory = Color(0xFFF4F1EA)
     Row(

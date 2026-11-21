@@ -2,6 +2,7 @@
 
 package de.marne.streamplayer.library
 
+import org.jetbrains.compose.resources.DrawableResource
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateDpAsState
@@ -264,7 +265,7 @@ private fun HeroPage(t: LibTitle, page: Int, pager: PagerState, state: LibState,
 
 /** Knopf der Bühne: gefüllt (ink) für Abspielen, Fläche für den Rest. */
 @Composable
-fun StageButton(text: String, icon: Int, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun StageButton(text: String, icon: DrawableResource, primary: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val press = remember { MutableInteractionSource() }
     Row(
         modifier.height(48.dp).pressScale(press, 0.97f).clip(RoundedCornerShape(50))

@@ -1,5 +1,7 @@
 package de.marne.streamplayer
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -68,7 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -345,7 +347,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** [label] ist eine Funktion, damit der Name beim Sprachwechsel mit umschaltet. */
-private data class TabSpec(val label: () -> String, val icon: Int, val iconSelected: Int)
+private data class TabSpec(val label: () -> String, val icon: DrawableResource, val iconSelected: DrawableResource)
 
 private val tabs = listOf(
     TabSpec({ tr("Start", "Home") }, Ic.library, Ic.libraryFilled),

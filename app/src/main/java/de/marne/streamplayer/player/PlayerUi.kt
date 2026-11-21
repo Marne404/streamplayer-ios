@@ -1,8 +1,9 @@
 package de.marne.streamplayer.player
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.BackHandler
-import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.CubicBezierEasing
@@ -68,6 +69,7 @@ import androidx.media3.ui.PlayerView
 import de.marne.streamplayer.library.Episode
 import de.marne.streamplayer.library.LibTitle
 import de.marne.streamplayer.ui.Lang
+import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.design.GIcon
 import de.marne.streamplayer.ui.design.HSpace
 import de.marne.streamplayer.ui.design.Ic
@@ -452,7 +454,7 @@ private fun PlayPauseButton(playing: Boolean, buffering: Boolean, onClick: () ->
 
 /** Runder Symbolknopf auf dem Video: drückt sich bei Berührung leicht ein. */
 @Composable
-internal fun RoundIcon(@DrawableRes icon: Int, size: androidx.compose.ui.unit.Dp = 44.dp, iconSize: androidx.compose.ui.unit.Dp = 24.dp, onClick: () -> Unit) {
+internal fun RoundIcon(icon: DrawableResource, size: androidx.compose.ui.unit.Dp = 44.dp, iconSize: androidx.compose.ui.unit.Dp = 24.dp, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.88f else 1f, tween(DUR_PRESS), label = "press")
@@ -466,7 +468,7 @@ internal fun RoundIcon(@DrawableRes icon: Int, size: androidx.compose.ui.unit.Dp
 
 /** Symbol mit Wort daneben, für die untere Leiste („Sperren“, „Folgen“). */
 @Composable
-internal fun LabelButton(@DrawableRes icon: Int, label: String, onClick: () -> Unit) {
+internal fun LabelButton(icon: DrawableResource, label: String, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.94f else 1f, tween(DUR_PRESS), label = "press")

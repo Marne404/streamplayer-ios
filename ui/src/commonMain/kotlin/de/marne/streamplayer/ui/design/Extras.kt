@@ -2,7 +2,6 @@
 // für die es aber noch keinen Compose-Code gab: Segment-Umschalter, Hinweiskarte, Vorschaubild, Menü.
 package de.marne.streamplayer.ui.design
 
-import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -40,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import org.jetbrains.compose.resources.DrawableResource
 
 /** Segment-Umschalter (.ii-seg): gewählt = ink, beim Wählen wird die Pill etwas eckiger. */
 @Composable
@@ -73,7 +73,7 @@ fun Segmented(
 /** Hinweiskarte: Icon im Kreis, Titel, eine Zeile, rechts die Aktion als Wort. Höchstens eine pro Screen. */
 @Composable
 fun NoticeCard(
-    @DrawableRes icon: Int,
+    icon: DrawableResource,
     title: String,
     text: String,
     action: String? = null,
@@ -117,7 +117,7 @@ fun Thumb(model: Any?, modifier: Modifier = Modifier, radius: Dp = 12.dp) {
 
 /** Zeile mit Status-Icon und einer kurzen Aussage, z. B. ein Fehler unter dem auslösenden Element. */
 @Composable
-fun StatusLine(@DrawableRes icon: Int, text: String, color: Color = Palette.wine) {
+fun StatusLine(icon: DrawableResource, text: String, color: Color = Palette.wine) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         GIcon(icon, tint = color, size = 16.dp)
         HSpace(6.dp)

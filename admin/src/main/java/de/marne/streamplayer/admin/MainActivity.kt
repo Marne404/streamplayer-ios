@@ -1,5 +1,7 @@
 package de.marne.streamplayer.admin
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -58,7 +60,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
 import de.marne.streamplayer.ui.Lang
 import de.marne.streamplayer.ui.design.Hairline
@@ -102,7 +104,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private class TabSpec(val label: String, val icon: Int)
+private class TabSpec(val label: String, val icon: DrawableResource)
 
 private val tabs = listOf(
     TabSpec("Überblick", Ic.home),

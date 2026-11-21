@@ -1,5 +1,7 @@
 package de.marne.streamplayer.subtitles
 
+import de.marne.streamplayer.ui.locale
+
 import android.content.Context
 import android.net.Uri
 import androidx.media3.common.C

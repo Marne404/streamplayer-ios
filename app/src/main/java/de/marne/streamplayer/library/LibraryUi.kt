@@ -1,7 +1,8 @@
 package de.marne.streamplayer.library
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import de.marne.streamplayer.catalog.Tmdb
-import androidx.annotation.DrawableRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -67,7 +68,7 @@ fun WideTile(
     meta: String?,
     width: Dp,
     progress: Float? = null,
-    @DrawableRes badgeIcon: Int? = null,
+    badgeIcon: DrawableResource? = null,
     badge: String? = null,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,

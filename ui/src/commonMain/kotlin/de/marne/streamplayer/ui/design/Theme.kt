@@ -17,12 +17,17 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import de.marne.streamplayer.core.R
+import de.marne.streamplayer.ui.res.Res
+import de.marne.streamplayer.ui.res.sans_medium
+import de.marne.streamplayer.ui.res.sans_regular
+import de.marne.streamplayer.ui.res.sans_semibold
+import de.marne.streamplayer.ui.res.serif_medium
+import de.marne.streamplayer.ui.res.serif_semibold
+import org.jetbrains.compose.resources.Font
 
 /**
  * „Old Money“-Palette: warmes Off-White und Off-Black, dazu sehr sparsam Messing,
@@ -146,39 +151,48 @@ private fun scheme(p: AppPalette): ColorScheme {
     )
 }
 
-val Serif = FontFamily(
-    Font(R.font.serif_medium, FontWeight.Medium),
-    Font(R.font.serif_semibold, FontWeight.SemiBold),
-    Font(R.font.serif_semibold, FontWeight.Bold),
-)
+// Compose-Ressourcen laden Schriften nur innerhalb der Oberfläche (@Composable) – auf Android
+// wie auf dem iPad. Darum Getter statt fester Werte; Aufrufer schreiben weiter `fontFamily = Serif`.
+val Serif: FontFamily
+    @Composable get() = FontFamily(
+        Font(Res.font.serif_medium, FontWeight.Medium),
+        Font(Res.font.serif_semibold, FontWeight.SemiBold),
+        Font(Res.font.serif_semibold, FontWeight.Bold),
+    )
 
-val Sans = FontFamily(
-    Font(R.font.sans_regular, FontWeight.Normal),
-    Font(R.font.sans_medium, FontWeight.Medium),
-    Font(R.font.sans_semibold, FontWeight.SemiBold),
-    Font(R.font.sans_semibold, FontWeight.Bold),
-)
+val Sans: FontFamily
+    @Composable get() = FontFamily(
+        Font(Res.font.sans_regular, FontWeight.Normal),
+        Font(Res.font.sans_medium, FontWeight.Medium),
+        Font(Res.font.sans_semibold, FontWeight.SemiBold),
+        Font(Res.font.sans_semibold, FontWeight.Bold),
+    )
 
 /** Ziffern in der Serifenschrift sollen gleich hoch stehen (keine Mediävalziffern). */
 private const val LINING = "lnum, pnum"
 
-private val typo = Typography(
-    displayLarge = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 88.sp, lineHeight = 88.sp, letterSpacing = (-1.5).sp, fontFeatureSettings = LINING),
-    displayMedium = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 60.sp, lineHeight = 62.sp, letterSpacing = (-1).sp, fontFeatureSettings = LINING),
-    displaySmall = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 44.sp, lineHeight = 48.sp, letterSpacing = (-0.5).sp, fontFeatureSettings = LINING),
-    headlineLarge = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 38.sp, lineHeight = 42.sp, letterSpacing = (-0.4).sp, fontFeatureSettings = LINING),
-    headlineMedium = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 31.sp, lineHeight = 36.sp, letterSpacing = (-0.2).sp, fontFeatureSettings = LINING),
-    headlineSmall = TextStyle(fontFamily = Serif, fontWeight = FontWeight.SemiBold, fontSize = 25.sp, lineHeight = 30.sp, fontFeatureSettings = LINING),
-    titleLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, lineHeight = 25.sp, letterSpacing = (-0.2).sp),
-    titleMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.5.sp, lineHeight = 21.sp, letterSpacing = (-0.1).sp),
-    titleSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp),
-    bodyLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 15.5.sp, lineHeight = 23.sp),
-    bodyMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 12.5.sp, lineHeight = 17.sp),
-    labelLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.1.sp),
-    labelMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.2.sp),
-    labelSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 10.5.sp, lineHeight = 14.sp, letterSpacing = 1.4.sp),
+@Composable
+private fun typo(): Typography {
+    val serif = Serif
+    val sans = Sans
+    return Typography(
+    displayLarge = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 88.sp, lineHeight = 88.sp, letterSpacing = (-1.5).sp, fontFeatureSettings = LINING),
+    displayMedium = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 60.sp, lineHeight = 62.sp, letterSpacing = (-1).sp, fontFeatureSettings = LINING),
+    displaySmall = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 44.sp, lineHeight = 48.sp, letterSpacing = (-0.5).sp, fontFeatureSettings = LINING),
+    headlineLarge = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 38.sp, lineHeight = 42.sp, letterSpacing = (-0.4).sp, fontFeatureSettings = LINING),
+    headlineMedium = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 31.sp, lineHeight = 36.sp, letterSpacing = (-0.2).sp, fontFeatureSettings = LINING),
+    headlineSmall = TextStyle(fontFamily = serif, fontWeight = FontWeight.SemiBold, fontSize = 25.sp, lineHeight = 30.sp, fontFeatureSettings = LINING),
+    titleLarge = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 19.sp, lineHeight = 25.sp, letterSpacing = (-0.2).sp),
+    titleMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 15.5.sp, lineHeight = 21.sp, letterSpacing = (-0.1).sp),
+    titleSmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 19.sp),
+    bodyLarge = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.5.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 12.5.sp, lineHeight = 17.sp),
+    labelLarge = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp, letterSpacing = 0.1.sp),
+    labelMedium = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.2.sp),
+    labelSmall = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 10.5.sp, lineHeight = 14.sp, letterSpacing = 1.4.sp),
 )
+}
 
 private val shapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -205,7 +219,7 @@ fun IvoryInkTheme(dark: Boolean, content: @Composable () -> Unit) {
             // Ruhige Standard-Bewegung statt verspielter Federn
             motionScheme = MotionScheme.standard(),
             shapes = shapes,
-            typography = typo,
+            typography = typo(),
         ) {
             // Standard-Textfarbe auch außerhalb von Scaffold/Surface (z. B. Onboarding, Dialoge)
             CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides p.text, content = content)
