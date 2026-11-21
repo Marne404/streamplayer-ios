@@ -190,7 +190,7 @@ class LibraryStore(context: Context) {
 
     fun findByPage(url: String): LibTitle? {
         val key = UrlClassifier.key(url)
-        return _titles.value.firstOrNull { it.pageUrl != null && UrlClassifier.key(it.pageUrl) == key }
+        return _titles.value.firstOrNull { t -> t.pageUrl?.let { UrlClassifier.key(it) } == key }
     }
 
     fun containsLink(url: String) = findByPage(url) != null
@@ -358,7 +358,7 @@ class LibraryStore(context: Context) {
 
     fun removeLink(url: String) {
         val key = UrlClassifier.key(url)
-        _titles.update { list -> list.filterNot { it.kind == TitleKind.MOVIE && it.pageUrl != null && UrlClassifier.key(it.pageUrl) == key && it.offline.isEmpty() } }
+        _titles.update { list -> list.filterNot { it.kind == TitleKind.MOVIE && it.pageUrl?.let { u -> UrlClassifier.key(u) } == key && it.offline.isEmpty() } }
     }
 
     /** Download gelöscht: Verweis entfernen; ein Film, der nur aus dieser Datei bestand, verschwindet. */

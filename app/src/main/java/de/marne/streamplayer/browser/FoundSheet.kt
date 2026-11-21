@@ -1,5 +1,7 @@
 package de.marne.streamplayer.browser
 
+import de.marne.streamplayer.ui.candidateMeta
+
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -157,7 +159,7 @@ private fun CandidateCard(
                         QuietButton(tr("Vorher ansehen", "Preview"), color = Palette.muted) { onPreview() }
                         val library = de.marne.streamplayer.App.instance.library
                         val items by library.titles.collectAsState()
-                        val saved = items.any { it.pageUrl != null && de.marne.streamplayer.detect.UrlClassifier.key(it.pageUrl) == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
+                        val saved = items.any { t -> t.pageUrl?.let { de.marne.streamplayer.detect.UrlClassifier.key(it) } == de.marne.streamplayer.detect.UrlClassifier.key(c.pageUrl) }
                         QuietButton(if (saved) tr("Gemerkt", "Saved") else tr("Merken", "Save"), color = if (saved) Palette.muted else Palette.text) {
                             if (!saved) library.addMovie(c.pageUrl, title, thumb)
                         }

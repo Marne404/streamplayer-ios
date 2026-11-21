@@ -32,7 +32,6 @@ class Enricher(
     private val settings: Settings,
     dir: File,
 ) {
-    data class Status(val running: Boolean = false, val done: Int = 0, val total: Int = 0, val lastError: String? = null)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -56,8 +55,8 @@ class Enricher(
     /** Folgen schon einmal versucht (diese Sitzung) – nicht bei jedem Öffnen der Detailseite erneut. */
     private val episodesTried = java.util.Collections.synchronizedSet(HashSet<String>())
 
-    private val _status = MutableStateFlow(Status())
-    val status: StateFlow<Status> = _status.asStateFlow()
+    private val _status = MutableStateFlow(EnrichStatus())
+    val status: StateFlow<EnrichStatus> = _status.asStateFlow()
 
     init {
         load()
@@ -223,7 +222,7 @@ class Enricher(
 
     private fun publish() {
         val (n, d) = synchronized(pending) { pending.size to done }
-        _status.value = Status(running = n > 0 && !halted, done = d, total = d + n, lastError = lastError)
+        _status.value = EnrichStatus(running = n > 0 && !halted, done = d, total = d + n, lastError = lastError)
     }
 
     private fun changed(saveNow: Boolean = false) {

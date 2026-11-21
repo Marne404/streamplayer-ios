@@ -34,3 +34,8 @@ update/publish.log
 # Statistik-Worker: lokale Datenbank und Schlüssel von wrangler dev
 stats/.wrangler/
 stats/.dev.vars
+
+# iPad-Hülle: Xcode-Projekt und Build entstehen im CI
+ios/*.xcodeproj/
+ios/build/
+ios/Payload/

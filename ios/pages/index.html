@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streamplayer iPad-Test</title>
+<style>
+  :root { --bg:#F4F1EA; --surface:#FBF9F5; --line:#E0D9CC; --text:#1B1A17; --muted:#6B655B; --brass:#8E6F43; --ink:#1B1A17; --onink:#F4F1EA; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121110; --surface:#1A1917; --line:#2F2C27; --text:#EDE8DF; --muted:#A59E92; --brass:#C9AB7A; --ink:#EDE8DF; --onink:#121110; } }
+  body { margin:0; padding:24px 16px; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system, system-ui, sans-serif; }
+  main { max-width:640px; margin:0 auto; }
+  .label { font-size:11px; letter-spacing:1.4px; color:var(--brass); text-transform:uppercase; }
+  h1 { font:600 34px/1.15 Georgia, serif; margin:4px 0 8px; }
+  p { color:var(--muted); }
+  .box { background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:16px; margin:16px 0; }
+  a.btn { display:inline-block; background:var(--ink); color:var(--onink); padding:12px 20px; border-radius:999px; text-decoration:none; font-weight:600; margin:4px 8px 4px 0; }
+  code { font-size:13px; word-break:break-all; }
+</style>
+</head>
+<body>
+<main>
+  <div class="label">iPad</div>
+  <h1>Streamplayer auf dem iPad</h1>
+  <p>Dieselbe Oberfläche wie auf Android (Compose Multiplatform), ohne Mac auf GitHub Actions gebaut. Installation über SideStore.</p>
+  <div class="box">
+    <a class="btn" href="sidestore://source?url=https://marne404.github.io/streamplayer-ios/source.json">In SideStore hinzufügen</a>
+    <p>Klappt der Knopf nicht: In SideStore unter <b>Sources → +</b> diese Adresse eintragen:</p>
+    <code>https://marne404.github.io/streamplayer-ios/source.json</code>
+  </div>
+  <div class="box">
+    <a class="btn" href="test/">Erkennungstest öffnen</a>
+    <p>Die Seite, die die App in ihrer WebView lädt.</p>
+  </div>
+</main>
+</body>
+</html>

@@ -62,32 +62,9 @@ import de.marne.streamplayer.ui.tr
 import androidx.compose.foundation.layout.Row
 import kotlinx.coroutines.launch
 
-/** Gedeckte Töne aus Ivory & Ink: Messing, Grün, Wein, Blau, Pflaume, Graphit. */
-internal val ProfileColors = listOf(
-    Color(0xFF8E6F43), Color(0xFF34503F), Color(0xFF7A2E2E),
-    Color(0xFF3B4D63), Color(0xFF5E4B6E), Color(0xFF5B5750),
-)
-internal val OnProfile = Color(0xFFF4F1EA)
 
 private val Spring = CubicBezierEasing(0.25f, 1f, 0.5f, 1f)
 private val Bouncy = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
-
-/** Rundes Profilbild: Anfangsbuchstabe auf der Profilfarbe. */
-@Composable
-fun ProfileAvatar(p: Profile, size: Dp, modifier: Modifier = Modifier) {
-    Box(
-        modifier.size(size).clip(CircleShape).background(ProfileColors[p.color.mod(ProfileColors.size)]),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            p.name.trim().take(1).uppercase().ifEmpty { "?" },
-            color = OnProfile,
-            fontFamily = Serif,
-            fontSize = (size.value * 0.46f).sp,
-            lineHeight = (size.value * 0.5f).sp,
-        )
-    }
-}
 
 /**
  * „Wer schaut?“ – Profil wählen, anlegen, umbenennen, löschen, sperren. [canDismiss]: false, wenn

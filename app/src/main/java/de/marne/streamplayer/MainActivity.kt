@@ -1,5 +1,7 @@
 package de.marne.streamplayer
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -68,7 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.painterResource
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -225,6 +227,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var browser: BrowserController
     private lateinit var watch: WatchController
     private val nav = AppNav()
+    /** Was die gemeinsamen Bibliotheks-Seiten (Modul :ui) von Android brauchen. */
+    private val libraryHost by lazy { de.marne.streamplayer.library.AppLibraryHost(App.instance) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -245,6 +249,7 @@ class MainActivity : ComponentActivity() {
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
             }
             IvoryInkTheme(dark) {
+              androidx.compose.runtime.CompositionLocalProvider(de.marne.streamplayer.library.LocalLibraryHost provides libraryHost) {
                 val onboarded by app.settings.onboarded.collectAsStateWithLifecycle()
                 // Willkommen → Bibliothek: der Ablauf blendet weg, die Bibliothek kommt leicht auf einen zu.
                 androidx.compose.animation.AnimatedContent(
@@ -259,6 +264,7 @@ class MainActivity : ComponentActivity() {
                     if (done) AppRoot(browser, hub, watch, nav)
                     else de.marne.streamplayer.onboarding.OnboardingScreen(onFinished = { })
                 }
+              }
             }
         }
     }
@@ -345,7 +351,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** [label] ist eine Funktion, damit der Name beim Sprachwechsel mit umschaltet. */
-private data class TabSpec(val label: () -> String, val icon: Int, val iconSelected: Int)
+private data class TabSpec(val label: () -> String, val icon: DrawableResource, val iconSelected: DrawableResource)
 
 private val tabs = listOf(
     TabSpec({ tr("Start", "Home") }, Ic.library, Ic.libraryFilled),
@@ -751,12 +757,29 @@ private fun AppRoot(browser: BrowserController, hub: DetectionHub, watch: WatchC
             },
             resetCover = { t -> app.library.setCustomPoster(t.id, null) },
             setCover = { t, url -> app.library.setCustomPoster(t.id, url) },
-            matchTmdb = { t, r ->
-                if (!app.enricher.available) toast(tr("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.", "Add a TMDB key in Settings first."))
-                else {
-                    app.library.setTmdbMatch(t.id, r.id)
-                    app.enricher.enqueue(listOf(t.id), force = true)
-                    toast(tr("Zugeordnet: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – lädt …", "Matched: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – loading …"))
+            matchSheet = { t, dismiss ->
+                de.marne.streamplayer.library.TmdbMatchSheet(t, onPick = { r ->
+                    if (!app.enricher.available) toast(tr("Erst einen TMDB-Schlüssel in den Einstellungen eintragen.", "Add a TMDB key in Settings first."))
+                    else {
+                        app.library.setTmdbMatch(t.id, r.id)
+                        app.enricher.enqueue(listOf(t.id), force = true)
+                        toast(tr("Zugeordnet: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – lädt …", "Matched: ${r.title}${r.year?.let { " ($it)" }.orEmpty()} – loading …"))
+                    }
+                }, onDismiss = dismiss)
+            },
+            coverSheet = { t ->
+                de.marne.streamplayer.library.tmdbCoverSource(t)?.let { src ->
+                    { dismiss ->
+                        de.marne.streamplayer.library.CoverSheet(
+                            t, src,
+                            onPick = { app.library.setCustomPoster(t.id, it) },
+                            onGallery = {
+                                coverFor = t.id
+                                coverPicker.launch(androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            },
+                            onDismiss = dismiss,
+                        )
+                    }
                 }
             },
             setLibraries = { t, libs -> app.library.setLibraries(t.id, libs) },

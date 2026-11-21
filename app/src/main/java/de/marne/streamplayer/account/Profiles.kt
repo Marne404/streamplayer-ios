@@ -21,38 +21,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
-/**
- * Ein Profil wie bei Netflix: gemeinsame Bibliothek, eigener Fortschritt, eigene „Meine Liste“.
- * [list]: Titel-IDs, die neuesten vorn. Liegt im Profil, damit sie mit dem Profil abgeglichen wird.
- */
-data class Profile(
-    val id: String,
-    val name: String,
-    val color: Int,
-    val createdAt: Long,
-    val list: List<String> = emptyList(),
-    /** Profilsperre wie bei Netflix: Hash der vierstelligen PIN ([PinHash]), null = offen. */
-    val lock: String? = null,
-    /** Eigene Sammlungen („Weihnachten“, „Mit den Kindern“). Gehören dem Profil wie „Meine Liste“. */
-    val collections: List<TitleCollection> = emptyList(),
-) {
-    val locked: Boolean get() = lock != null
 
-    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("color", color).put("createdAt", createdAt)
-        .put("list", JSONArray(list)).put("lock", lock)
-        .put("collections", JSONArray().apply { collections.forEach { put(it.toJson()) } })
-
-    companion object {
-        fun fromJson(o: JSONObject) = Profile(
-            o.getString("id"), o.optString("name", "Profil"), o.optInt("color"), o.optLong("createdAt"),
-            o.optJSONArray("list")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
-            if (o.isNull("lock")) null else o.optString("lock").takeIf { it.isNotEmpty() },
-            o.optJSONArray("collections")?.let { a -> List(a.length()) { TitleCollection.fromJson(a.getJSONObject(it)) } }.orEmpty(),
-        )
-        /** Das erste Profil übernimmt den Fortschritt aus der Zeit vor den Profilen. */
-        const val DEFAULT_ID = "main"
-    }
-}
 
 /**
  * Profile dieses Geräts (mit Konto: des Kontos). Welches gerade schaut, gehört dem Gerät allein –
@@ -312,17 +281,4 @@ object PinHash {
     }
 
     private fun b64(b: ByteArray) = java.util.Base64.getEncoder().withoutPadding().encodeToString(b)
-}
-
-/** Eine eigene Sammlung: Name und Titel-IDs, die zuletzt hinzugefügten vorn. */
-data class TitleCollection(val id: String, val name: String, val items: List<String>, val createdAt: Long) {
-    fun toJson(): JSONObject = JSONObject().put("id", id).put("name", name).put("items", JSONArray(items)).put("createdAt", createdAt)
-
-    companion object {
-        fun fromJson(o: JSONObject) = TitleCollection(
-            o.getString("id"), o.optString("name"),
-            o.optJSONArray("items")?.let { a -> List(a.length()) { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
-            o.optLong("createdAt"),
-        )
-    }
 }

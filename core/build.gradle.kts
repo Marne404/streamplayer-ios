@@ -32,6 +32,8 @@ kotlin {
 }
 
 dependencies {
+    // Ivory & Ink und die Bibliotheks-Oberfläche liegen seit Etappe 1 (iPad) im Multiplatform-Modul.
+    api(project(":ui"))
     api(platform(libs.androidx.compose.bom))
     api(libs.androidx.compose.ui)
     api(libs.androidx.compose.foundation)

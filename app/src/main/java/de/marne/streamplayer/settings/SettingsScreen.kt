@@ -35,6 +35,7 @@ import de.marne.streamplayer.App
 import de.marne.streamplayer.account.AccountSection
 import de.marne.streamplayer.data.Settings
 import de.marne.streamplayer.ui.Lang
+import de.marne.streamplayer.ui.locale
 import de.marne.streamplayer.ui.tr
 import de.marne.streamplayer.ui.design.Disclosure
 import de.marne.streamplayer.ui.design.Ic

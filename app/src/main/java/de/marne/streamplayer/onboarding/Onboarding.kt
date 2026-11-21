@@ -1,5 +1,7 @@
 package de.marne.streamplayer.onboarding
 
+import org.jetbrains.compose.resources.DrawableResource
+
 import android.Manifest
 import de.marne.streamplayer.ui.Lang
 import de.marne.streamplayer.ui.tr
@@ -8,7 +10,6 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
@@ -346,7 +347,7 @@ private fun PosterFan() {
         -1f, 1f, infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "d",
     )
     val density = LocalDensity.current
-    data class Card(@DrawableRes val icon: Int, val color: Color, val side: Int)
+    data class Card(val icon: DrawableResource, val color: Color, val side: Int)
     val cards = listOf(Card(Ic.tv, ProfileColors[3], -1), Card(Ic.movie, ProfileColors[2], 1), Card(Ic.play, ProfileColors[0], 0))
     // Der Fächer braucht gut 340 dp. Auf schmalen Bildschirmen (oder mit großer Anzeigegröße) wurde er
     // links und rechts abgeschnitten – also mit der verfügbaren Breite verkleinern statt beschneiden.
