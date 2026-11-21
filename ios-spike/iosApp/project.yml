@@ -1,0 +1,58 @@
+# XcodeGen-Beschreibung der App-Hülle. Das .xcodeproj entsteht erst im CI (xcodegen generate),
+# damit hier ohne Mac nichts Binäres gepflegt werden muss.
+name: iosApp
+options:
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGN_IDENTITY: ""
+targets:
+  iosApp:
+    type: application
+    platform: iOS
+    sources:
+      - iosApp
+    scheme: {}
+    preBuildScripts:
+      - name: Kotlin-Framework bauen
+        basedOnDependencyAnalysis: false
+        script: |
+          cd "$SRCROOT/.."
+          ./gradlew --no-daemon :shared:embedAndSignAppleFrameworkForXcode
+    settings:
+      base:
+        PRODUCT_NAME: StreamplayerSpike
+        PRODUCT_BUNDLE_IDENTIFIER: de.marne.streamplayer.spike
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        FRAMEWORK_SEARCH_PATHS: ["$(inherited)", "$(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"]
+        OTHER_LDFLAGS: ["$(inherited)", "-framework", "Shared"]
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: SP Test
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        # Ton im Hintergrund + Bild im Bild
+        UIBackgroundModes: [audio]
+        CADisableMinimumFrameDurationOnPhone: true
+        ITSAppUsesNonExemptEncryption: false
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
