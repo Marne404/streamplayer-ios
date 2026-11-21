@@ -145,19 +145,6 @@ private fun SignIn(auth: FirebaseAuth, onDemo: () -> Unit) {
     }
 }
 
-/** Fürs Konto: nur ansehen – Ändern (Meine Liste, Sammlungen, Fortschritt) kommt in der nächsten Etappe. */
-private class CloudHost(private val readOnly: () -> Unit) : LibraryHost {
-    override val tmdbAvailable = false
-    override fun prioritizeEnrich(titleId: String) = Unit
-    override val watchDays: StateFlow<Map<Long, Long>> = MutableStateFlow(emptyMap())
-    override val homeContinue: StateFlow<Boolean> = MutableStateFlow(true)
-    override val homeMyList: StateFlow<Boolean> = MutableStateFlow(true)
-    override fun createCollection(name: String, firstTitle: String?): String { readOnly(); return "" }
-    override fun renameCollection(id: String, name: String) = readOnly()
-    override fun deleteCollection(id: String) = readOnly()
-    override fun toggleInCollection(id: String, titleId: String) = readOnly()
-}
-
 @Composable
 private fun CloudRoot(auth: FirebaseAuth, uid: String, onSettings: () -> Unit) {
     val library = remember { CloudLibrary(Firestore(auth)) }
@@ -181,6 +168,17 @@ private fun CloudRoot(auth: FirebaseAuth, uid: String, onSettings: () -> Unit) {
             }
             step = null
         }
+    }
+
+    val edits = remember(uid) {
+        CloudEdits(
+            Firestore(auth), library, uid, scope,
+            get = { data }, set = { data = it },
+            onFailed = { msg ->
+                notice = tr("Nicht gespeichert: $msg – lädt neu aus dem Konto.", "Not saved: $msg – reloading from your account.")
+                refresh()
+            },
+        )
     }
 
     LaunchedEffect(uid) {
@@ -213,11 +211,18 @@ private fun CloudRoot(auth: FirebaseAuth, uid: String, onSettings: () -> Unit) {
             if (profile == null) {
                 ProfileGate(profiles, onPick = { p -> profileId = p.id }, onSignOut = { auth.signOut() })
             } else {
-                val host = remember { CloudHost { notice = tr("Ändern vom iPad aus kommt in der nächsten Etappe – bis dahin nur ansehen.", "Editing from the iPad comes in the next stage – view only for now.") } }
+                val pid = profile.id
+                val host = remember(pid) { edits.host { pid } }
                 LibraryShell(
                     data = ShellData(d.titles, d.libraries, profile, d.progress[profile.id].orEmpty()),
                     host = host,
-                    edits = ShellEdits(null, null, null, null),
+                    // Titel umbenennen/entfernen bleibt auf dem Handy (dort liegen Katalog und Downloads).
+                    edits = ShellEdits(
+                        toggleList = { t -> edits.toggleList(pid, t.id) },
+                        setWatched = { keys, w -> edits.setWatched(pid, keys, w) },
+                        rename = null,
+                        remove = null,
+                    ),
                     onProfiles = { if (profiles.size > 1 || profile.lock != null) profileId = null else onSettings() },
                     onSettings = onSettings,
                     notice = notice,

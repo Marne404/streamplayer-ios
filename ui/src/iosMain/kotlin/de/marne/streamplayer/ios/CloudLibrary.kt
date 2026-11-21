@@ -100,6 +100,29 @@ internal class CloudLibrary(private val store: Firestore) {
         }
     }
 
+    /**
+     * Eine Änderung vom iPad in den Zwischenspeicher übernehmen, damit sie auch beim nächsten
+     * Start (vor dem Neuladen) schon da ist: ein Profil oder der Fortschritt eines Titels.
+     */
+    suspend fun patchCache(uid: String, profile: Profile? = null, progress: Triple<String, String, Map<String, Progress>>? = null) = withContext(Dispatchers.Default) {
+        val text = NSString.stringWithContentsOfFile(cacheFile(uid), NSUTF8StringEncoding, null) ?: return@withContext
+        val raw = runCatching { json.parseToJsonElement(text) as JsonObject }.getOrNull() ?: return@withContext
+        val out = raw.toMutableMap()
+        if (profile != null) {
+            val list = raw.strings("profiles").filterNot { runCatching { SyncJson.profile(it).id }.getOrNull() == profile.id }
+            out["profiles"] = buildJsonArray { (list + SyncJson.profileText(profile)).forEach { add(JsonPrimitive(it)) } }
+        }
+        if (progress != null) {
+            val (pid, titleId, map) = progress
+            val all = (raw["progress"] as? JsonObject).orEmpty().toMutableMap()
+            val docs = (all[pid] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+                .filterNot { t -> runCatching { SyncJson.progress(t).keys.any { k -> de.marne.streamplayer.library.Keys.parse(k)?.first == titleId } }.getOrDefault(false) }
+            all[pid] = buildJsonArray { (docs + SyncJson.progressText(map)).forEach { add(JsonPrimitive(it)) } }
+            out["progress"] = JsonObject(all)
+        }
+        (JsonObject(out).toString() as NSString).writeToFile(cacheFile(uid), atomically = true, encoding = NSUTF8StringEncoding, error = null)
+    }
+
     private fun texts(docs: List<Firestore.Doc>) = buildJsonArray { docs.forEach { d -> if (!d.deleted && d.json != null) add(JsonPrimitive(d.json)) } }
 
     private fun JsonObject.strings(k: String): List<String> = (this[k] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }

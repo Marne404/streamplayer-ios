@@ -170,6 +170,39 @@ internal class Firestore(private val auth: FirebaseAuth) {
         return out
     }
 
+    /**
+     * Ein Abgleich-Dokument schreiben wie CloudSync auf Android: { json, deleted } und updatedAt als
+     * Serverzeit (die Regeln verlangen genau das – andere Geräte lesen „was seit X neu ist“).
+     */
+    suspend fun write(path: String, jsonText: String) {
+        val name = "projects/${Config.FIREBASE_PROJECT}/databases/(default)/documents/$path"
+        val body = buildJsonObject {
+            put("writes", kotlinx.serialization.json.buildJsonArray {
+                add(buildJsonObject {
+                    put("update", buildJsonObject {
+                        put("name", name)
+                        put("fields", buildJsonObject {
+                            put("json", buildJsonObject { put("stringValue", jsonText) })
+                            put("deleted", buildJsonObject { put("booleanValue", false) })
+                        })
+                    })
+                    put("updateTransforms", kotlinx.serialization.json.buildJsonArray {
+                        add(buildJsonObject {
+                            put("fieldPath", "updatedAt")
+                            put("setToServerValue", "REQUEST_TIME")
+                        })
+                    })
+                })
+            })
+        }
+        http.post("$base:commit") {
+            header("Authorization", "Bearer ${auth.token()}")
+            iosKey()
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }.jsonOrThrow("Speichern")
+    }
+
     /** Eigenes Bild (covers/{name}): Bytes oder null. */
     suspend fun cover(uidPath: String, name: String): ByteArray? {
         val r = http.get("$base/$uidPath/covers/$name") {

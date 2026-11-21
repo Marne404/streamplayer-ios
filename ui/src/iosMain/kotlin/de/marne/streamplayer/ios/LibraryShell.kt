@@ -110,7 +110,7 @@ internal class ShellData(
 /** Ändern erlaubt (Beispieltitel: nur im Speicher) oder nur ansehen (Konto: Schreiben kommt noch). */
 internal class ShellEdits(
     val toggleList: ((LibTitle) -> Unit)?,
-    val setWatched: ((String, Boolean) -> Unit)?,
+    val setWatched: ((List<String>, Boolean) -> Unit)?,
     val rename: ((LibTitle, String) -> Unit)?,
     val remove: ((LibTitle) -> Unit)?,
 )
@@ -169,10 +169,10 @@ internal fun LibraryShell(
         markWatched = { t, w ->
             val set = edits.setWatched
             if (set == null) readOnly()
-            else if (t.kind == TitleKind.MOVIE) set(Keys.movie(t), w)
-            else t.episodes().forEach { set(Keys.episode(t, it), w) }
+            else if (t.kind == TitleKind.MOVIE) set(listOf(Keys.movie(t)), w)
+            else set(t.episodes().map { Keys.episode(t, it) }, w)
         },
-        setWatched = { k, w -> edits.setWatched?.invoke(k, w) ?: readOnly() },
+        setWatched = { k, w -> edits.setWatched?.invoke(listOf(k), w) ?: readOnly() },
         grid = { push(Route.Grid(it)) },
         categories = { category = it; categoryOpen = true },
         search = { stack.clear(); tab = 1 },
@@ -271,7 +271,7 @@ internal fun DemoLibrary(onProfiles: () -> Unit, onSettings: () -> Unit) {
         host = host,
         edits = ShellEdits(
             toggleList = { t -> host.profile.update { p -> p.copy(list = if (t.id in p.list) p.list - t.id else listOf(t.id) + p.list) } },
-            setWatched = { k, w -> progress = if (w) progress + (k to Progress(1, 1, true, nowMillis(), 0)) else progress - k },
+            setWatched = { keys, w -> progress = if (w) progress + keys.associateWith { Progress(1, 1, true, nowMillis(), 0) } else progress - keys.toSet() },
             rename = { t, name -> titles = titles.map { if (it.id == t.id) it.copy(title = name) else it } },
             remove = { t -> titles = titles.filterNot { it.id == t.id } },
         ),
