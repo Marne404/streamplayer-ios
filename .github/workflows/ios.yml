@@ -62,6 +62,11 @@ jobs:
 
       - name: App bauen (unsigniert)
         working-directory: ios
+        env:
+          # Google-Anmeldung und Firebase-Schlüssel (GoogleService-Info.plist des iOS-Eintrags).
+          # Fehlen die Geheimnisse, baut die App trotzdem – dann nur mit Beispieltiteln.
+          SP_GOOGLE_CLIENT_ID: ${{ secrets.IOS_GOOGLE_CLIENT_ID }}
+          SP_FIREBASE_API_KEY: ${{ secrets.IOS_FIREBASE_API_KEY }}
         run: |
           set -o pipefail
           xcodebuild \
@@ -70,6 +75,7 @@ jobs:
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            SP_GOOGLE_CLIENT_ID="$SP_GOOGLE_CLIENT_ID" SP_FIREBASE_API_KEY="$SP_FIREBASE_API_KEY" \
             build 2>&1 | tee build.log | grep -E '(error|BUILD (SUCCEEDED|FAILED)|\*\* )' || true
           test -d build/Build/Products/Release-iphoneos/Streamplayer.app || { tail -n 200 build.log; exit 1; }
 
@@ -120,7 +126,7 @@ jobs:
               "bundleIdentifier": "de.marne.streamplayer.ipad",
               "developerName": "Marne",
               "subtitle": "Deine Mediathek auf dem iPad",
-              "localizedDescription": "Dieselbe Oberfläche wie die Android-App (Ivory & Ink, Compose Multiplatform). Vorschau mit Beispieltiteln.",
+              "localizedDescription": "Dieselbe Oberfläche wie die Android-App (Ivory & Ink, Compose Multiplatform). Anmeldung mit Google, deine Bibliothek aus dem Konto.",
               "iconURL": base + "icon.png",
               "tintColor": "#8E6F43",
               "versions": [{

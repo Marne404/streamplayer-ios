@@ -40,6 +40,9 @@ targets:
         CFBundleDisplayName: Streamplayer
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Zugang zum Konto – beim Bauen aus Geheimnissen des Build-Repos (leer: nur Beispieltitel).
+        SPGoogleClientId: $(SP_GOOGLE_CLIENT_ID)
+        SPFirebaseApiKey: $(SP_FIREBASE_API_KEY)
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         CADisableMinimumFrameDurationOnPhone: true
